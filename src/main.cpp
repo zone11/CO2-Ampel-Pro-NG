@@ -107,7 +107,6 @@
 #define FARBE_AUS          0x000000 //0x000000
 
 //--- I2C/Wire ---
-#define ADDR_SSD1306       0x3D //0x3D or 0x3C, Wire=SERCOM0
 #define ADDR_SCD30         0x61 //0x61, Wire=SERCOM0
 #define ADDR_SCD4X         0x62 //0x62, Wire=SERCOM0
 #define ADDR_LPS22HB       0x5C //0x5C, Wire1=SERCOM2
@@ -123,7 +122,6 @@ enum Features
   FEATURE_LPS22HB  = (1<<3),
   FEATURE_BMP280   = (1<<4),
   FEATURE_WINC1500 = (1<<5),
-  FEATURE_SSD1306  = (1<<6),
 };
 
 
@@ -136,8 +134,6 @@ enum Features
 #include <Arduino_LPS22HB.h>
 #include <Adafruit_NeoPixel.h>
 #include <WiFi101.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
@@ -170,7 +166,6 @@ SensirionI2CScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
-Adafruit_SSD1306 display(128, 64); //128x64 Pixel
 WiFiServer server(80); //Webserver Port 80
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
@@ -377,18 +372,6 @@ void show_data(void) //Daten anzeigen
       Serial.println(temp2_value); //Wert in °C
     }
     Serial.println();
-  }
-
-  if(features & FEATURE_SSD1306)
-  {
-    display.clearDisplay();
-    display.setTextSize(5);
-    display.setCursor(5,5);
-    display.println(co2_value);
-    display.setTextSize(1);
-    display.setCursor(5,56);
-    display.println("CO2 Level in ppm");
-    display.display();
   }
 
   return;
@@ -1836,27 +1819,6 @@ void setup()
     }
   }
 
-  //SSD1306
-  if(check_i2c(SERCOM0, ADDR_SSD1306)) //SSD1306 gefunden
-  {
-    features |= FEATURE_SSD1306;
-    delay(500); //500ms warten
-    display.begin(SSD1306_SWITCHCAPVCC, ADDR_SSD1306);
-    display.clearDisplay();
-    display.setTextColor(WHITE, BLACK);
-    display.setTextSize(3);
-    display.setCursor(40, 0);
-    display.print("CO2");
-    display.setCursor(23, 23);
-    display.print("Ampel");
-    display.setTextSize(1);
-    display.setCursor(5, 48);
-    display.print("Watterott electronic");
-    display.setCursor(12, 56);
-    display.print("www.watterott.com");
-    display.display();
-  }
-
   //SCD30+SCD4X
   if(check_i2c(SERCOM0, ADDR_SCD30)) //SCD30 gefunden
   {
@@ -1982,7 +1944,6 @@ void setup()
     if(features & FEATURE_LPS22HB)  { Serial.print(" LPS22HB"); }
     if(features & FEATURE_BMP280)   { Serial.print(" BMP280"); }
     if(features & FEATURE_WINC1500) { Serial.print(" WINC1500"); }
-    if(features & FEATURE_SSD1306)  { Serial.print(" SSD1306"); }
     Serial.println("\n");
   }
 
