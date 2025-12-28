@@ -26,16 +26,15 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
   - RFM95W/96W LoRa transceiver (optional)
 
 
-## New Features 
+## New Features
 **Implemented Features:**
-- ✅ More settings avilable with simple dump feature (D?)
-
-**Features in progress:**
-- 🚧 MQTT support for IoT platforms (MQTTS still missing..)
+- ✅ Configurable CO2 thresholds via serial commands (no recompilation needed!)
+- ✅ Customizable LED colors via serial commands
+- ✅ Settings dump feature for backup/restore (D?)
+- ✅ MQTT support for IoT platforms
 
 **Planned Features:**
-- [ ] Modular code structure (separate files for WiFi, sensors, console)
-- [ ] Non-blocking architecture with state machine or RTOS features
+- [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
 - [ ] Over-the-air (OTA) firmware updates
@@ -43,26 +42,57 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 
 ## Build Configurations
 
-The `platformio.ini` file defines multiple build environments:
+The firmware is designed for the CO2-Ampel Pro hardware with WiFi (WINC1500) and pressure sensor (BMP280/LPS22HB).
 
-| Environment | Description | Build Flags |
-|------------|-------------|-------------|
-| `co2ampel_pro` | Pro version with WiFi and pressure sensor | `PRO_AMPEL=1`, `WIFI_AMPEL=1` |
-| `co2ampel_basic` | Basic version without WiFi or pressure | `PRO_AMPEL=0`, `WIFI_AMPEL=0` |
-| `co2ampel_plus` | Plus version with WiFi, no pressure | `PRO_AMPEL=0`, `WIFI_AMPEL=1` |
-| `co2ampel_covid` | COVID-19 threshold variant | `COVID=1`, `PRO_AMPEL=1`, `WIFI_AMPEL=1` |
-| `co2ampel_debug` | Debug build with debugging symbols | All features + debug output |
+| Environment | Description |
+|------------|-------------|
+| `co2ampel_pro` | Default build for Pro hardware |
+| `co2ampel_pro_lora` | Pro hardware + LoRa support (future) |
+
+**Note:** CO2 thresholds and LED colors are now configurable at runtime via serial commands and saved to flash memory.
 
 ## Usage
 
-### LED Color Codes
+### LED Color Codes (Default Values)
 
-- **Blue**: < 600 ppm (very fresh air)
-- **Green**: 600-999 ppm (good air quality)
-- **Yellow**: 1000-1199 ppm (ventilation recommended)
-- **Red**: 1200-1399 ppm (ventilation needed)
+All thresholds and colors are configurable via serial commands!
+
+- **Blue** (0x007CB0): < 600 ppm (very fresh air)
+- **Green** (0x00FF00): 600-999 ppm (good air quality)
+- **Yellow** (0xFF7F00): 1000-1199 ppm (ventilation recommended)
+- **Red** (0xFF0000): 1200-1399 ppm (ventilation needed)
 - **Red Blinking**: ≥ 1400 ppm (poor air quality)
 - **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation)
+
+**Customize your thresholds and colors:**
+```bash
+# Example: Set stricter thresholds (COVID mode)
+R=1        # Enable remote control
+T1=600     # Green threshold
+T2=800     # Yellow threshold
+T3=1000    # Red threshold
+T4=1200    # Red blink threshold
+T5=1400    # Buzzer threshold
+S=1        # Save to flash
+
+# Example: Change LED colors
+R=1
+CB=0000FF  # Blue color
+CG=00FF00  # Green color
+CY=FFA500  # Orange-yellow
+CR=FF0000  # Red color
+S=1        # Save to flash
+
+# Example: Adjust temperature offset
+R=1
+TO=8       # Set temperature offset to 8°C
+S=1        # Save to flash
+
+# Query current settings
+T?         # Show CO2 thresholds
+C?         # Show LED colors
+TO?        # Show temperature offset
+```
 
 ### Button Functions
 
@@ -84,15 +114,26 @@ Connect via USB serial at 9600 baud, 8N1:
 ```
 R=1      Enable remote control
 R=0      Disable remote control
+R=R      Reset device
 V?       Query firmware version
 D?       Dump all settings as serial commands (for backup/restore)
-T=X      Set temperature offset (0-20°C)
-A=X      Set altitude compensation (0-3000m)
-C=1      Calibrate to 400ppm (requires 2+ min in fresh air)
+T?       Query CO2 thresholds
+T1=X     Set green threshold (ppm, default: 600)
+T2=X     Set yellow threshold (ppm, default: 1000)
+T3=X     Set red threshold (ppm, default: 1200)
+T4=X     Set red blink threshold (ppm, default: 1400)
+T5=X     Set buzzer threshold (ppm, default: 1600)
+TO=X     Set temperature offset (0-20°C)
+TO?      Query temperature offset
 H=XX     Set LED brightness (hex, 00-FF)
-L=RRGGBB Set LED color (hex RGB)
+L=RRGGBB Set LED color temporarily (hex RGB)
 B=1      Enable buzzer
 B=0      Disable buzzer
+CB=RRGGBB Set blue LED color (CO2 < green threshold)
+CG=RRGGBB Set green LED color (green-yellow range)
+CY=RRGGBB Set yellow LED color (yellow-red range)
+CR=RRGGBB Set red LED color (CO2 >= red threshold)
+C?       Query all LED color settings
 WS=X     Set WiFi SSID
 WP=X     Set WiFi password
 W?       Query WiFi status and connection info
@@ -106,8 +147,10 @@ MC=X     Set MQTT client ID (empty = auto-generate from MAC)
 MT=X     Set MQTT topic prefix (default: co2ampel)
 MI=X     Set MQTT publish interval in seconds (default: 60)
 M?       Query MQTT status and connection
+XA=X     Set altitude compensation (0-3000m)
+XA?      Query altitude compensation
+XC=1     Calibrate to 400ppm (requires 2+ min in fresh air)
 S=1      Save settings to flash
-R=R      Reset device
 ```
 
 ### Settings Backup and Restore
