@@ -186,6 +186,17 @@ unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;
 float temp_value=20, temp_offset=TEMP_OFFSET, humi_value=50, pres_value=1013, pres_last=1013, temp2_value=20;
 
+static void print_ip_address_line(const IPAddress &ip)
+{
+  Serial.print(ip[0]);
+  Serial.print(".");
+  Serial.print(ip[1]);
+  Serial.print(".");
+  Serial.print(ip[2]);
+  Serial.print(".");
+  Serial.println(ip[3]);
+}
+
 
 void leds(uint32_t color)
 {
@@ -860,7 +871,7 @@ void serial_service(void)
                 Serial.print("Connected to ");
                 Serial.println(WiFi.SSID());
                 Serial.print("IP Address: ");
-                Serial.println(WiFi.localIP());
+                print_ip_address_line(WiFi.localIP());
                 Serial.print("Signal Strength: ");
                 Serial.print(WiFi.RSSI());
                 Serial.println(" dBm");
@@ -890,7 +901,7 @@ void serial_service(void)
                 Serial.print("Access Point Mode - SSID: ");
                 Serial.println(WiFi.SSID());
                 Serial.print("AP IP Address: ");
-                Serial.println(WiFi.localIP());
+                print_ip_address_line(WiFi.localIP());
                 break;
               default:
                 Serial.print("Unknown (");
@@ -2389,18 +2400,21 @@ void mqtt_publish_sensors(void)
 
   //Device-ID aus MAC-Adresse generieren
   get_device_id(device_id, sizeof(device_id));
-
+  
+ /*
   //Chip-ID holen
   get_chip_id(chip_id, sizeof(chip_id));
 
+ 
   //Chip-ID publizieren
   sprintf(topic, "%s/%s/chipid", settings.mqtt_topic_prefix, device_id);
   mqttClient.publish(topic, chip_id, true, 0); //retained, damit immer verfügbar
-
+  */
+  
   //CO2
   sprintf(topic, "%s/%s/co2", settings.mqtt_topic_prefix, device_id);
   sprintf(value, "%d", co2_value);
-  mqttClient.publish(topic, value, false, 0); //QoS 0, nicht retained
+  mqttClient.publish(topic, value, false, 0);
 
   //Temperatur
   sprintf(topic, "%s/%s/temperature", settings.mqtt_topic_prefix, device_id);
@@ -2723,11 +2737,11 @@ void setup()
         Serial.print(mac[2], HEX); Serial.print(":"); Serial.print(mac[1], HEX); Serial.print(":"); Serial.print(mac[0], HEX); Serial.println("");
         IPAddress ip;
         ip = WiFi.localIP();
-        Serial.print("IP: "); Serial.println(ip);
+        Serial.print("IP: "); print_ip_address_line(ip);
         ip = WiFi.subnetMask();
-        Serial.print("NM: "); Serial.println(ip);
+        Serial.print("NM: "); print_ip_address_line(ip);
         ip = WiFi.gatewayIP();
-        Serial.print("GW: "); Serial.println(ip);
+        Serial.print("GW: "); print_ip_address_line(ip);
         Serial.println("");
       }
       //MQTT verbinden
