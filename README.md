@@ -176,6 +176,7 @@ Connect via USB serial at 9600 baud, 8N1:
 R=1      Enable remote control
 R=0      Disable remote control
 V?       Query firmware version
+D?       Dump all settings as serial commands (for backup/restore)
 T=X      Set temperature offset (0-20°C)
 A=X      Set altitude compensation (0-3000m)
 C=1      Calibrate to 400ppm (requires 2+ min in fresh air)
@@ -183,9 +184,125 @@ H=XX     Set LED brightness (hex, 00-FF)
 L=RRGGBB Set LED color (hex RGB)
 B=1      Enable buzzer
 B=0      Disable buzzer
+WS=X     Set WiFi SSID
+WP=X     Set WiFi password
+W?       Query WiFi status and connection info
+M=1      Enable MQTT
+M=0      Disable MQTT
+MB=X     Set MQTT broker hostname/IP
+MP=X     Set MQTT port (default: 1883)
+MU=X     Set MQTT username (optional)
+MK=X     Set MQTT password (optional)
+MC=X     Set MQTT client ID (empty = auto-generate from MAC)
+MT=X     Set MQTT topic prefix (default: co2ampel)
+MI=X     Set MQTT publish interval in seconds (default: 60)
+M?       Query MQTT status and connection
 S=1      Save settings to flash
 R=R      Reset device
 ```
+
+### Settings Backup and Restore
+
+**Important:** Settings are stored in flash and **will be lost** when uploading new firmware. Always backup your settings before updating!
+
+**Backup Settings:**
+```bash
+# Connect to serial port and send:
+D?
+
+# The output contains all your settings as serial commands
+# Save this output to a file (e.g., settings_backup.txt)
+```
+
+**Example Output:**
+```
+# Settings Dump - Copy and paste to restore
+# Enable remote control first
+R=1
+
+# LED Brightness (hex)
+H=80
+
+# Buzzer (0=off, 1=on)
+B=1
+
+# WiFi Settings
+WS=MyWiFiNetwork
+WP=MyWiFiPassword
+
+# MQTT Settings
+MB=mqtt.iot.zone11.ch
+MP=1883
+MU=myuser
+MK=mypassword
+MT=co2ampel
+MI=60
+M=1
+
+# Save settings to flash
+S=1
+```
+
+**Restore Settings After Firmware Update:**
+```bash
+# 1. Upload new firmware
+pio run -e co2ampel_pro -t upload
+
+# 2. Connect serial monitor
+pio device monitor -b 9600
+
+# 3. Copy and paste all commands from your backup
+#    (Or send the backup file line by line via serial terminal)
+```
+
+**Alternative - Using a Script:**
+```bash
+# Save your backup to settings.txt, then:
+cat settings.txt > /dev/ttyACM0  # Linux/macOS
+type settings.txt > COM3         # Windows
+```
+
+### WiFi Configuration via Serial
+
+You can configure WiFi settings via serial commands:
+
+**Configure WiFi:**
+```bash
+# 1. Connect to serial monitor
+pio device monitor -b 9600
+
+# 2. Enable remote control
+R=1
+
+# 3. Set WiFi credentials
+WS=YourWiFiSSID
+WP=YourWiFiPassword
+
+# 4. Save settings
+S=1
+
+# 5. Reset device to connect
+R=R
+```
+
+**Check WiFi Status:**
+```bash
+# Query WiFi connection info
+W?
+
+# Example output:
+# WiFi SSID: MyNetwork
+# WiFi Password: ***
+# WiFi Status: Connected to MyNetwork
+# IP Address: 192.168.1.100
+# Signal Strength: -45 dBm
+```
+
+**Notes:**
+- WiFi credentials are stored in flash (will be lost on firmware update - backup with `D?`)
+- After setting WiFi credentials, device will auto-connect on next boot
+- If connection fails, device will create an AP (Access Point) mode instead
+- Use `W?` to check connection status and IP address
 
 ### WiFi Web Interface
 

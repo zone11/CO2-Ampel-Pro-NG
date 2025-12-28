@@ -1,30 +1,6 @@
 /*
-  CO2-Ampel
-    https://learn.watterott.com/breakouts/co2-ampel/
-
-  Serielle Ausgabe
-    9600 Baud 8N1
-
-  Serielle Befehle
-    R=0      - Remote/Fernsteuerung aus
-    R=1      - Remote/Fernsteuerung an
-    R=R      - Reset
-    V?       - Firmwareversion abfragen
-    S=1      - Save/Speichern
-    L=RRGGBB - LED-Farbe (000000-FFFFFF)
-    H=X      - LED-Helligkeit (0-FF)
-    B=0      - Buzzer deaktiviert
-    B=1      - Buzzer aktiviert und an für 500ms
-    T=X      - Temperaturoffset in °C (0-20)
-    T?       - Temperaturoffset abfragen
-    A=X      - Altitude/Hoehe ueber dem Meeresspiegel (0-3000)
-    A?       - Altitude abfragen
-    C=1      - Calibration/Kalibrierung auf 400ppm (mind. 2min Betrieb an Frischluft vor Befehl)
-    1=X      - Range/Bereich 1 Start (400-10000) - gruen
-    2=X      - Range/Bereich 2 Start (400-10000) - gelb
-    3=X      - Range/Bereich 3 Start (400-10000) - rot
-    4=X      - Range/Bereich 4 Start (400-10000) - rot blinken
-    5=X      - Range/Bereich 5 Start (400-10000) - rot + Buzzer
+  CO2-Ampel Pro NG Firmware
+    https://github.com/zone11/CO2-Ampel-Pro-NG
 */
 
 // PlatformIO: Include Arduino framework
@@ -74,6 +50,16 @@
 #define WIFI_IP              0,  0,  0,  0 //Lokale IP-Adresse, 0=DHCP
 #define WIFI_GW            192,168,  1,100 //Gateway IP-Adresse
 #define WIFI_DNS           192,168,  1,100 //DNS IP-Adresse
+
+//--- MQTT ---
+#define MQTT_ENABLED       0      //0 = MQTT deaktiviert, 1 = MQTT aktiviert
+#define MQTT_BROKER        ""     //MQTT Broker Hostname oder IP
+#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883)
+#define MQTT_USER          ""     //MQTT Benutzername (optional)
+#define MQTT_PASS          ""     //MQTT Passwort (optional)
+#define MQTT_CLIENT_ID     ""     //MQTT Client ID (leer = automatisch aus MAC)
+#define MQTT_TOPIC_PREFIX  "co2ampel" //MQTT Topic Prefix
+#define MQTT_INTERVAL      60     //MQTT Publish Intervall in Sekunden
 
 //--- Ampelhelligkeit (LEDs) ---
 #define HELLIGKEIT         180 //1-255 (255=100%, 179=70%)
@@ -127,13 +113,14 @@ enum Features
 
 #include <Wire.h>
 #include <SPI.h>
-#include <FlashStorage.h>
+//#include <FlashStorage.h> // Not used anymore - using fixed flash address
 #include <SparkFun_SCD30_Arduino_Library.h>
 #include <SensirionI2CScd4x.h>
 #include <Adafruit_BMP280.h>
 #include <Arduino_LPS22HB.h>
 #include <Adafruit_NeoPixel.h>
 #include <WiFi101.h>
+#include <MQTT.h>
 
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
@@ -144,6 +131,10 @@ extern USBDeviceClass USBDevice; //USBCore.cpp
 // PlatformIO: Forward declarations for WiFi functions
 unsigned int wifi_start_ap(void);
 unsigned int wifi_start(void);
+
+// PlatformIO: Forward declarations for helper functions
+void get_chip_id(char *buffer, size_t buffer_size);
+void get_device_id(char *buffer, size_t buffer_size);
 
 typedef struct
 {
@@ -157,16 +148,39 @@ typedef struct
   IPAddress ip_local;
   IPAddress ip_gw;
   IPAddress ip_dns;
+  // MQTT Configuration
+  boolean mqtt_enabled;
+  char mqtt_broker[64+1];
+  unsigned int mqtt_port;
+  char mqtt_user[32+1];
+  char mqtt_pass[32+1];
+  char mqtt_client_id[32+1];
+  char mqtt_topic_prefix[32+1];
+  unsigned int mqtt_interval;
 } SETTINGS;
 
+// PlatformIO: Forward declarations for settings and MQTT functions
+void settings_read(SETTINGS *data);
+void settings_write(const SETTINGS *data);
+void mqtt_connect(void);
+void mqtt_reconnect(void);
+void mqtt_service(void);
+void mqtt_publish_sensors(void);
+
 SETTINGS settings;
-FlashStorage(flash_settings, SETTINGS);
+// Settings stored at high address in flash
+// WARNING: Settings will be lost on firmware upload (bootloader erases entire app area)
+// Recommended: Export settings via serial before updating firmware
+// Place at 0x3F800 (last 2KB of flash) - may survive small firmware updates
+#define SETTINGS_FLASH_ADDR ((const volatile SETTINGS*)0x0003F800)
 SCD30 scd30;
 SensirionI2CScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
 WiFiServer server(80); //Webserver Port 80
+WiFiClient mqttWifiClient;
+MQTTClient mqttClient(256); //256 Byte Buffer
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;
@@ -395,12 +409,166 @@ void serial_service(void)
   }
 
   cmd = Serial.read(); //Befehl
-  if((cmd != 'R') && (remote_on == 0))
+  val = Serial.read(); //schreiben/lesen
+
+  //Remote-Kontrolle pruefen (nur fuer Schreib-Befehle)
+  if((cmd != 'R') && (val == '=') && (remote_on == 0))
   {
+    Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
     return;
   }
 
-  val = Serial.read(); //schreiben/lesen
+  //Spezialbehandlung fuer MQTT Befehle (MB=, MP=, MU=, etc.)
+  if(toupper(cmd) == 'M' && val != '=' && val != '?')
+  {
+    char subcmd = toupper(val);
+    char op = Serial.read(); //sollte '=' sein
+
+    if(op == '=')
+    {
+      //Remote-Kontrolle pruefen
+      if(remote_on == 0)
+      {
+        Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
+        return;
+      }
+
+      char tmp[128];
+      int i;
+
+      if(subcmd == 'B') //MB=broker (MQTT Broker)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.mqtt_broker, tmp, sizeof(settings.mqtt_broker)-1);
+          settings.mqtt_broker[sizeof(settings.mqtt_broker)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'P') //MP=port (MQTT Port)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          int port;
+          sscanf(tmp, "%d", &port);
+          if((port > 0) && (port <= 65535))
+          {
+            settings.mqtt_port = port;
+            Serial.println("OK");
+          }
+        }
+      }
+      else if(subcmd == 'U') //MU=user (MQTT User)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.mqtt_user, tmp, sizeof(settings.mqtt_user)-1);
+          settings.mqtt_user[sizeof(settings.mqtt_user)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'K') //MK=password (MQTT Key/Password)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.mqtt_pass, tmp, sizeof(settings.mqtt_pass)-1);
+          settings.mqtt_pass[sizeof(settings.mqtt_pass)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'C') //MC=client_id (MQTT Client ID)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.mqtt_client_id, tmp, sizeof(settings.mqtt_client_id)-1);
+          settings.mqtt_client_id[sizeof(settings.mqtt_client_id)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'T') //MT=topic_prefix (MQTT Topic Prefix)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.mqtt_topic_prefix, tmp, sizeof(settings.mqtt_topic_prefix)-1);
+          settings.mqtt_topic_prefix[sizeof(settings.mqtt_topic_prefix)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'I') //MI=interval (MQTT Publish Interval)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          int interval;
+          sscanf(tmp, "%d", &interval);
+          if((interval >= 10) && (interval <= 3600))
+          {
+            settings.mqtt_interval = interval;
+            Serial.println("OK");
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  //Spezialbehandlung fuer WiFi Befehle (WS=, WP=)
+  if(toupper(cmd) == 'W' && val != '=' && val != '?')
+  {
+    char subcmd = toupper(val);
+    char op = Serial.read(); //sollte '=' sein
+
+    if(op == '=')
+    {
+      //Remote-Kontrolle pruefen
+      if(remote_on == 0)
+      {
+        Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
+        return;
+      }
+
+      char tmp[128];
+      int i;
+
+      if(subcmd == 'S') //WS=ssid (WiFi SSID)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.wifi_ssid, tmp, sizeof(settings.wifi_ssid)-1);
+          settings.wifi_ssid[sizeof(settings.wifi_ssid)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+      else if(subcmd == 'P') //WP=password (WiFi Password)
+      {
+        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
+        if(i > 0)
+        {
+          tmp[i] = 0;
+          strncpy(settings.wifi_code, tmp, sizeof(settings.wifi_code)-1);
+          settings.wifi_code[sizeof(settings.wifi_code)-1] = '\0';
+          Serial.println("OK");
+        }
+      }
+    }
+    return;
+  }
+
   if(val == '=') //=
   {
     switch(toupper(cmd))
@@ -439,7 +607,7 @@ void serial_service(void)
         if(cmd == '1')
         {
           settings.valid = true;
-          flash_settings.write(settings); //Einstellungen speichern
+          settings_write(&settings); //Einstellungen speichern
           Serial.println("OK");
         }
         break;
@@ -605,6 +773,20 @@ void serial_service(void)
           }
         }
         break;
+
+      case 'M': //MQTT Enable/Disable (M=0 or M=1)
+        cmd = Serial.read();
+        if(cmd == '0')
+        {
+          settings.mqtt_enabled = false;
+          Serial.println("OK");
+        }
+        else if(cmd == '1')
+        {
+          settings.mqtt_enabled = true;
+          Serial.println("OK");
+        }
+        break;
     }
   }
   else if(val == '?') //?
@@ -660,6 +842,232 @@ void serial_service(void)
       case '4': //Range/Bereich 4
       case '5': //Range/Bereich 5
         Serial.println(settings.range[cmd-'1'], DEC);
+        break;
+      case 'W': //WiFi Status
+        {
+          if(features & FEATURE_WINC1500)
+          {
+            Serial.print("WiFi SSID: ");
+            Serial.println(strlen(settings.wifi_ssid) > 0 ? settings.wifi_ssid : "(not configured)");
+            Serial.print("WiFi Password: ");
+            Serial.println(strlen(settings.wifi_code) > 0 ? "***" : "(not configured)");
+            Serial.print("WiFi Status: ");
+
+            int status = WiFi.status();
+            switch(status)
+            {
+              case WL_CONNECTED:
+                Serial.print("Connected to ");
+                Serial.println(WiFi.SSID());
+                Serial.print("IP Address: ");
+                Serial.println(WiFi.localIP());
+                Serial.print("Signal Strength: ");
+                Serial.print(WiFi.RSSI());
+                Serial.println(" dBm");
+                break;
+              case WL_NO_SHIELD:
+                Serial.println("No WiFi hardware");
+                break;
+              case WL_IDLE_STATUS:
+                Serial.println("Idle");
+                break;
+              case WL_NO_SSID_AVAIL:
+                Serial.println("SSID not available");
+                break;
+              case WL_SCAN_COMPLETED:
+                Serial.println("Scan completed");
+                break;
+              case WL_CONNECT_FAILED:
+                Serial.println("Connection failed");
+                break;
+              case WL_CONNECTION_LOST:
+                Serial.println("Connection lost");
+                break;
+              case WL_DISCONNECTED:
+                Serial.println("Disconnected");
+                break;
+              case WL_AP_LISTENING:
+                Serial.print("Access Point Mode - SSID: ");
+                Serial.println(WiFi.SSID());
+                Serial.print("AP IP Address: ");
+                Serial.println(WiFi.localIP());
+                break;
+              default:
+                Serial.print("Unknown (");
+                Serial.print(status);
+                Serial.println(")");
+                break;
+            }
+          }
+          else
+          {
+            Serial.println("WiFi hardware not available");
+          }
+        }
+        break;
+      case 'M': //MQTT Status
+        {
+          Serial.print("MQTT Enabled: ");
+          Serial.println(settings.mqtt_enabled ? "Yes" : "No");
+          Serial.print("Broker: ");
+          Serial.print(settings.mqtt_broker);
+          Serial.print(":");
+          Serial.println(settings.mqtt_port);
+          Serial.print("Username: ");
+          Serial.println(strlen(settings.mqtt_user) > 0 ? settings.mqtt_user : "(none)");
+          //Serial.print("Password: ");
+          //Serial.println(strlen(settings.mqtt_pass) > 0 ? settings.mqtt_pass : "(none)");
+          Serial.print("Client ID: ");
+          if(strlen(settings.mqtt_client_id) > 0)
+          {
+            Serial.println(settings.mqtt_client_id);
+          }
+          else
+          {
+            //Auto-generierte Client ID anzeigen
+            char device_id[32];
+            get_device_id(device_id, sizeof(device_id));
+            Serial.print(device_id);
+            Serial.println(" (auto)");
+          }
+          Serial.print("Topic Prefix: ");
+          Serial.println(settings.mqtt_topic_prefix);
+
+          //Chip ID anzeigen
+          char chip_id[40];
+          get_chip_id(chip_id, sizeof(chip_id));
+          Serial.print("Chip ID: ");
+          Serial.println(chip_id);
+
+          Serial.print("Interval: ");
+          Serial.print(settings.mqtt_interval);
+          Serial.println("s");
+          if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
+          {
+            Serial.print("WiFi: ");
+            Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+            Serial.print("Status: ");
+            Serial.println(mqttClient.connected() ? "Connected" : "Disconnected");
+          }
+        }
+        break;
+      case 'D': //Dump all settings as serial commands
+        Serial.println("# Settings Dump - Copy and paste to restore");
+        Serial.println("# Enable remote control first");
+        Serial.println("R=1");
+        Serial.println();
+
+        Serial.println("# LED Brightness (hex)");
+        Serial.print("H=");
+        Serial.println(settings.brightness, HEX);
+        Serial.println();
+
+        Serial.println("# Buzzer (0=off, 1=on)");
+        Serial.print("B=");
+        Serial.println(settings.buzzer);
+        Serial.println();
+
+        Serial.println("# CO2 Range Thresholds (ppm)");
+        for(int i = 0; i < 5; i++)
+        {
+          Serial.print(i+1);
+          Serial.print("=");
+          Serial.println(settings.range[i]);
+        }
+        Serial.println();
+
+        Serial.println("# Temperature Offset");
+        if(features & FEATURE_SCD30)
+        {
+          Serial.print("T=");
+          Serial.println(scd30.getTemperatureOffset());
+        }
+        else if(features & FEATURE_SCD4X)
+        {
+          float offset;
+          scd4x.stopPeriodicMeasurement();
+          delay(500);
+          scd4x.getTemperatureOffset(offset);
+          delay(500);
+          scd4x.startPeriodicMeasurement();
+          Serial.print("T=");
+          Serial.println((int)offset);
+        }
+        Serial.println();
+
+        Serial.println("# Altitude (meters)");
+        if(features & FEATURE_SCD30)
+        {
+          Serial.print("A=");
+          Serial.println(scd30.getAltitudeCompensation());
+        }
+        else if(features & FEATURE_SCD4X)
+        {
+          uint16_t alt;
+          scd4x.stopPeriodicMeasurement();
+          delay(500);
+          scd4x.getSensorAltitude(alt);
+          delay(500);
+          scd4x.startPeriodicMeasurement();
+          Serial.print("A=");
+          Serial.println(alt);
+        }
+        Serial.println();
+
+        if(features & FEATURE_WINC1500)
+        {
+          Serial.println("# WiFi Settings");
+          if(strlen(settings.wifi_ssid) > 0)
+          {
+            Serial.print("WS=");
+            Serial.println(settings.wifi_ssid);
+          }
+          if(strlen(settings.wifi_code) > 0)
+          {
+            Serial.print("WP=");
+            Serial.println(settings.wifi_code);
+          }
+          Serial.println();
+
+          Serial.println("# MQTT Settings");
+          if(strlen(settings.mqtt_broker) > 0)
+          {
+            Serial.print("MB=");
+            Serial.println(settings.mqtt_broker);
+          }
+          Serial.print("MP=");
+          Serial.println(settings.mqtt_port);
+          if(strlen(settings.mqtt_user) > 0)
+          {
+            Serial.print("MU=");
+            Serial.println(settings.mqtt_user);
+          }
+          if(strlen(settings.mqtt_pass) > 0)
+          {
+            Serial.print("MK=");
+            Serial.println(settings.mqtt_pass);
+          }
+          if(strlen(settings.mqtt_client_id) > 0)
+          {
+            Serial.print("MC=");
+            Serial.println(settings.mqtt_client_id);
+          }
+          if(strlen(settings.mqtt_topic_prefix) > 0)
+          {
+            Serial.print("MT=");
+            Serial.println(settings.mqtt_topic_prefix);
+          }
+          Serial.print("MI=");
+          Serial.println(settings.mqtt_interval);
+          Serial.print("M=");
+          Serial.println(settings.mqtt_enabled ? "1" : "0");
+          Serial.println();
+        }
+
+        Serial.println("# Save settings to flash");
+        Serial.println("S=1");
+        Serial.println();
+        Serial.println("# Settings dump complete");
         break;
     }
   }
@@ -922,7 +1330,7 @@ void webserver_service(void)
               //todo: Leerzeichen am Ende entfernen
               strcpy(settings.wifi_ssid, req[0]);
               strcpy(settings.wifi_code, req[1]);
-              flash_settings.write(settings); //Einstellungen speichern
+              settings_write(&settings); //Einstellungen speichern
             }
           }
           //HTTP Header+Daten
@@ -1417,7 +1825,7 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
   }
 
   //Ende
-  flash_settings.write(settings); //Einstellungen speichern
+  settings_write(&settings); //Einstellungen speichern
   leds(FARBE_BLAU);//LEDs blau
   buzzer(250); //250ms Buzzer an
 
@@ -1737,6 +2145,329 @@ void reset_mcu(void)
 }
 
 
+//--- MQTT Functions ---
+
+// Holt die eindeutige Chip-ID des SAMD21
+void get_chip_id(char *buffer, size_t buffer_size)
+{
+  // SAMD21G18A Unique Identifier (128-bit = 4x 32-bit words)
+  volatile uint32_t *id0 = (volatile uint32_t *)0x0080A00C;
+  volatile uint32_t *id1 = (volatile uint32_t *)0x0080A040;
+  volatile uint32_t *id2 = (volatile uint32_t *)0x0080A044;
+  volatile uint32_t *id3 = (volatile uint32_t *)0x0080A048;
+
+  snprintf(buffer, buffer_size, "%08X%08X%08X%08X",
+           (unsigned int)*id0, (unsigned int)*id1,
+           (unsigned int)*id2, (unsigned int)*id3);
+}
+
+// Generiert Device-ID aus MAC-Adresse (volle MAC-Adresse)
+void get_device_id(char *buffer, size_t buffer_size)
+{
+  byte mac[6];
+  WiFi.macAddress(mac);
+  snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
+           mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+}
+
+//--- Settings Storage Functions (Flash Memory) ---
+
+// Liest Einstellungen aus Flash
+void settings_read(SETTINGS *data)
+{
+  memcpy(data, (const void*)SETTINGS_FLASH_ADDR, sizeof(SETTINGS));
+}
+
+// Schreibt Einstellungen in Flash
+void settings_write(const SETTINGS *data)
+{
+  // SAMD21 Flash-Programmierung
+  // Page-Größe: 64 Bytes (Row = 256 Bytes = 4 Pages)
+
+  const uint32_t flash_addr = (uint32_t)SETTINGS_FLASH_ADDR;
+  const uint32_t page_size = 64;
+  const uint32_t row_size = 256;
+  const uint32_t num_rows = (sizeof(SETTINGS) + row_size - 1) / row_size;
+
+  // Disable interrupts during flash operations
+  __disable_irq();
+
+  // Erase rows first
+  for(uint32_t i = 0; i < num_rows; i++)
+  {
+    uint32_t addr = flash_addr + (i * row_size);
+
+    // Execute "Erase Row" command
+    NVMCTRL->ADDR.reg = addr / 2; // Address must be divided by 2
+    NVMCTRL->CTRLA.reg = NVMCTRL_CTRLA_CMDEX_KEY | NVMCTRL_CTRLA_CMD_ER;
+    while(!NVMCTRL->INTFLAG.bit.READY);
+  }
+
+  // Write data page by page
+  const uint32_t *src = (const uint32_t *)data;
+  uint32_t num_pages = (sizeof(SETTINGS) + page_size - 1) / page_size;
+
+  for(uint32_t page = 0; page < num_pages; page++)
+  {
+    // Clear page buffer
+    NVMCTRL->CTRLA.reg = NVMCTRL_CTRLA_CMDEX_KEY | NVMCTRL_CTRLA_CMD_PBC;
+    while(!NVMCTRL->INTFLAG.bit.READY);
+
+    // Fill page buffer (16 words = 64 bytes per page)
+    uint32_t *dst = (uint32_t *)(flash_addr + (page * page_size));
+    for(uint32_t i = 0; i < (page_size / 4); i++)
+    {
+      dst[i] = *src++;
+    }
+
+    // Execute "Write Page" command
+    NVMCTRL->CTRLA.reg = NVMCTRL_CTRLA_CMDEX_KEY | NVMCTRL_CTRLA_CMD_WP;
+    while(!NVMCTRL->INTFLAG.bit.READY);
+  }
+
+  // Re-enable interrupts
+  __enable_irq();
+}
+
+void mqtt_connect(void)
+{
+  char client_id[48];
+
+  if(!settings.mqtt_enabled)
+  {
+    return;
+  }
+
+  if((features & FEATURE_WINC1500) == 0)
+  {
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT: WiFi hardware not available");
+    }
+    return; //keine WiFi-Hardware
+  }
+
+  if(WiFi.status() != WL_CONNECTED)
+  {
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT: WiFi not connected");
+    }
+    return; //keine WiFi-Verbindung
+  }
+
+  //MQTT Client ID generieren wenn leer
+  if(strlen(settings.mqtt_client_id) == 0)
+  {
+    get_device_id(client_id, sizeof(client_id));
+  }
+  else
+  {
+    strncpy(client_id, settings.mqtt_client_id, sizeof(client_id)-1);
+    client_id[sizeof(client_id)-1] = '\0';
+  }
+
+  if(features & FEATURE_USB)
+  {
+    Serial.print("MQTT connecting to ");
+    Serial.print(settings.mqtt_broker);
+    Serial.print(":");
+    Serial.print(settings.mqtt_port);
+    Serial.print(" as '");
+    Serial.print(client_id);
+    Serial.print("'");
+    if(strlen(settings.mqtt_user) > 0)
+    {
+      Serial.print(" with user '");
+      Serial.print(settings.mqtt_user);
+      Serial.print("'");
+    }
+    Serial.println();
+  }
+
+  //MQTT Client initialisieren
+  mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, mqttWifiClient);
+
+  //Verbinden
+  boolean connected = false;
+  if(strlen(settings.mqtt_user) > 0)
+  {
+    //Mit Authentifizierung
+    connected = mqttClient.connect(client_id, settings.mqtt_user, settings.mqtt_pass);
+  }
+  else
+  {
+    //Ohne Authentifizierung
+    connected = mqttClient.connect(client_id);
+  }
+
+  if(connected)
+  {
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT: Connected successfully");
+    }
+  }
+  else
+  {
+    if(features & FEATURE_USB)
+    {
+      Serial.print("MQTT: Connection failed - ");
+
+      //Detaillierte Fehlerausgabe
+      lwmqtt_err_t err = mqttClient.lastError();
+      lwmqtt_return_code_t rc = mqttClient.returnCode();
+
+      if(err != LWMQTT_SUCCESS)
+      {
+        Serial.print("Error: ");
+        switch(err)
+        {
+          case LWMQTT_NETWORK_FAILED_CONNECT: Serial.println("Network connection failed"); break;
+          case LWMQTT_NETWORK_TIMEOUT: Serial.println("Network timeout"); break;
+          case LWMQTT_NETWORK_FAILED_READ: Serial.println("Network read failed"); break;
+          case LWMQTT_NETWORK_FAILED_WRITE: Serial.println("Network write failed"); break;
+          case LWMQTT_CONNECTION_DENIED: Serial.println("Connection denied by broker"); break;
+          default: Serial.print("Code "); Serial.println(err); break;
+        }
+      }
+
+      if(rc != LWMQTT_CONNECTION_ACCEPTED)
+      {
+        Serial.print("Return Code: ");
+        switch(rc)
+        {
+          case LWMQTT_UNACCEPTABLE_PROTOCOL: Serial.println("Unacceptable protocol version"); break;
+          case LWMQTT_IDENTIFIER_REJECTED: Serial.println("Client ID rejected"); break;
+          case LWMQTT_SERVER_UNAVAILABLE: Serial.println("Server unavailable"); break;
+          case LWMQTT_BAD_USERNAME_OR_PASSWORD: Serial.println("Bad username or password"); break;
+          case LWMQTT_NOT_AUTHORIZED: Serial.println("Not authorized"); break;
+          default: Serial.print("Code "); Serial.println(rc); break;
+        }
+      }
+    }
+  }
+}
+
+
+void mqtt_reconnect(void)
+{
+  static unsigned long last_attempt = 0;
+
+  if(!settings.mqtt_enabled)
+  {
+    return;
+  }
+
+  //Nur alle 30 Sekunden neu versuchen
+  if((millis() - last_attempt) < 30000UL)
+  {
+    return;
+  }
+
+  last_attempt = millis();
+  mqtt_connect();
+}
+
+
+void mqtt_publish_sensors(void)
+{
+  char topic[128];
+  char value[64];
+  char device_id[32];
+  char chip_id[40];
+
+  if(!settings.mqtt_enabled)
+  {
+    return;
+  }
+
+  if(!mqttClient.connected())
+  {
+    return;
+  }
+
+  //Device-ID aus MAC-Adresse generieren
+  get_device_id(device_id, sizeof(device_id));
+
+  //Chip-ID holen
+  get_chip_id(chip_id, sizeof(chip_id));
+
+  //Chip-ID publizieren
+  sprintf(topic, "%s/%s/chipid", settings.mqtt_topic_prefix, device_id);
+  mqttClient.publish(topic, chip_id, true, 0); //retained, damit immer verfügbar
+
+  //CO2
+  sprintf(topic, "%s/%s/co2", settings.mqtt_topic_prefix, device_id);
+  sprintf(value, "%d", co2_value);
+  mqttClient.publish(topic, value, false, 0); //QoS 0, nicht retained
+
+  //Temperatur
+  sprintf(topic, "%s/%s/temperature", settings.mqtt_topic_prefix, device_id);
+  sprintf(value, "%.1f", temp_value);
+  mqttClient.publish(topic, value, false, 0);
+
+  //Luftfeuchtigkeit
+  sprintf(topic, "%s/%s/humidity", settings.mqtt_topic_prefix, device_id);
+  sprintf(value, "%.1f", humi_value);
+  mqttClient.publish(topic, value, false, 0);
+
+  //Lichtsensor
+  sprintf(topic, "%s/%s/light", settings.mqtt_topic_prefix, device_id);
+  sprintf(value, "%d", light_value);
+  mqttClient.publish(topic, value, false, 0);
+
+  //Druck (nur Pro Version)
+  if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+  {
+    sprintf(topic, "%s/%s/pressure", settings.mqtt_topic_prefix, device_id);
+    sprintf(value, "%.1f", pres_value);
+    mqttClient.publish(topic, value, false, 0);
+  }
+
+  if(features & FEATURE_USB)
+  {
+    Serial.print("MQTT published to ");
+    Serial.print(settings.mqtt_topic_prefix);
+    Serial.print("/");
+    Serial.println(device_id);
+  }
+}
+
+
+void mqtt_service(void)
+{
+  static unsigned long last_publish = 0;
+
+  if(!settings.mqtt_enabled)
+  {
+    return;
+  }
+
+  if((features & FEATURE_WINC1500) == 0)
+  {
+    return;
+  }
+
+  //MQTT Loop (non-blocking)
+  mqttClient.loop();
+
+  //Verbindung pruefen
+  if(!mqttClient.connected())
+  {
+    mqtt_reconnect();
+    return;
+  }
+
+  //Periodisches Publishing
+  if((millis() - last_publish) > (settings.mqtt_interval * 1000UL))
+  {
+    last_publish = millis();
+    mqtt_publish_sensors();
+  }
+}
+
+
 void setup()
 {
   int run_menu=0;
@@ -1875,7 +2606,7 @@ void setup()
   }
 
   //Einstellungen
-  settings = flash_settings.read(); //Einstellungen lesen
+  settings_read(&settings); //Einstellungen lesen
   if((settings.valid == false) || (settings.brightness > 255) || (settings.range[0] < 100))
   {
     settings.brightness   = HELLIGKEIT;
@@ -1893,8 +2624,22 @@ void setup()
     settings.ip_local     = IPAddress(WIFI_IP);
     settings.ip_gw        = IPAddress(WIFI_GW);
     settings.ip_dns       = IPAddress(WIFI_DNS);
+    //MQTT Standardeinstellungen
+    settings.mqtt_enabled = MQTT_ENABLED;
+    settings.mqtt_broker[0] = 0;
+    strcpy(settings.mqtt_broker, MQTT_BROKER);
+    settings.mqtt_port = MQTT_PORT;
+    settings.mqtt_user[0] = 0;
+    strcpy(settings.mqtt_user, MQTT_USER);
+    settings.mqtt_pass[0] = 0;
+    strcpy(settings.mqtt_pass, MQTT_PASS);
+    settings.mqtt_client_id[0] = 0;
+    strcpy(settings.mqtt_client_id, MQTT_CLIENT_ID);
+    settings.mqtt_topic_prefix[0] = 0;
+    strcpy(settings.mqtt_topic_prefix, MQTT_TOPIC_PREFIX);
+    settings.mqtt_interval = MQTT_INTERVAL;
     settings.valid        = true;
-    flash_settings.write(settings);
+    settings_write(&settings);
     //Standard Temperaturoffset
     if(features & FEATURE_WINC1500)
     {
@@ -1984,6 +2729,12 @@ void setup()
         ip = WiFi.gatewayIP();
         Serial.print("GW: "); Serial.println(ip);
         Serial.println("");
+      }
+      //MQTT verbinden
+      if(settings.mqtt_enabled)
+      {
+        delay(1000); //1s warten
+        mqtt_connect();
       }
     }
     else
@@ -2090,6 +2841,9 @@ void loop()
 
   //WiFi-Daten verarbeiten
   webserver_service();
+
+  //MQTT-Daten verarbeiten
+  mqtt_service();
 
   //Taster pruefen
   if(digitalRead(PIN_SWITCH) == LOW) //Taster gedrueckt
