@@ -32,7 +32,7 @@
 
 // Version will be overridden by platformio.ini if VERSION is defined there
 #ifndef VERSION
-#define VERSION "26-NG"
+#define VERSION "NG"
 #endif
 
 // Build flags from platformio.ini
@@ -1937,7 +1937,7 @@ void setup()
   {
     features |= FEATURE_USB;
     delay(1500); //1500ms warten
-    Serial.println("\nCO2 Ampel v" VERSION);
+    Serial.println("\nCO2 Ampel Pro NG v" VERSION);
     Serial.print("Features:");
     if(features & FEATURE_SCD30)    { Serial.print(" SCD30"); }
     if(features & FEATURE_SCD4X)    { Serial.print(" SCD4X"); }

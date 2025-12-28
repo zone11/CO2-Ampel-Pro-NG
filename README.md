@@ -1,6 +1,6 @@
 # CO2-Ampel Pro NG (Next Generation)
 
-PlatformIO-based firmware for the Watterott CO2-Ampel Pro hardware, based on V25 of the original firmware.
+New PlatformIO-based firmware for the Watterott CO2-Ampel Pro hardware, initially based on V25 of the original firmware.
 
 ✅ **Status**: Fully operational and tested on hardware
 
@@ -36,7 +36,6 @@ For first-time setup, see [Setup Instructions](#setup-instructions) below.
   - Air pressure sensor (BMP280 or LPS22HB)
   - ATWINC1500B WiFi module (optional)
   - RFM95W/96W LoRa transceiver (optional)
-  - OLED display SSD1306 (optional)
 
 ## Project Structure
 
@@ -336,8 +335,8 @@ This project maintains the Creative Commons Attribution Share-Alike License from
 ## Credits
 
 - **Original Design**: Watterott electronic
-- **Original Firmware**: Watterott electronic
-- **Original Documentation**: https://learn.watterott.com/breakouts/co2-ampel/
+- **Original Firmware**: Watterott electronic - https://github.com/watterott/CO2-Ampel
+- **Original Documentation**: Watterott electronic- https://learn.watterott.com/breakouts/co2-ampel/
 
 ## Support
 
