@@ -1,6 +1,6 @@
 # CO2-Ampel Pro NG (Next Generation)
 
-New / updatedt firmware for the Watterott CO2-Ampel Pro hardware, initially based on V25 of the original firmware.
+New / updated firmware for the Watterott CO2-Ampel Pro hardware, initially based on v24 of the original firmware.
 
 ✅ **Status**: Fully operational and tested on hardware
 
