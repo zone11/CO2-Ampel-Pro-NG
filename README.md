@@ -26,16 +26,15 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
   - RFM95W/96W LoRa transceiver (optional)
 
 
-## New Features 
+## New Features
 **Implemented Features:**
-- ✅ More settings avilable with simple dump feature (D?)
-
-**Features in progress:**
-- 🚧 MQTT support for IoT platforms (MQTTS still missing..)
+- ✅ Configurable CO2 thresholds via serial commands (no recompilation needed!)
+- ✅ Customizable LED colors via serial commands
+- ✅ Settings dump feature for backup/restore (key/value)
+- ✅ MQTT support for IoT platforms
 
 **Planned Features:**
-- [ ] Modular code structure (separate files for WiFi, sensors, console)
-- [ ] Non-blocking architecture with state machine or RTOS features
+- [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
 - [ ] Over-the-air (OTA) firmware updates
@@ -43,26 +42,51 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 
 ## Build Configurations
 
-The `platformio.ini` file defines multiple build environments:
+The firmware is designed for the CO2-Ampel Pro hardware with WiFi (WINC1500) and pressure sensor (BMP280/LPS22HB).
 
-| Environment | Description | Build Flags |
-|------------|-------------|-------------|
-| `co2ampel_pro` | Pro version with WiFi and pressure sensor | `PRO_AMPEL=1`, `WIFI_AMPEL=1` |
-| `co2ampel_basic` | Basic version without WiFi or pressure | `PRO_AMPEL=0`, `WIFI_AMPEL=0` |
-| `co2ampel_plus` | Plus version with WiFi, no pressure | `PRO_AMPEL=0`, `WIFI_AMPEL=1` |
-| `co2ampel_covid` | COVID-19 threshold variant | `COVID=1`, `PRO_AMPEL=1`, `WIFI_AMPEL=1` |
-| `co2ampel_debug` | Debug build with debugging symbols | All features + debug output |
+| Environment | Description |
+|------------|-------------|
+| `co2ampel_pro` | Default build for Pro hardware |
+| `co2ampel_pro_lora` | Pro hardware + LoRa support (future) |
+
+**Note:** CO2 thresholds and LED colors are now configurable at runtime via serial commands and saved to flash memory.
 
 ## Usage
 
-### LED Color Codes
+### LED Color Codes (Default Values)
 
-- **Blue**: < 600 ppm (very fresh air)
-- **Green**: 600-999 ppm (good air quality)
-- **Yellow**: 1000-1199 ppm (ventilation recommended)
-- **Red**: 1200-1399 ppm (ventilation needed)
+All thresholds and colors are configurable via serial commands!
+
+- **Blue** (0x007CB0): < 600 ppm (very fresh air)
+- **Green** (0x00FF00): 600-999 ppm (good air quality)
+- **Yellow** (0xFF7F00): 1000-1199 ppm (ventilation recommended)
+- **Red** (0xFF0000): 1200-1399 ppm (ventilation needed)
 - **Red Blinking**: ≥ 1400 ppm (poor air quality)
 - **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation)
+
+**Customize your thresholds and colors:**
+```bash
+# Example: Set stricter thresholds (COVID mode)
+remote on
+set co2.t1=600
+set co2.t2=800
+set co2.t3=1000
+set co2.t4=1200
+set co2.t5=1400
+save
+
+# Example: Change LED colors
+remote on
+set led.color.t1=0000FF
+set led.color.t2=00FF00
+set led.color.t3=FFA500
+set led.color.t4=FF0000
+save
+
+# Query current settings
+get co2.*
+get led.color.*
+```
 
 ### Button Functions
 
@@ -82,32 +106,43 @@ The `platformio.ini` file defines multiple build environments:
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-R=1      Enable remote control
-R=0      Disable remote control
-V?       Query firmware version
-D?       Dump all settings as serial commands (for backup/restore)
-T=X      Set temperature offset (0-20°C)
-A=X      Set altitude compensation (0-3000m)
-C=1      Calibrate to 400ppm (requires 2+ min in fresh air)
-H=XX     Set LED brightness (hex, 00-FF)
-L=RRGGBB Set LED color (hex RGB)
-B=1      Enable buzzer
-B=0      Disable buzzer
-WS=X     Set WiFi SSID
-WP=X     Set WiFi password
-W?       Query WiFi status and connection info
-M=1      Enable MQTT
-M=0      Disable MQTT
-MB=X     Set MQTT broker hostname/IP
-MP=X     Set MQTT port (default: 1883)
-MU=X     Set MQTT username (optional)
-MK=X     Set MQTT password (optional)
-MC=X     Set MQTT client ID (empty = auto-generate from MAC)
-MT=X     Set MQTT topic prefix (default: co2ampel)
-MI=X     Set MQTT publish interval in seconds (default: 60)
-M?       Query MQTT status and connection
-S=1      Save settings to flash
-R=R      Reset device
+remote on      Enable remote control (required for set/save)
+remote off     Disable remote control
+status         Show measurements and WiFi/MQTT status
+reset          Reset device (remote must be on)
+version        Query firmware version
+get <key>      Read a single setting
+get <prefix.*> Read a group of settings by prefix
+set <key>=<v>  Update a setting value
+save           Save settings to flash
+dump           Print all settings as set commands
+help           List all available keys
+```
+
+**Key list (settings):**
+```
+sys.serial_output
+sys.brightness
+sys.buzzer
+co2.t1
+co2.t2
+co2.t3
+co2.t4
+co2.t5
+led.color.t1
+led.color.t2
+led.color.t3
+led.color.t4
+wifi.ssid
+wifi.pass
+mqtt.enabled
+mqtt.broker
+mqtt.port
+mqtt.user
+mqtt.pass
+mqtt.client_id
+mqtt.topic_prefix
+mqtt.interval
 ```
 
 ### Settings Backup and Restore
@@ -117,7 +152,7 @@ R=R      Reset device
 **Backup Settings:**
 ```bash
 # Connect to serial port and send:
-D?
+dump
 ```
 
 
@@ -131,37 +166,36 @@ You can configure WiFi settings via serial commands:
 pio device monitor -b 9600
 
 # 2. Enable remote control
-R=1
+remote on
 
 # 3. Set WiFi credentials
-WS=YourWiFiSSID
-WP=YourWiFiPassword
+set wifi.ssid=YourWiFiSSID
+set wifi.pass=YourWiFiPassword
 
 # 4. Save settings
-S=1
+save
 
 # 5. Reset device to connect
-R=R
+reset
 ```
 
 **Check WiFi Status:**
 ```bash
-# Query WiFi connection info
-W?
+# Query WiFi configuration
+get wifi.*
+```
 
-# Example output:
-# WiFi SSID: MyNetwork
-# WiFi Password: ***
-# WiFi Status: Connected to MyNetwork
-# IP Address: 192.168.1.100
-# Signal Strength: -45 dBm
+**Toggle serial measurement output:**
+```bash
+remote on
+set sys.serial_output=0
+save
 ```
 
 **Notes:**
-- WiFi credentials are stored in flash (will be lost on firmware update - backup with `D?`)
+- WiFi credentials are stored in flash (will be lost on firmware update - backup with `dump`)
 - After setting WiFi credentials, device will auto-connect on next boot
 - If connection fails, device will create an AP (Access Point) mode instead
-- Use `W?` to check connection status and IP address
 
 ### WiFi Web Interface
 
@@ -188,13 +222,12 @@ Example JSON response:
 
 ## Calibration
 
-The CO2 sensor should be calibrated periodically:
+The CO2 sensor should be calibrated periodically via the service menu:
 
 1. Place device in fresh air (outdoor or well-ventilated area)
 2. Wait at least 2 minutes for sensor to stabilize
-3. Send command `R=1` followed by `C=1` via serial
-4. Wait for confirmation
-5. Send `S=1` to save calibration
+3. Enter the service menu (hold button during power-on)
+4. Use the Calibration option and follow on-screen feedback
 
 Automatic Self-Calibration (ASC) is disabled by default. To enable, set `AUTO_KALIBRIERUNG=1` in `main.cpp` and rebuild. ASC requires 7 days of continuous operation with at least 1 hour of fresh air exposure daily.
 
