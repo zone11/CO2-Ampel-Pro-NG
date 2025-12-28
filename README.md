@@ -1,18 +1,17 @@
 # CO2-Ampel Pro NG (Next Generation)
 
-PlatformIO-based firmware for the Watterott CO2-Ampel Pro hardware.
+PlatformIO-based firmware for the Watterott CO2-Ampel Pro hardware, based on V25 of the original firmware.
 
 ✅ **Status**: Fully operational and tested on hardware
 
 ## Overview
 
-This is a modernized version of the original CO2-Ampel firmware, migrated from Arduino IDE to PlatformIO for better dependency management and professional development workflow.
+This is going to be a modernized version of the original CO2-Ampel firmware, migrated from Arduino IDE to PlatformIO for better dependency management and professional development workflow.
 
 **Key Features:**
 - ✅ Custom board definition for CO2-Ampel Pro hardware
 - ✅ Full hardware support (LEDs, buzzer, sensors, WiFi)
 - ✅ Multiple build configurations (Pro, Basic, Plus, COVID)
-- ✅ Comprehensive hardware test included
 - ✅ Works with PlatformIO CLI and IDE
 
 ## Quick Start
@@ -55,8 +54,7 @@ CO2-Ampel-Pro-NG/
 ├── test/
 │   ├── hardware_test.cpp  # Comprehensive hardware test
 │   └── README.md          # Hardware test documentation
-├── legacy/                # Original source code from Watterott (reference)
-└── workfiles/             # Development documentation and context
+└── legacy/                # Original source code from Watterott (reference)
 ```
 
 ## Setup Instructions
@@ -339,8 +337,7 @@ This project maintains the Creative Commons Attribution Share-Alike License from
 
 - **Original Design**: Watterott electronic
 - **Original Firmware**: Watterott electronic
-- **PlatformIO Port**: CO2-Ampel Pro NG project
-- **Documentation**: https://learn.watterott.com/breakouts/co2-ampel/
+- **Original Documentation**: https://learn.watterott.com/breakouts/co2-ampel/
 
 ## Support
 
