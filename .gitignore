@@ -1,0 +1,42 @@
+# PlatformIO
+.pio/
+.vscode/
+.pioenvs
+.piolibdeps
+.clang_complete
+.gcc-flags.json
+
+# Build outputs
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Work documentation (keep only PROJECT_CONTEXT.json)
+workfiles/*.md
+workfiles/*.sh
+
+# Claude Code
+.claude/

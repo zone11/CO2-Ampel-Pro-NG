@@ -1,0 +1,48 @@
+{
+  "build": {
+    "core": "arduino",
+    "cpu": "cortex-m0plus",
+    "extra_flags": "-D__SAMD21G18A__ -DARDUINO_SAMD_ZERO -DARM_MATH_CM0PLUS -DCRYPTO_WIRE=Wire1",
+    "f_cpu": "48000000L",
+    "hwids": [
+      ["0x04D8", "0xEACE"],
+      ["0x04D8", "0xEACF"]
+    ],
+    "ldscript": "linker_scripts/gcc/flash_with_bootloader.ld",
+    "mcu": "samd21g18a",
+    "usb_product": "CO2-Ampel",
+    "variant": "co2ampel"
+  },
+  "connectivity": [
+    "can"
+  ],
+  "debug": {
+    "jlink_device": "ATSAMD21G18",
+    "openocd_chipname": "at91samd21g18",
+    "openocd_target": "at91samdXX",
+    "svd_path": "ATSAMD21G18A.svd"
+  },
+  "frameworks": [
+    "arduino"
+  ],
+  "name": "CO2-Ampel Pro (SAMD21G18A)",
+  "upload": {
+    "disable_flushing": false,
+    "maximum_ram_size": 32768,
+    "maximum_size": 262144,
+    "native_usb": true,
+    "protocol": "sam-ba",
+    "protocols": [
+      "sam-ba",
+      "atmel-ice",
+      "jlink",
+      "blackmagic"
+    ],
+    "require_upload_port": true,
+    "speed": 921600,
+    "use_1200bps_touch": true,
+    "wait_for_upload_port": true
+  },
+  "url": "https://learn.watterott.com/breakouts/co2-ampel/",
+  "vendor": "Watterott electronic"
+}
