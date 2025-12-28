@@ -30,7 +30,7 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 **Implemented Features:**
 - ✅ Configurable CO2 thresholds via serial commands (no recompilation needed!)
 - ✅ Customizable LED colors via serial commands
-- ✅ Settings dump feature for backup/restore (D?)
+- ✅ Settings dump feature for backup/restore (key/value)
 - ✅ MQTT support for IoT platforms
 
 **Planned Features:**
@@ -67,31 +67,25 @@ All thresholds and colors are configurable via serial commands!
 **Customize your thresholds and colors:**
 ```bash
 # Example: Set stricter thresholds (COVID mode)
-R=1        # Enable remote control
-T1=600     # Green threshold
-T2=800     # Yellow threshold
-T3=1000    # Red threshold
-T4=1200    # Red blink threshold
-T5=1400    # Buzzer threshold
-S=1        # Save to flash
+remote on
+set co2.t1=600
+set co2.t2=800
+set co2.t3=1000
+set co2.t4=1200
+set co2.t5=1400
+save
 
 # Example: Change LED colors
-R=1
-CB=0000FF  # Blue color
-CG=00FF00  # Green color
-CY=FFA500  # Orange-yellow
-CR=FF0000  # Red color
-S=1        # Save to flash
-
-# Example: Adjust temperature offset
-R=1
-TO=8       # Set temperature offset to 8°C
-S=1        # Save to flash
+remote on
+set led.color.t1=0000FF
+set led.color.t2=00FF00
+set led.color.t3=FFA500
+set led.color.t4=FF0000
+save
 
 # Query current settings
-T?         # Show CO2 thresholds
-C?         # Show LED colors
-TO?        # Show temperature offset
+get co2.*
+get led.color.*
 ```
 
 ### Button Functions
@@ -112,45 +106,43 @@ TO?        # Show temperature offset
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-R=1      Enable remote control
-R=0      Disable remote control
-R=R      Reset device
-V?       Query firmware version
-D?       Dump all settings as serial commands (for backup/restore)
-T?       Query CO2 thresholds
-T1=X     Set green threshold (ppm, default: 600)
-T2=X     Set yellow threshold (ppm, default: 1000)
-T3=X     Set red threshold (ppm, default: 1200)
-T4=X     Set red blink threshold (ppm, default: 1400)
-T5=X     Set buzzer threshold (ppm, default: 1600)
-TO=X     Set temperature offset (0-20°C)
-TO?      Query temperature offset
-H=XX     Set LED brightness (hex, 00-FF)
-L=RRGGBB Set LED color temporarily (hex RGB)
-B=1      Enable buzzer
-B=0      Disable buzzer
-CB=RRGGBB Set blue LED color (CO2 < green threshold)
-CG=RRGGBB Set green LED color (green-yellow range)
-CY=RRGGBB Set yellow LED color (yellow-red range)
-CR=RRGGBB Set red LED color (CO2 >= red threshold)
-C?       Query all LED color settings
-WS=X     Set WiFi SSID
-WP=X     Set WiFi password
-W?       Query WiFi status and connection info
-M=1      Enable MQTT
-M=0      Disable MQTT
-MB=X     Set MQTT broker hostname/IP
-MP=X     Set MQTT port (default: 1883)
-MU=X     Set MQTT username (optional)
-MK=X     Set MQTT password (optional)
-MC=X     Set MQTT client ID (empty = auto-generate from MAC)
-MT=X     Set MQTT topic prefix (default: co2ampel)
-MI=X     Set MQTT publish interval in seconds (default: 60)
-M?       Query MQTT status and connection
-XA=X     Set altitude compensation (0-3000m)
-XA?      Query altitude compensation
-XC=1     Calibrate to 400ppm (requires 2+ min in fresh air)
-S=1      Save settings to flash
+remote on      Enable remote control (required for set/save)
+remote off     Disable remote control
+status         Show measurements and WiFi/MQTT status
+reset          Reset device (remote must be on)
+version        Query firmware version
+get <key>      Read a single setting
+get <prefix.*> Read a group of settings by prefix
+set <key>=<v>  Update a setting value
+save           Save settings to flash
+dump           Print all settings as set commands
+help           List all available keys
+```
+
+**Key list (settings):**
+```
+sys.serial_output
+sys.brightness
+sys.buzzer
+co2.t1
+co2.t2
+co2.t3
+co2.t4
+co2.t5
+led.color.t1
+led.color.t2
+led.color.t3
+led.color.t4
+wifi.ssid
+wifi.pass
+mqtt.enabled
+mqtt.broker
+mqtt.port
+mqtt.user
+mqtt.pass
+mqtt.client_id
+mqtt.topic_prefix
+mqtt.interval
 ```
 
 ### Settings Backup and Restore
@@ -160,7 +152,7 @@ S=1      Save settings to flash
 **Backup Settings:**
 ```bash
 # Connect to serial port and send:
-D?
+dump
 ```
 
 
@@ -174,37 +166,36 @@ You can configure WiFi settings via serial commands:
 pio device monitor -b 9600
 
 # 2. Enable remote control
-R=1
+remote on
 
 # 3. Set WiFi credentials
-WS=YourWiFiSSID
-WP=YourWiFiPassword
+set wifi.ssid=YourWiFiSSID
+set wifi.pass=YourWiFiPassword
 
 # 4. Save settings
-S=1
+save
 
 # 5. Reset device to connect
-R=R
+reset
 ```
 
 **Check WiFi Status:**
 ```bash
-# Query WiFi connection info
-W?
+# Query WiFi configuration
+get wifi.*
+```
 
-# Example output:
-# WiFi SSID: MyNetwork
-# WiFi Password: ***
-# WiFi Status: Connected to MyNetwork
-# IP Address: 192.168.1.100
-# Signal Strength: -45 dBm
+**Toggle serial measurement output:**
+```bash
+remote on
+set sys.serial_output=0
+save
 ```
 
 **Notes:**
-- WiFi credentials are stored in flash (will be lost on firmware update - backup with `D?`)
+- WiFi credentials are stored in flash (will be lost on firmware update - backup with `dump`)
 - After setting WiFi credentials, device will auto-connect on next boot
 - If connection fails, device will create an AP (Access Point) mode instead
-- Use `W?` to check connection status and IP address
 
 ### WiFi Web Interface
 
@@ -231,13 +222,12 @@ Example JSON response:
 
 ## Calibration
 
-The CO2 sensor should be calibrated periodically:
+The CO2 sensor should be calibrated periodically via the service menu:
 
 1. Place device in fresh air (outdoor or well-ventilated area)
 2. Wait at least 2 minutes for sensor to stabilize
-3. Send command `R=1` followed by `C=1` via serial
-4. Wait for confirmation
-5. Send `S=1` to save calibration
+3. Enter the service menu (hold button during power-on)
+4. Use the Calibration option and follow on-screen feedback
 
 Automatic Self-Calibration (ASC) is disabled by default. To enable, set `AUTO_KALIBRIERUNG=1` in `main.cpp` and rebuild. ASC requires 7 days of continuous operation with at least 1 hour of fresh air exposure daily.
 

@@ -4,10 +4,11 @@
 */
 
 #include <Arduino.h>
+#include <ctype.h>
 
 // Version will be overridden by platformio.ini if VERSION is defined there
 #ifndef VERSION
-#define VERSION "NG"
+#define VERSION "SET VERSION!"
 #endif
 
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
@@ -26,10 +27,6 @@
 //--- WiFi/WLAN ---
 #define WIFI_SSID          "" //WiFi SSID
 #define WIFI_CODE          "" //WiFi Passwort
-#define WIFI_NM            255,255,255,  0 //Netzmaske
-#define WIFI_IP              0,  0,  0,  0 //Lokale IP-Adresse, 0=DHCP
-#define WIFI_GW            192,168,  1,100 //Gateway IP-Adresse
-#define WIFI_DNS           192,168,  1,100 //DNS IP-Adresse
 
 //--- MQTT ---
 #define MQTT_ENABLED       0      //0 = MQTT deaktiviert, 1 = MQTT aktiviert
@@ -97,7 +94,6 @@ enum Features
 
 #include <Wire.h>
 #include <SPI.h>
-//#include <FlashStorage.h> // Not used anymore - using fixed flash address
 #include <SparkFun_SCD30_Arduino_Library.h>
 #include <SensirionI2CScd4x.h>
 #include <Adafruit_BMP280.h>
@@ -106,6 +102,7 @@ enum Features
 #include <WiFi101.h>
 #include <MQTT.h>
 
+#include "serial_settings.h"
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
 
@@ -128,10 +125,6 @@ typedef struct
   unsigned int buzzer;
   char wifi_ssid[64+1];
   char wifi_code[64+1];
-  IPAddress netmask;
-  IPAddress ip_local;
-  IPAddress ip_gw;
-  IPAddress ip_dns;
   // MQTT Configuration
   boolean mqtt_enabled;
   char mqtt_broker[64+1];
@@ -146,6 +139,7 @@ typedef struct
   uint32_t color_t2;         // Color for range[0] <= CO2 < range[1] (good)
   uint32_t color_t3;        // Color for range[1] <= CO2 < range[2] (warning)
   uint32_t color_t4;           // Color for CO2 >= range[2] (alert)
+  boolean serial_output;      // Enable serial measurement output
 } SETTINGS;
 
 // PlatformIO: Forward declarations for settings and MQTT functions
@@ -157,6 +151,34 @@ void mqtt_service(void);
 void mqtt_publish_sensors(void);
 
 SETTINGS settings;
+static bool apply_brightness(void *user, const cfg_item_t *item);
+static bool on_save_settings(void *user);
+static const cfg_item_t settings_items[] =
+{
+  { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
+  { "sys.brightness",   CFG_U32,   &settings.brightness,     0, 255, 0, apply_brightness },
+  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },
+  { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL },
+  { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL },
+  { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL },
+  { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, NULL },
+  { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, NULL },
+  { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
+  { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
+  { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },
+  { "led.color.t4",     CFG_COLOR, &settings.color_t4,       0, 0xFFFFFF, 0, NULL },
+  { "wifi.ssid",        CFG_STRING, settings.wifi_ssid,      0, 0, sizeof(settings.wifi_ssid) - 1, NULL },
+  { "wifi.pass",        CFG_STRING, settings.wifi_code,      0, 0, sizeof(settings.wifi_code) - 1, NULL },
+  { "mqtt.enabled",     CFG_BOOL,  &settings.mqtt_enabled,   0, 0, 0, NULL },
+  { "mqtt.broker",      CFG_STRING, settings.mqtt_broker,    0, 0, sizeof(settings.mqtt_broker) - 1, NULL },
+  { "mqtt.port",        CFG_U32,   &settings.mqtt_port,      1, 65535, 0, NULL },
+  { "mqtt.user",        CFG_STRING, settings.mqtt_user,      0, 0, sizeof(settings.mqtt_user) - 1, NULL },
+  { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL },
+  { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
+  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
+  { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL },
+};
+static const size_t settings_items_count = sizeof(settings_items) / sizeof(settings_items[0]);
 // Settings stored at high address in flash
 // WARNING: Settings will be lost on firmware upload (bootloader erases entire app area)
 // Recommended: Export settings via serial before updating firmware
@@ -191,6 +213,147 @@ void leds(uint32_t color)
 {
   ws2812.fill(color, 0, NUM_LEDS);
   ws2812.show();
+}
+
+static bool apply_brightness(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  ws2812.setBrightness(settings.brightness);
+  ws2812.show();
+  return true;
+}
+
+static void print_measurements(void)
+{
+  Serial.print("c: ");           //CO2
+  Serial.println(co2_value);     //Wert in ppm
+  Serial.print("t: ");           //Temperatur
+  Serial.println(temp_value, 1); //Wert in °C
+  Serial.print("h: ");           //Humidity/Luftfeuchte
+  Serial.println(humi_value, 1); //Wert in %
+  Serial.print("l: ");           //Licht
+  Serial.println(light_value);
+  if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+  {
+    Serial.print("p: ");         //Druck
+    Serial.println(pres_value);  //Wert in hPa
+    Serial.print("u: ");         //Temperatur
+    Serial.println(temp2_value); //Wert in °C
+  }
+  Serial.println();
+}
+
+static void print_wifi_status(void)
+{
+  if(features & FEATURE_WINC1500)
+  {
+    Serial.print("WiFi SSID: ");
+    Serial.println(strlen(settings.wifi_ssid) > 0 ? settings.wifi_ssid : "(not configured)");
+    Serial.print("WiFi Password: ");
+    Serial.println(strlen(settings.wifi_code) > 0 ? "***" : "(not configured)");
+    Serial.print("WiFi Status: ");
+
+    int status = WiFi.status();
+    switch(status)
+    {
+      case WL_CONNECTED:
+        Serial.print("Connected to ");
+        Serial.println(WiFi.SSID());
+        Serial.print("IP Address: ");
+        print_ip_address_line(WiFi.localIP());
+        Serial.print("Signal Strength: ");
+        Serial.print(WiFi.RSSI());
+        Serial.println(" dBm");
+        break;
+      case WL_NO_SHIELD:
+        Serial.println("No WiFi hardware");
+        break;
+      case WL_IDLE_STATUS:
+        Serial.println("Idle");
+        break;
+      case WL_NO_SSID_AVAIL:
+        Serial.println("SSID not available");
+        break;
+      case WL_SCAN_COMPLETED:
+        Serial.println("Scan completed");
+        break;
+      case WL_CONNECT_FAILED:
+        Serial.println("Connection failed");
+        break;
+      case WL_CONNECTION_LOST:
+        Serial.println("Connection lost");
+        break;
+      case WL_DISCONNECTED:
+        Serial.println("Disconnected");
+        break;
+      case WL_AP_LISTENING:
+        Serial.print("Access Point Mode - SSID: ");
+        Serial.println(WiFi.SSID());
+        Serial.print("AP IP Address: ");
+        print_ip_address_line(WiFi.localIP());
+        break;
+      default:
+        Serial.print("Unknown (");
+        Serial.print(status);
+        Serial.println(")");
+        break;
+    }
+  }
+  else
+  {
+    Serial.println("WiFi hardware not available");
+  }
+}
+
+static void print_mqtt_status(void)
+{
+  Serial.print("MQTT Enabled: ");
+  Serial.println(settings.mqtt_enabled ? "Yes" : "No");
+  Serial.print("Broker: ");
+  Serial.print(settings.mqtt_broker);
+  Serial.print(":");
+  Serial.println(settings.mqtt_port);
+  Serial.print("Username: ");
+  Serial.println(strlen(settings.mqtt_user) > 0 ? settings.mqtt_user : "(none)");
+  Serial.print("Client ID: ");
+  if(strlen(settings.mqtt_client_id) > 0)
+  {
+    Serial.println(settings.mqtt_client_id);
+  }
+  else
+  {
+    char device_id[32];
+    get_device_id(device_id, sizeof(device_id));
+    Serial.print(device_id);
+    Serial.println(" (auto)");
+  }
+  Serial.print("Topic Prefix: ");
+  Serial.println(settings.mqtt_topic_prefix);
+
+  char chip_id[40];
+  get_chip_id(chip_id, sizeof(chip_id));
+  Serial.print("Chip ID: ");
+  Serial.println(chip_id);
+
+  Serial.print("Interval: ");
+  Serial.print(settings.mqtt_interval);
+  Serial.println("s");
+  if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
+  {
+    Serial.print("WiFi: ");
+    Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+    Serial.print("Status: ");
+    Serial.println(mqttClient.connected() ? "Connected" : "Disconnected");
+  }
+}
+
+static bool on_save_settings(void *user)
+{
+  (void)user;
+  settings.valid = true;
+  settings_write(&settings);
+  return true;
 }
 
 
@@ -368,7 +531,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
 
 void show_data(void) //Daten anzeigen
 {
-  if(features & FEATURE_USB)
+  if((features & FEATURE_USB) && settings.serial_output)
   {
     Serial.print("c: ");           //CO2
     Serial.println(co2_value);     //Wert in ppm
@@ -394,9 +557,8 @@ void show_data(void) //Daten anzeigen
 
 void serial_service(void)
 {
-  static int calibration_done=0;
-  int i, cmd, val;
-  char tmp[32];
+  char line_buf[192];
+  size_t len;
 
   if((features & FEATURE_USB) == 0)
   {
@@ -408,815 +570,77 @@ void serial_service(void)
     return;
   }
 
-  cmd = Serial.read(); //Befehl
-  val = Serial.read(); //schreiben/lesen
-
-  //Remote-Kontrolle pruefen (nur fuer Schreib-Befehle)
-  if((cmd != 'R') && (val == '=') && (remote_on == 0))
+  len = Serial.readBytesUntil('\n', line_buf, sizeof(line_buf) - 1);
+  line_buf[len] = 0;
+  if(len > 0 && line_buf[len - 1] == '\r')
   {
-    Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
+    line_buf[len - 1] = 0;
+  }
+
+  char *line = line_buf;
+  while(*line && isspace((unsigned char)*line))
+  {
+    line++;
+  }
+
+  if(*line == 0)
+  {
     return;
   }
 
-  //Spezialbehandlung fuer MQTT Befehle (MB=, MP=, MU=, etc.)
-  if(toupper(cmd) == 'M' && val != '=' && val != '?')
+  if(strcasecmp(line, "remote on") == 0)
   {
-    char subcmd = toupper(val);
-    char op = Serial.read(); //sollte '=' sein
-
-    if(op == '=')
+    remote_on = 1;
+    buzzer(0);
+    ws2812.setBrightness(30);
+    leds(COLOR_MENU);
+    Serial.println("OK");
+    return;
+  }
+  if(strcasecmp(line, "remote off") == 0)
+  {
+    remote_on = 0;
+    ws2812.setBrightness(settings.brightness);
+    Serial.println("OK");
+    return;
+  }
+  if(strcasecmp(line, "version") == 0)
+  {
+    Serial.println(VERSION);
+    return;
+  }
+  if(strcasecmp(line, "status") == 0)
+  {
+    print_measurements();
+    print_wifi_status();
+    print_mqtt_status();
+    return;
+  }
+  if(strcasecmp(line, "reset") == 0)
+  {
+    if(remote_on)
     {
-      //Remote-Kontrolle pruefen
-      if(remote_on == 0)
-      {
-        Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
-        return;
-      }
-
-      char tmp[128];
-      int i;
-
-      if(subcmd == 'B') //MB=broker (MQTT Broker)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.mqtt_broker, tmp, sizeof(settings.mqtt_broker)-1);
-          settings.mqtt_broker[sizeof(settings.mqtt_broker)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'P') //MP=port (MQTT Port)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          int port;
-          sscanf(tmp, "%d", &port);
-          if((port > 0) && (port <= 65535))
-          {
-            settings.mqtt_port = port;
-            Serial.println("OK");
-          }
-        }
-      }
-      else if(subcmd == 'U') //MU=user (MQTT User)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.mqtt_user, tmp, sizeof(settings.mqtt_user)-1);
-          settings.mqtt_user[sizeof(settings.mqtt_user)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'K') //MK=password (MQTT Key/Password)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.mqtt_pass, tmp, sizeof(settings.mqtt_pass)-1);
-          settings.mqtt_pass[sizeof(settings.mqtt_pass)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'C') //MC=client_id (MQTT Client ID)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.mqtt_client_id, tmp, sizeof(settings.mqtt_client_id)-1);
-          settings.mqtt_client_id[sizeof(settings.mqtt_client_id)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'T') //MT=topic_prefix (MQTT Topic Prefix)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.mqtt_topic_prefix, tmp, sizeof(settings.mqtt_topic_prefix)-1);
-          settings.mqtt_topic_prefix[sizeof(settings.mqtt_topic_prefix)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'I') //MI=interval (MQTT Publish Interval)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          int interval;
-          sscanf(tmp, "%d", &interval);
-          if((interval >= 10) && (interval <= 3600))
-          {
-            settings.mqtt_interval = interval;
-            Serial.println("OK");
-          }
-        }
-      }
+      Serial.println("OK");
+      leds(0);
+      Serial.flush();
+      Serial.end();
+      delay(20);
     }
+    NVIC_SystemReset();
+    while(1);
+  }
+
+  serial_settings_ctx_t ctx;
+  ctx.user = NULL;
+  ctx.remote_on = (remote_on != 0);
+  ctx.out = &Serial;
+  ctx.on_save = on_save_settings;
+  if(serial_settings_handle_line(line, settings_items, settings_items_count, &ctx))
+  {
     return;
   }
 
-  //Spezialbehandlung fuer WiFi Befehle (WS=, WP=)
-  if(toupper(cmd) == 'W' && val != '=' && val != '?')
-  {
-    char subcmd = toupper(val);
-    char op = Serial.read(); //sollte '=' sein
-
-    if(op == '=')
-    {
-      //Remote-Kontrolle pruefen
-      if(remote_on == 0)
-      {
-        Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
-        return;
-      }
-
-      char tmp[128];
-      int i;
-
-      if(subcmd == 'S') //WS=ssid (WiFi SSID)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.wifi_ssid, tmp, sizeof(settings.wifi_ssid)-1);
-          settings.wifi_ssid[sizeof(settings.wifi_ssid)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-      else if(subcmd == 'P') //WP=password (WiFi Password)
-      {
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          strncpy(settings.wifi_code, tmp, sizeof(settings.wifi_code)-1);
-          settings.wifi_code[sizeof(settings.wifi_code)-1] = '\0';
-          Serial.println("OK");
-        }
-      }
-    }
-    return;
-  }
-
-  //Spezialbehandlung fuer Color Befehle (CB=, CG=, CY=, CR=)
-  if(toupper(cmd) == 'C' && val != '=' && val != '?')
-  {
-    char subcmd = toupper(val);
-    char op = Serial.read(); //sollte '=' sein
-
-    if(op == '=')
-    {
-      //Remote-Kontrolle pruefen
-      if(remote_on == 0)
-      {
-        Serial.println("ERROR: Remote control not enabled. Send R=1 first.");
-        return;
-      }
-
-      char tmp[128];
-      int i;
-      uint32_t color_val;
-
-      i = Serial.readBytesUntil('\n', tmp, sizeof(tmp)-1);
-      if(i > 0)
-      {
-        tmp[i] = 0;
-        if(sscanf(tmp, "%X", &color_val) == 1)
-        {
-          if(subcmd == 'B') //CB=RRGGBB - Blue color (CO2 < green threshold)
-          {
-            settings.color_t1 = color_val;
-            Serial.println("OK");
-          }
-          else if(subcmd == 'G') //CG=RRGGBB - Green color (green-yellow range)
-          {
-            settings.color_t2 = color_val;
-            Serial.println("OK");
-          }
-          else if(subcmd == 'Y') //CY=RRGGBB - Yellow color (yellow-red range)
-          {
-            settings.color_t3 = color_val;
-            Serial.println("OK");
-          }
-          else if(subcmd == 'R') //CR=RRGGBB - Red color (>= red threshold)
-          {
-            settings.color_t4 = color_val;
-            Serial.println("OK");
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  if(val == '=') //=
-  {
-    switch(toupper(cmd))
-    {
-      case 'S': //Save/Speichern
-        cmd = Serial.read();
-        if(cmd == '1')
-        {
-          settings.valid = true;
-          settings_write(&settings); //Einstellungen speichern
-          Serial.println("OK");
-        }
-        break;
-
-      case 'H': //LED Helligkeit
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-        if(i >= 0)
-        {
-          tmp[i] = 0;
-          sscanf(tmp, "%X", &val);
-          if(val < 0)
-          {
-            val = 0;
-          }
-          else if(val > 255)
-          {
-            val = 255;
-          }
-          settings.brightness = val;
-          ws2812.setBrightness(val);
-          ws2812.show();
-          Serial.println("OK");
-        }
-        break;
-
-      case 'L': //LED Farbe
-        i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-        if(i > 0)
-        {
-          tmp[i] = 0;
-          sscanf(tmp, "%X", &val);
-          leds(val);
-          Serial.println("OK");
-        }
-        break;
-
-      case 'B': //Buzzer
-        cmd = Serial.read();
-        if(cmd == '1')
-        {
-          buzzer(500); //500ms Buzzer an
-          settings.buzzer = 1;
-          Serial.println("OK");
-        }
-        else if(cmd == '0')
-        {
-          settings.buzzer = 0;
-          Serial.println("OK");
-        }
-        break;
-
-      case 'T': //Thresholds (T1-T5) and Temperature Offset (TO)
-        {
-          int subcmd = Serial.read();
-
-          if(subcmd == '1' || subcmd == '2' || subcmd == '3' || subcmd == '4' || subcmd == '5')
-          {
-            // T1-T5: Set CO2 thresholds
-            i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-            if(i > 0)
-            {
-              tmp[i] = 0;
-              sscanf(tmp, "%d", &val);
-              if((val >= 400) && (val <= 10000))
-              {
-                settings.range[subcmd-'1'] = val;
-                Serial.println("OK");
-              }
-            }
-          }
-          else if(subcmd == '?')
-          {
-            // T?: Query all CO2 thresholds
-            Serial.println("CO2 Thresholds (ppm):");
-            Serial.print("T1 (Green):      ");
-            Serial.println(settings.range[0]);
-            Serial.print("T2 (Yellow):     ");
-            Serial.println(settings.range[1]);
-            Serial.print("T3 (Red):        ");
-            Serial.println(settings.range[2]);
-            Serial.print("T4 (Red Blink):  ");
-            Serial.println(settings.range[3]);
-            Serial.print("T5 (Buzzer):     ");
-            Serial.println(settings.range[4]);
-          }
-          else if(subcmd == 'O')
-          {
-            // TO=X: Set temperature offset
-            i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-            if(i > 0)
-            {
-              tmp[i] = 0;
-              sscanf(tmp, "%d", &val);
-              if((val >= 0) && (val <= 20))
-              {
-                temp_offset = val;
-                if(features & FEATURE_SCD30)
-                {
-                  scd30.setTemperatureOffset(val);
-                  Serial.println("OK");
-                }
-                else if(features & FEATURE_SCD4X)
-                {
-                  scd4x.stopPeriodicMeasurement();
-                  delay(1000);
-                  if(scd4x.setTemperatureOffset(val) == 0)
-                  {
-                    Serial.println("OK");
-                  }
-                  else
-                  {
-                    Serial.println("ERROR");
-                  }
-                  delay(500);
-                  scd4x.startPeriodicMeasurement();
-                }
-              }
-            }
-          }
-        }
-        break;
-
-      case 'X': //Extended commands: XC=calibration, XA=altitude
-        {
-          if(val == 'C') //XC=1 - Calibration
-          {
-            char op = Serial.read(); // Should be '='
-            if(op == '=')
-            {
-              i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-              if((i > 0) && (calibration_done == 0))
-              {
-                tmp[i] = 0;
-                sscanf(tmp, "%d", &val);
-                if((val > 0) && (val < 400))
-                {
-                  val = 400;
-                }
-                if((val >= 400) || (val <= 2000))
-                {
-                  calibration_done = 1;
-                  if(features & FEATURE_SCD30)
-                  {
-                    scd30.setForcedRecalibrationFactor(val);
-                    delay(500);
-                  }
-                  else if(features & FEATURE_SCD4X)
-                  {
-                    uint16_t corr;
-                    scd4x.stopPeriodicMeasurement();
-                    delay(1000);
-                    scd4x.performForcedRecalibration(val, corr);
-                    delay(1000);
-                    scd4x.startPeriodicMeasurement();
-                  }
-                  Serial.println("OK");
-                }
-              }
-            }
-          }
-          else if(val == 'A') //XA=X - Altitude compensation
-          {
-            char op = Serial.read(); // Should be '=' or '?'
-            if(op == '=')
-            {
-              i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-              if(i > 0)
-              {
-                tmp[i] = 0;
-                sscanf(tmp, "%d", &val);
-                if((val >= 0) && (val <= 3000))
-                {
-                  if(features & FEATURE_SCD30)
-                  {
-                    scd30.setAltitudeCompensation(val); //Meter ueber dem Meeresspiegel
-                    Serial.println("OK");
-                  }
-                  else if(features & FEATURE_SCD4X)
-                  {
-                    scd4x.stopPeriodicMeasurement();
-                    delay(1000);
-                    if(scd4x.setSensorAltitude(val) == 0) //Meter ueber dem Meeresspiegel
-                    {
-                      Serial.println("OK");
-                    }
-                    else
-                    {
-                      Serial.println("ERROR");
-                    }
-                    delay(500);
-                    scd4x.startPeriodicMeasurement();
-                  }
-                }
-              }
-            }
-            else if(op == '?') //XA? - Query altitude
-            {
-              if(features & FEATURE_SCD30)
-              {
-                val = scd30.getAltitudeCompensation();
-              }
-              else if(features & FEATURE_SCD4X)
-              {
-                uint16_t alt;
-                scd4x.stopPeriodicMeasurement();
-                delay(500);
-                scd4x.getSensorAltitude(alt);
-                delay(500);
-                scd4x.startPeriodicMeasurement();
-                val = alt;
-              }
-              Serial.print("Altitude: ");
-              Serial.print(val, DEC);
-              Serial.println(" m");
-            }
-          }
-        }
-        break;
-
-      case 'R': //Remote control and Reset (R=1/0 for remote, R=R for reset)
-        {
-          if(val == '=')
-          {
-            // R=1, R=0, R=R (remote control and reset commands)
-            i = Serial.readBytesUntil('\n', tmp, sizeof(tmp));
-            if(i > 0)
-            {
-              tmp[i] = 0;
-              if(tmp[0] == '1')
-              {
-                remote_on = 1;
-                buzzer(0); //Buzzer aus
-                ws2812.setBrightness(30); //0...255
-                leds(COLOR_MENU);
-                Serial.println("OK");
-              }
-              else if(tmp[0] == '0')
-              {
-                remote_on = 0;
-                calibration_done = 0;
-                ws2812.setBrightness(settings.brightness);
-                Serial.println("OK");
-              }
-              else if((tmp[0] == 'r') || (tmp[0] == 'R'))
-              {
-                if(remote_on)
-                {
-                  Serial.println("OK");
-                  leds(0); //LEDs aus
-                  Serial.flush();
-                  Serial.end();
-                  delay(20); //20ms warten
-                }
-                NVIC_SystemReset(); //Reset
-                while(1);
-              }
-            }
-          }
-        }
-        break;
-
-      case 'M': //MQTT Enable/Disable (M=0 or M=1)
-        cmd = Serial.read();
-        if(cmd == '0')
-        {
-          settings.mqtt_enabled = false;
-          Serial.println("OK");
-        }
-        else if(cmd == '1')
-        {
-          settings.mqtt_enabled = true;
-          Serial.println("OK");
-        }
-        break;
-    }
-  }
-  else if(val == '?') //?
-  {
-    switch(toupper(cmd))
-    {
-      case 'V': //Version
-        Serial.println(VERSION);
-        break;
-      case 'H': //LED Helligkeit
-        Serial.println(settings.brightness, HEX);
-        break;
-      case 'B': //Buzzer
-        Serial.println(settings.buzzer, DEC);
-        break;
-      case 'T': //T? for thresholds, TO? for temperature offset
-        {
-          int subcmd = Serial.read();
-          if(subcmd == 'O')
-          {
-            // TO?: Query temperature offset
-            if(features & FEATURE_SCD30)
-            {
-              val = scd30.getTemperatureOffset();
-            }
-            else if(features & FEATURE_SCD4X)
-            {
-              float offset;
-              scd4x.stopPeriodicMeasurement();
-              delay(500);
-              scd4x.getTemperatureOffset(offset);
-              delay(500);
-              scd4x.startPeriodicMeasurement();
-              val = offset;
-            }
-            Serial.print("Temperature Offset: ");
-            Serial.print(val, DEC);
-            Serial.println(" °C");
-          }
-          // Note: T? is handled in the T command case in the write section above
-        }
-        break;
-      case 'W': //WiFi Status
-        {
-          if(features & FEATURE_WINC1500)
-          {
-            Serial.print("WiFi SSID: ");
-            Serial.println(strlen(settings.wifi_ssid) > 0 ? settings.wifi_ssid : "(not configured)");
-            Serial.print("WiFi Password: ");
-            Serial.println(strlen(settings.wifi_code) > 0 ? "***" : "(not configured)");
-            Serial.print("WiFi Status: ");
-
-            int status = WiFi.status();
-            switch(status)
-            {
-              case WL_CONNECTED:
-                Serial.print("Connected to ");
-                Serial.println(WiFi.SSID());
-                Serial.print("IP Address: ");
-                print_ip_address_line(WiFi.localIP());
-                Serial.print("Signal Strength: ");
-                Serial.print(WiFi.RSSI());
-                Serial.println(" dBm");
-                break;
-              case WL_NO_SHIELD:
-                Serial.println("No WiFi hardware");
-                break;
-              case WL_IDLE_STATUS:
-                Serial.println("Idle");
-                break;
-              case WL_NO_SSID_AVAIL:
-                Serial.println("SSID not available");
-                break;
-              case WL_SCAN_COMPLETED:
-                Serial.println("Scan completed");
-                break;
-              case WL_CONNECT_FAILED:
-                Serial.println("Connection failed");
-                break;
-              case WL_CONNECTION_LOST:
-                Serial.println("Connection lost");
-                break;
-              case WL_DISCONNECTED:
-                Serial.println("Disconnected");
-                break;
-              case WL_AP_LISTENING:
-                Serial.print("Access Point Mode - SSID: ");
-                Serial.println(WiFi.SSID());
-                Serial.print("AP IP Address: ");
-                print_ip_address_line(WiFi.localIP());
-                break;
-              default:
-                Serial.print("Unknown (");
-                Serial.print(status);
-                Serial.println(")");
-                break;
-            }
-          }
-          else
-          {
-            Serial.println("WiFi hardware not available");
-          }
-        }
-        break;
-      case 'M': //MQTT Status
-        {
-          Serial.print("MQTT Enabled: ");
-          Serial.println(settings.mqtt_enabled ? "Yes" : "No");
-          Serial.print("Broker: ");
-          Serial.print(settings.mqtt_broker);
-          Serial.print(":");
-          Serial.println(settings.mqtt_port);
-          Serial.print("Username: ");
-          Serial.println(strlen(settings.mqtt_user) > 0 ? settings.mqtt_user : "(none)");
-          //Serial.print("Password: ");
-          //Serial.println(strlen(settings.mqtt_pass) > 0 ? settings.mqtt_pass : "(none)");
-          Serial.print("Client ID: ");
-          if(strlen(settings.mqtt_client_id) > 0)
-          {
-            Serial.println(settings.mqtt_client_id);
-          }
-          else
-          {
-            //Auto-generierte Client ID anzeigen
-            char device_id[32];
-            get_device_id(device_id, sizeof(device_id));
-            Serial.print(device_id);
-            Serial.println(" (auto)");
-          }
-          Serial.print("Topic Prefix: ");
-          Serial.println(settings.mqtt_topic_prefix);
-
-          //Chip ID anzeigen
-          char chip_id[40];
-          get_chip_id(chip_id, sizeof(chip_id));
-          Serial.print("Chip ID: ");
-          Serial.println(chip_id);
-
-          Serial.print("Interval: ");
-          Serial.print(settings.mqtt_interval);
-          Serial.println("s");
-          if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
-          {
-            Serial.print("WiFi: ");
-            Serial.println(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
-            Serial.print("Status: ");
-            Serial.println(mqttClient.connected() ? "Connected" : "Disconnected");
-          }
-        }
-        break;
-
-      case 'C': //Color query (C?)
-        {
-          Serial.print("Color T1 (CO2 < ");
-          Serial.print(settings.range[0]);
-          Serial.print(" ppm): 0x");
-          Serial.println(settings.color_t1, HEX);
-          Serial.print("Color T2 (");
-          Serial.print(settings.range[0]);
-          Serial.print("-");
-          Serial.print(settings.range[1]-1);
-          Serial.print(" ppm): 0x");
-          Serial.println(settings.color_t2, HEX);
-          Serial.print("Color T3 (");
-          Serial.print(settings.range[1]);
-          Serial.print("-");
-          Serial.print(settings.range[2]-1);
-          Serial.print(" ppm): 0x");
-          Serial.println(settings.color_t3, HEX);
-          Serial.print("Color T4 (>= ");
-          Serial.print(settings.range[2]);
-          Serial.print(" ppm): 0x");
-          Serial.println(settings.color_t4, HEX);
-        }
-        break;
-
-      case 'D': //Dump all settings as serial commands
-        Serial.println("# Settings Dump - Copy and paste to restore");
-        Serial.println("# Enable remote control first");
-        Serial.println("R=1");
-        Serial.println();
-
-        Serial.println("# LED Brightness (hex)");
-        Serial.print("H=");
-        Serial.println(settings.brightness, HEX);
-        Serial.println();
-
-        Serial.println("# Buzzer (0=off, 1=on)");
-        Serial.print("B=");
-        Serial.println(settings.buzzer);
-        Serial.println();
-
-        Serial.println("# CO2 Thresholds (ppm)");
-        Serial.print("T1=");
-        Serial.println(settings.range[0]);
-        Serial.print("T2=");
-        Serial.println(settings.range[1]);
-        Serial.print("T3=");
-        Serial.println(settings.range[2]);
-        Serial.print("T4=");
-        Serial.println(settings.range[3]);
-        Serial.print("T5=");
-        Serial.println(settings.range[4]);
-        Serial.println();
-
-        Serial.println("# LED Colors (hex RRGGBB)");
-        Serial.print("CB=");
-        Serial.println(settings.color_t1, HEX);
-        Serial.print("CG=");
-        Serial.println(settings.color_t2, HEX);
-        Serial.print("CY=");
-        Serial.println(settings.color_t3, HEX);
-        Serial.print("CR=");
-        Serial.println(settings.color_t3, HEX);
-        Serial.println();
-
-        Serial.println("# Temperature Offset");
-        if(features & FEATURE_SCD30)
-        {
-          Serial.print("TO=");
-          Serial.println(scd30.getTemperatureOffset());
-        }
-        else if(features & FEATURE_SCD4X)
-        {
-          float offset;
-          scd4x.stopPeriodicMeasurement();
-          delay(500);
-          scd4x.getTemperatureOffset(offset);
-          delay(500);
-          scd4x.startPeriodicMeasurement();
-          Serial.print("TO=");
-          Serial.println((int)offset);
-        }
-        Serial.println();
-
-        Serial.println("# Altitude (meters)");
-        if(features & FEATURE_SCD30)
-        {
-          Serial.print("XA=");
-          Serial.println(scd30.getAltitudeCompensation());
-        }
-        else if(features & FEATURE_SCD4X)
-        {
-          uint16_t alt;
-          scd4x.stopPeriodicMeasurement();
-          delay(500);
-          scd4x.getSensorAltitude(alt);
-          delay(500);
-          scd4x.startPeriodicMeasurement();
-          Serial.print("XA=");
-          Serial.println(alt);
-        }
-        Serial.println();
-
-        if(features & FEATURE_WINC1500)
-        {
-          Serial.println("# WiFi Settings");
-          if(strlen(settings.wifi_ssid) > 0)
-          {
-            Serial.print("WS=");
-            Serial.println(settings.wifi_ssid);
-          }
-          if(strlen(settings.wifi_code) > 0)
-          {
-            Serial.print("WP=");
-            Serial.println(settings.wifi_code);
-          }
-          Serial.println();
-
-          Serial.println("# MQTT Settings");
-          if(strlen(settings.mqtt_broker) > 0)
-          {
-            Serial.print("MB=");
-            Serial.println(settings.mqtt_broker);
-          }
-          Serial.print("MP=");
-          Serial.println(settings.mqtt_port);
-          if(strlen(settings.mqtt_user) > 0)
-          {
-            Serial.print("MU=");
-            Serial.println(settings.mqtt_user);
-          }
-          if(strlen(settings.mqtt_pass) > 0)
-          {
-            Serial.print("MK=");
-            Serial.println(settings.mqtt_pass);
-          }
-          if(strlen(settings.mqtt_client_id) > 0)
-          {
-            Serial.print("MC=");
-            Serial.println(settings.mqtt_client_id);
-          }
-          if(strlen(settings.mqtt_topic_prefix) > 0)
-          {
-            Serial.print("MT=");
-            Serial.println(settings.mqtt_topic_prefix);
-          }
-          Serial.print("MI=");
-          Serial.println(settings.mqtt_interval);
-          Serial.print("M=");
-          Serial.println(settings.mqtt_enabled ? "1" : "0");
-          Serial.println();
-        }
-
-        Serial.println("# Save settings to flash");
-        Serial.println("S=1");
-        Serial.println();
-        Serial.println("# Settings dump complete");
-        break;
-    }
-  }
-
-  return;
+  Serial.println("ERROR: Unknown command");
 }
 
 
@@ -1658,9 +1082,9 @@ void self_test(void) //Testprogramm
       }
       while(1)
       {
-        leds(settings.color_red); //LEDs rot
+        leds(COLOR_RED); //LEDs rot
         delay(500); //500ms warten
-        leds(settings.color_yellow); //LEDs gelb
+        leds(COLOR_YELLOW); //LEDs gelb
         delay(500); //500ms warten
       }
     }
@@ -2201,6 +1625,10 @@ unsigned int wifi_start(void)
 
   if(settings.wifi_ssid[0] == 0) //keine Logindaten
   {
+    if(features & FEATURE_USB)
+    {
+      Serial.println("WiFi not configured (ssid empty)");
+    }
     return 1;
   }
 
@@ -2219,10 +1647,6 @@ unsigned int wifi_start(void)
   }
 
   WiFi.hostname(name); //Hostname setzen
-  if(settings.ip_local[0] != 0) //statische IP
-  {
-    WiFi.config(settings.ip_local, settings.ip_dns, settings.ip_gw, settings.netmask);  //IP setzen
-  }
   if(strlen(settings.wifi_code) > 0) //Passwort
   {
     WiFi.begin(settings.wifi_ssid, settings.wifi_code); //verbinde WiFi Netzwerk mit Passwort
@@ -2449,14 +1873,14 @@ void mqtt_connect(void)
   {
     if(features & FEATURE_USB)
     {
-      Serial.println("MQTT: Connected successfully");
+      Serial.println("MQTT connected successfully");
     }
   }
   else
   {
     if(features & FEATURE_USB)
     {
-      Serial.print("MQTT: Connection failed - ");
+      Serial.print("MQTT connection failed - ");
 
       //Detaillierte Fehlerausgabe
       lwmqtt_err_t err = mqttClient.lastError();
@@ -2664,13 +2088,10 @@ void setup()
 
   delay(250); //250ms warten
 
-  #if WIFI_AMPEL
-    //ATWINC1500
-    if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 gefunden
-    {
-      features |= FEATURE_WINC1500;
-    }
-  #endif
+  if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 gefunden
+  {
+    features |= FEATURE_WINC1500;
+  }
 
   //LPS22HB
   if(check_i2c(SERCOM2, ADDR_LPS22HB)) //LPS22HB gefunden
@@ -2756,6 +2177,7 @@ void setup()
   settings_read(&settings); //Einstellungen lesen
   if((settings.valid == false) || (settings.brightness > 255) || (settings.range[0] < 100))
   {
+    settings.serial_output = false;
     settings.brightness   = HELLIGKEIT;
     settings.range[0]     = DEFAULT_T1;
     settings.range[1]     = DEFAULT_T2;
@@ -2767,10 +2189,6 @@ void setup()
     strcpy(settings.wifi_ssid, WIFI_SSID);
     settings.wifi_code[0] = 0;
     strcpy(settings.wifi_code, WIFI_CODE);
-    settings.netmask      = IPAddress(WIFI_NM);
-    settings.ip_local     = IPAddress(WIFI_IP);
-    settings.ip_gw        = IPAddress(WIFI_GW);
-    settings.ip_dns       = IPAddress(WIFI_DNS);
 
     //MQTT Standardeinstellungen
     settings.mqtt_enabled = MQTT_ENABLED;
@@ -2813,6 +2231,13 @@ void setup()
       {
         scd4x.setTemperatureOffset(temp_offset); //Temperaturoffset
       }
+    }
+  }
+  else
+  {
+    if(settings.serial_output > 1)
+    {
+      settings.serial_output = true;
     }
   }
   ws2812.setBrightness(settings.brightness); //0...255
@@ -2974,6 +2399,7 @@ void loop()
 {
   static unsigned int dark=0, sw=0;
   static unsigned long t_switch=0, t_ampel=0, t_light=~((LICHT_INTERVALL*1000UL*60UL)-60000UL); //Lichtsensor nach 60s pruefen
+  static unsigned long t_wifi=0;
   unsigned int overwrite=0;
 
   //serielle Befehle verarbeiten
@@ -2984,6 +2410,25 @@ void loop()
 
   //MQTT-Daten verarbeiten
   mqtt_service();
+
+  if(features & FEATURE_WINC1500)
+  {
+    int wifi_status = WiFi.status();
+    if((wifi_status != WL_CONNECTED) && (wifi_status != WL_AP_LISTENING))
+    {
+      if(settings.wifi_ssid[0] != 0)
+      {
+        if((millis() - t_wifi) > 30000)
+        {
+          t_wifi = millis();
+          if(wifi_start() == 0 && settings.mqtt_enabled)
+          {
+            mqtt_connect();
+          }
+        }
+      }
+    }
+  }
 
   //Taster pruefen
   if(digitalRead(PIN_SWITCH) == LOW) //Taster gedrueckt

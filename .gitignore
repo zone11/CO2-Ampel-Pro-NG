@@ -34,7 +34,7 @@ __pycache__/
 *.bak
 *.log
 
-# Work documentation (keep only PROJECT_CONTEXT.json)
+# Work documentation
 workfiles/
 
 # Claude Code
