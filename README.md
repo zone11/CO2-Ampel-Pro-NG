@@ -66,7 +66,16 @@ All thresholds and colors are configurable via serial commands!
 - **Yellow** (0xFF7F00): 1000-1199 ppm (ventilation recommended)
 - **Red** (0xFF0000): 1200-1399 ppm (ventilation needed)
 - **Red Blinking**: ≥ 1400 ppm (poor air quality)
-- **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation)
+- **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation), beeps in time with the blinking
+
+Behavior:
+- The traffic light follows a running average of the CO2 value (updated every second); the SCD30 measures
+  every 5 s and is pressure-compensated automatically when a pressure sensor is present
+- The buzzer stays silent for the first 5 minutes after power-on; a button press mutes it and restarts
+  the 5-minute delay. `sys.buzzer=0` turns it off completely
+- Ambient light is checked 1 minute after boot and then every 10 minutes; in the dark (value < 20) the
+  LEDs dim to brightness 20 and return to `sys.brightness` when it is light again
+- The red status LED blinks briefly with every new measurement (not in the dark)
 
 **Customize your thresholds and colors:**
 ```bash
@@ -95,7 +104,8 @@ get led.color.*
 ### Button Functions
 
 - **Short press (100ms-3s)**: Halve the LED brightness; below the minimum it jumps back to the default (not saved)
-- **Long press (>3s)**: Start WiFi Access Point mode (WiFi versions only)
+- **Any press**: mutes the buzzer and restarts its 5-minute start delay
+- **Long press (>3s)**: Start WiFi Access Point mode (WiFi versions only, LEDs turn violet; reboot to leave it)
 - **Hold during power-on**: Enter service menu
 
 ### Service Menu Options
@@ -103,15 +113,20 @@ get led.color.*
 1. **Self Test**: Buzzer, LEDs, WiFi module (if detected), LoRa radio (reported, optional), then sensors:
    LED 1 light, LED 2 CO2, LED 3 temperature/pressure, LED 4 humidity turn on when in range
 2. **Air Test**: Live CO2 monitoring with color feedback
-3. **Configuration**: Adjust altitude, temperature offset, buzzer settings (CO2 sensor values are stored in the sensor)
-4. **Calibration**: Manual CO2 sensor calibration (requires fresh air)
+3. **Configuration**: three values in a row, each chosen with short presses and confirmed with a 2 s press
+   (or 10 s timeout): altitude 0–1000 m in 250 m steps (red LEDs), temperature offset 0–8 °C in 2 °C steps
+   (yellow LEDs), buzzer off/on (green). Altitude and offset are stored in the CO2 sensor, the buzzer in the settings
+4. **Calibration**: forced recalibration to 400 ppm in fresh air (see Calibration)
+
+Menu navigation: the number of violet LEDs is the selected option; a short press selects the next one, a 2 s
+press (or 10 s without pressing) starts it.
 
 ### Serial Commands
 
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-remote on      Enable remote control (required for set/save)
+remote on      Enable remote control (required for set/save; LEDs turn violet, traffic light paused)
 remote off     Disable remote control
 status         Show measurements, CO2 sensor info and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
@@ -153,6 +168,10 @@ mqtt.client_id
 mqtt.topic_prefix
 mqtt.interval
 ```
+
+Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
+(`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
+Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
 WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass`) can only be changed
@@ -199,17 +218,27 @@ reset
 get wifi.*
 ```
 
-**Toggle serial measurement output:**
+**Serial measurement output** (off by default): with `sys.serial_output=1` every new measurement is printed as
+```
+c: 812        CO2 (ppm)
+t: 23.4       temperature (°C)
+h: 45.1       humidity (%)
+l: 512        light sensor
+p: 964.10     pressure (hPa, only with a pressure sensor)
+u: 26.80      pressure sensor temperature (°C, only with a pressure sensor)
+```
 ```bash
 remote on
-set sys.serial_output=0
+set sys.serial_output=1
 save
 ```
 
 **Notes:**
 - WiFi credentials are stored in flash (kept across `pio run -t upload`; backup with `dump` anyway)
 - After setting WiFi credentials, device will auto-connect on next boot
-- If connection fails, device will create an AP (Access Point) mode instead
+- If the connection fails at boot, the device starts AP (Access Point) mode instead; a lost connection is
+  retried every 30 s (MQTT reconnects every 30 s as well)
+- The device registers as hostname `CO2AMPEL-XX-XX` (last two MAC bytes)
 
 ### WiFi Web Interface
 
@@ -224,15 +253,10 @@ Available endpoints:
 
 Example JSON response:
 ```json
-{
-  "c": 800,      // CO2 in ppm
-  "t": 22.5,     // Temperature in °C
-  "h": 45.0,     // Humidity in %
-  "p": 1013.2,   // Pressure in hPa (only with a pressure sensor)
-  "u": 22.0,     // Pressure sensor temperature (only with a pressure sensor)
-  "l": 512       // Light sensor value
-}
+{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}
 ```
+`c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
+`u` pressure sensor temperature (°C) only with a pressure sensor. The page `/` refreshes every 2 minutes.
 
 ### MQTT
 
@@ -247,8 +271,11 @@ The CO2 sensor should be calibrated periodically via the service menu:
 
 1. Place device in fresh air (outdoor or well-ventilated area)
 2. Wait at least 2 minutes for sensor to stabilize
-3. Enter the service menu (hold button during power-on)
-4. Use the Calibration option and follow on-screen feedback
+3. Enter the service menu (hold button during power-on) and select option 4 (four violet LEDs)
+4. The LEDs turn white; LEDs 3–4 show the current CO2 value (blue ≤ 500, green ≤ 750, yellow ≤ 1500,
+   red above). For about 3 minutes the readings must be stable (±30 ppm, 200–800 ppm), then the sensor is
+   set to 400 ppm. Unstable readings restart the run automatically; a button press aborts it
+5. Done: LEDs blue and a short beep (serial: `Calibration OK`)
 
 Automatic Self-Calibration (ASC) is disabled by default. Enable it with `remote on`, `set co2.asc=1`, `save`
 (the default for new devices is `AUTO_KALIBRIERUNG` in `include/app_config.h`). ASC requires 7 days of
@@ -258,8 +285,11 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 
 ### Adding New Features
 
-1. The code is split into modules under `src/` (see `CLAUDE.md` for the layout); compile-time defaults
-   live in `include/app_config.h`
+1. The code is split into modules under `src/`: `main` (setup/loop, traffic light), `sensors`,
+   `led_control`, `settings_storage` (flash), `settings_registry` (key table used by serial and web),
+   `serial_settings`/`serial_console` (serial API), `wifi_manager`, `webserver`, `mqtt_service`,
+   `ui_menu`/`diagnostics` (service menu), `i2c_utils`, `system_control`. Compile-time defaults live in
+   `include/app_config.h`, pins in `variants/co2ampel/variant.h`
 2. New user settings: add the field at the end of `SETTINGS` (`include/app_types.h`), a default in
    `settings_defaults()`, a migration in `settings_read()` with a `SETTINGS_VERSION` bump
    (`src/settings_storage.cpp`), and a key in `src/settings_registry.cpp`
