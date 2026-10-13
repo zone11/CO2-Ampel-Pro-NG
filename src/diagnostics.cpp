@@ -20,8 +20,9 @@ void self_test(void) //Testprogramm
   delay(1000); //1s warten
   leds(FARBE_AUS); //LEDs aus
 
-  #if WIFI_AMPEL
-    //ATWINC1500-Test
+  //ATWINC1500-Test (nur wenn beim Start erkannt)
+  if(features & FEATURE_WINC1500)
+  {
     if(WiFi.status() == WL_NO_SHIELD) //ATWINC1500 Fehler
     {
       if(features & FEATURE_USB)
@@ -41,24 +42,26 @@ void self_test(void) //Testprogramm
       leds(FARBE_WEISS); //LEDs weiss
       buzzer(1000); //1s Buzzer an
     }
-  #endif
+  }
 
-  //RFM9X-Test
-  #if PRO_AMPEL
-    SPI.begin();
-    SPI.setDataMode(SPI_MODE0);
-    SPI.setBitOrder(MSBFIRST);
-    SPI.setClockDivider(SPI_CLOCK_DIV128);
-    digitalWrite(20, LOW); //RFM9X CS low/active
-    SPI.transfer(0x42); //0x42 = version
-    byte i = SPI.transfer(0x00);
-    digitalWrite(20, HIGH); //RFM9X CS high
-    if(i == 0x12) //check version
-    {
-      leds(FARBE_WEISS); //LEDs weiss
-      buzzer(1000); //1s Buzzer an
-    }
-  #endif
+  //RFM9X-Test (optional, bestueckt?)
+  SPI.begin();
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(PIN_RFM9X_CS, LOW); //RFM9X CS low/active
+  SPI.transfer(0x42); //0x42 = version
+  byte rfm_version = SPI.transfer(0x00);
+  digitalWrite(PIN_RFM9X_CS, HIGH); //RFM9X CS high
+  SPI.endTransaction();
+  if(rfm_version == 0x12) //check version
+  {
+    leds(FARBE_WEISS); //LEDs weiss
+    buzzer(1000); //1s Buzzer an
+  }
+  if(features & FEATURE_USB)
+  {
+    Serial.print("RFM9X: ");
+    Serial.println((rfm_version == 0x12) ? "found" : "not found");
+  }
 
   //Sensor-Test
   unsigned int co2, light;
@@ -66,9 +69,7 @@ void self_test(void) //Testprogramm
   co2_value  = 0;
   temp_value = 0;
   humi_value = 0;
-  #if PRO_AMPEL
-    pres_value = 0;
-  #endif
+  pres_value = 0;
   ws2812.fill(FARBE_AUS, 0, 4); //LEDs aus
   for(unsigned int okay=0; okay < 15;)
   {
@@ -111,8 +112,9 @@ void self_test(void) //Testprogramm
         ws2812.setPixelColor(1, COLOR_OFF);
       }
 
+      bool has_pres = (features & (FEATURE_LPS22HB|FEATURE_BMP280)) != 0;
       if(((temp >=   5) && (temp <=   35)) && //5-35°C
-         ((pres >= 700) && (pres <= 1400)))   //700-1400 hPa
+         (!has_pres || ((pres >= 700) && (pres <= 1400))))   //700-1400 hPa
       {
         okay |= (1<<2);
         ws2812.setPixelColor(2, COLOR_GREEN);

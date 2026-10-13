@@ -69,8 +69,8 @@ void setup()
   pinMode(PIN_SWITCH, INPUT_PULLUP);
   pinMode(14, OUTPUT); //PA18 WINC1500 CS-Pin
   digitalWrite(14, HIGH); //WINC1500 CS high
-  pinMode(20, OUTPUT); //PA21 RFM9X CS-Pin
-  digitalWrite(20, HIGH); //RFM9X CS high
+  pinMode(PIN_RFM9X_CS, OUTPUT); //PA21 RFM9X CS-Pin
+  digitalWrite(PIN_RFM9X_CS, HIGH); //RFM9X CS high
 
   if(digitalRead(PIN_SWITCH) == LOW) //Taster gedrueckt
   {
