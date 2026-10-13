@@ -26,7 +26,8 @@
 //--- MQTT ---
 #define MQTT_ENABLED       0      //0 = MQTT deaktiviert, 1 = MQTT aktiviert
 #define MQTT_BROKER        ""     //MQTT Broker Hostname oder IP
-#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883)
+#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883, TLS: 8883)
+#define MQTT_TLS           0      //1 = MQTT ueber TLS (MQTTS)
 #define MQTT_USER          ""     //MQTT Benutzername (optional)
 #define MQTT_PASS          ""     //MQTT Passwort (optional)
 #define MQTT_CLIENT_ID     ""     //MQTT Client ID (leer = automatisch aus MAC)

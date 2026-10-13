@@ -40,7 +40,8 @@ typedef struct
   boolean asc;                // CO2 sensor automatic self-calibration (added in settings v2)
   boolean mqtt_config;        // Allow configuration over MQTT (added in settings v3)
   boolean mqtt_ha;            // Home Assistant MQTT discovery (added in settings v4)
-  // Struct padding is used up: the next field changes sizeof(SETTINGS) and needs a real migration
+  // v1-v4 end here (388 bytes). New fields are appended; shorter records get defaults for them.
+  boolean mqtt_tls;           // MQTT over TLS (added in settings v5)
 } SETTINGS;
 
 #endif
