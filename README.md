@@ -148,7 +148,7 @@ mqtt.interval
 
 ### Settings Backup and Restore
 
-**Important:** Settings are stored in flash and **will be lost** when uploading new firmware. Always backup your settings before updating!
+Settings are stored in flash (last 2 KB, with version and CRC). `pio run -t upload` keeps them: the upload script reads the settings area and writes it back with the new firmware. Flashing with another tool (e.g. plain bossac or the Arduino IDE) erases them, so keep a backup with `dump`. Settings from an incompatible firmware version are replaced by defaults.
 
 **Backup Settings:**
 ```bash
@@ -194,7 +194,7 @@ save
 ```
 
 **Notes:**
-- WiFi credentials are stored in flash (will be lost on firmware update - backup with `dump`)
+- WiFi credentials are stored in flash (kept across `pio run -t upload`; backup with `dump` anyway)
 - After setting WiFi credentials, device will auto-connect on next boot
 - If connection fails, device will create an AP (Access Point) mode instead
 

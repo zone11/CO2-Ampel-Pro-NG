@@ -189,44 +189,13 @@ void setup()
   }
 
   //Einstellungen
-  settings_read(&settings); //Einstellungen lesen
-  if((settings.valid == false) || (settings.brightness > 255) || (settings.range[0] < 100))
+  SETTINGS_LOAD load = settings_read(&settings); //Einstellungen lesen
+  if(load != SETTINGS_LOADED)
   {
-    settings.serial_output = false;
-    settings.brightness   = HELLIGKEIT;
-    settings.range[0]     = DEFAULT_T1;
-    settings.range[1]     = DEFAULT_T2;
-    settings.range[2]     = DEFAULT_T3;
-    settings.range[3]     = DEFAULT_T4;
-    settings.range[4]     = DEFAULT_T5;
-    settings.buzzer       = BUZZER;
-    settings.wifi_ssid[0] = 0;
-    strcpy(settings.wifi_ssid, WIFI_SSID);
-    settings.wifi_code[0] = 0;
-    strcpy(settings.wifi_code, WIFI_CODE);
-
-    //MQTT Standardeinstellungen
-    settings.mqtt_enabled = MQTT_ENABLED;
-    settings.mqtt_broker[0] = 0;
-    strcpy(settings.mqtt_broker, MQTT_BROKER);
-    settings.mqtt_port = MQTT_PORT;
-    settings.mqtt_user[0] = 0;
-    strcpy(settings.mqtt_user, MQTT_USER);
-    settings.mqtt_pass[0] = 0;
-    strcpy(settings.mqtt_pass, MQTT_PASS);
-    settings.mqtt_client_id[0] = 0;
-    strcpy(settings.mqtt_client_id, MQTT_CLIENT_ID);
-    settings.mqtt_topic_prefix[0] = 0;
-    strcpy(settings.mqtt_topic_prefix, MQTT_TOPIC_PREFIX);
-    settings.mqtt_interval = MQTT_INTERVAL;
-
-    //LED Color Defaults
-    settings.color_t1   = DEFAULT_COLOR_T1;
-    settings.color_t2  = DEFAULT_COLOR_T2;
-    settings.color_t3 = DEFAULT_COLOR_T3;
-    settings.color_t4    = DEFAULT_COLOR_T4;
-    settings.valid        = true;
-    settings_write(&settings);
+    settings_write(&settings); //Defaults bzw. migrierte Einstellungen speichern
+  }
+  if(load == SETTINGS_DEFAULTS)
+  {
     //Standard Temperaturoffset (always Pro with WiFi and pressure sensor)
     temp_offset = TEMP_OFFSET;
     if(features & FEATURE_SCD30)
@@ -262,7 +231,10 @@ void setup()
     if(features & FEATURE_LPS22HB)  { Serial.print(" LPS22HB"); }
     if(features & FEATURE_BMP280)   { Serial.print(" BMP280"); }
     if(features & FEATURE_WINC1500) { Serial.print(" WINC1500"); }
-    Serial.println("\n");
+    Serial.println();
+    Serial.print("Settings: ");
+    Serial.println((load == SETTINGS_LOADED) ? "loaded" : (load == SETTINGS_MIGRATED) ? "migrated from old layout" : "defaults");
+    Serial.println();
   }
 
   //Service-Menue

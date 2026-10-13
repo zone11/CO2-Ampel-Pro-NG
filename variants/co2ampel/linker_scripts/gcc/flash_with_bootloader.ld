@@ -25,7 +25,7 @@
  */
 MEMORY
 {
-  FLASH (rx) : ORIGIN = 0x00000000+0x2000, LENGTH = 0x00040000-0x2000 /* First 8KB used by bootloader */
+  FLASH (rx) : ORIGIN = 0x00000000+0x2000, LENGTH = 0x00040000-0x2000-0x800 /* First 8KB bootloader, last 2KB settings (0x3F800) */
   RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00008000
 }
 

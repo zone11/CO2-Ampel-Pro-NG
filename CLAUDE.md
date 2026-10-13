@@ -8,8 +8,11 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - Build: `pio run -e co2ampel_pro` · Upload: `pio run -e co2ampel_pro -t upload` · Monitor: `pio device monitor -b 9600`
 - Board/variant are custom: `boards/co2ampel.json`, `variants/co2ampel/`. USB IDs come from the board JSON
   (`build.hwids[0]` + `vendor`): app = 04D8:EACE, bootloader (sam-ba) = 04D8:EACF. Don't add `-DUSB_*` flags.
-- Upload: PlatformIO's built-in 1200 bps reset + bossac is unreliable. What works: 1200 bps touch on the app port,
-  wait for the bootloader PID, pause ~0.5 s, then run bossac. Connect the device directly (no hub). Uploading erases settings.
+- Upload: `scripts/upload_samba.py` (custom upload_protocol) does the 1200 bps touch, waits for the bootloader PID,
+  pauses ~0.5 s, reads the flash, and re-flashes firmware + the 2 KB settings area (bossac 1.7 can only erase the
+  whole app area). Settings survive `pio run -t upload`. Connect the device directly (no hub).
+- Settings: versioned record (magic "CO2A", version, size, CRC32) at 0x3F800, reserved in the linker script.
+  Bump `SETTINGS_VERSION` on any SETTINGS layout change (old records then load as defaults).
 - `workfiles/` is local-only (gitignored). `workfiles/private/` holds real credentials: never commit or paste them.
 
 ## Code layout (split into modules, PR #3)
