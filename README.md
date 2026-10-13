@@ -31,12 +31,11 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Configurable CO2 thresholds via serial commands (no recompilation needed!)
 - ✅ Customizable LED colors via serial commands
 - ✅ Settings dump feature for backup/restore (key/value)
-- ✅ MQTT support for IoT platforms (publish only)
+- ✅ MQTT support: measurements, device/WiFi info, online status, remote configuration
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 
 **Planned Features:**
-- [ ] Configuration commands over MQTT
 - [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
@@ -166,6 +165,7 @@ mqtt.user
 mqtt.pass
 mqtt.client_id
 mqtt.topic_prefix
+mqtt.config
 mqtt.interval
 ```
 
@@ -174,9 +174,9 @@ Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with o
 Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
-WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass`) can only be changed
-via serial or the web form, and passwords are only shown to local (serial) callers. This matters once
-remote configuration (e.g. over MQTT) is added.
+WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass/config`) can only be
+changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
+read as `***`.
 
 ### Settings Backup and Restore
 
@@ -260,10 +260,39 @@ Example JSON response:
 
 ### MQTT
 
-With `mqtt.enabled=1` the device publishes every `mqtt.interval` seconds (default 60) to
-`<mqtt.topic_prefix>/<device id>/<value>`, where the device id is the WiFi MAC address (e.g. `F8F0056E78A2`)
-and the values are `co2`, `temperature`, `humidity`, `light` and, with a pressure sensor, `pressure`.
-Messages are not retained. `mqtt.client_id` only sets the MQTT client id (empty = device id).
+With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base topic
+`<mqtt.topic_prefix>/<device id>`, where the device id is the WiFi MAC address (e.g.
+`co2ampel/F8F0056E78A2`). `mqtt.client_id` only sets the MQTT client id (empty = device id).
+
+| Topic | Payload | Published | Retained |
+|---|---|---|---|
+| `<base>/co2`, `/temperature`, `/humidity`, `/light`, `/pressure` | plain value (pressure only with a pressure sensor) | every `mqtt.interval` s (default 60) | no |
+| `<base>/device` | `{"version":"0.4.0","uptime":3600}` (uptime in seconds) | every interval | yes |
+| `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
+| `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
+| `<base>/resp` | reply to a command, see below | after each command | no |
+
+**Remote configuration** (off by default): enable it locally with `remote on`, `set mqtt.config=1`, `save`,
+`reset`. The device then accepts commands on `<base>/cmd`: one or more settings commands (`get`, `set`,
+`save`, `dump`, `help`), one per line, max. 400 bytes. The reply has the same text as on serial
+(`OK`, `ERROR: ...`, `key=value`), one line per result, on `<base>/resp`.
+
+```bash
+BASE=co2ampel/F8F0056E78A2
+mosquitto_sub -h broker -u user -P pass -t "$BASE/resp" &
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m 'get co2.*'
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'set co2.t1=650\nset led.color.t1=0000FF\nsave')"
+```
+
+Rules and notes:
+- No `remote on` is needed over MQTT; changes apply like on serial and are kept only after `save`
+- Passwords read as `***`, and WiFi/MQTT connection settings (including `mqtt.config` itself) are refused
+  with `ERROR: Only via serial or web`, so a remote mistake can't cut the device off the network
+- After handling a command the device clears `<base>/cmd` with an empty retained message, so a command
+  published with retain is executed only once
+- Commands arriving while one is still being handled are ignored; send the next one after the reply
+- Anyone allowed to publish to `<base>/cmd` can change the settings: restrict it with broker ACLs
+- Each `save` writes the flash; avoid saving in automated loops (flash endurance)
 
 ## Calibration
 
