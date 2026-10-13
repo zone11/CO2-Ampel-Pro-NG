@@ -79,25 +79,25 @@ static bool match_cmd(char *line, const char *cmd, char **out_arg)
   return true;
 }
 
-static bool parse_u32(const char *s, uint32_t *out)
+// Numbers are decimal unless prefixed with 0x; colors (hex = true) are always hex, "0x" or "#" optional
+static bool parse_u32(const char *s, uint32_t *out, bool hex)
 {
   char *end = NULL;
-  int base = 10;
+  int base = hex ? 16 : 10;
 
   if((s[0] == '0') && (s[1] == 'x' || s[1] == 'X'))
   {
+    s += 2;
     base = 16;
   }
-  else
+  else if(hex && (s[0] == '#'))
   {
-    for(const char *p = s; *p; p++)
-    {
-      if(isalpha((unsigned char)*p))
-      {
-        base = 16;
-        break;
-      }
-    }
+    s++;
+  }
+
+  if(!isxdigit((unsigned char)s[0])) //strtoul would accept sign/whitespace
+  {
+    return false;
   }
 
   unsigned long val = strtoul(s, &end, base);
@@ -340,7 +340,7 @@ bool serial_settings_handle_line(char *line,
       case CFG_COLOR:
         {
           uint32_t parsed = 0;
-          if(!parse_u32(value, &parsed))
+          if(!parse_u32(value, &parsed, item->type == CFG_COLOR))
           {
             print_error(ctx->out, "Invalid number");
             return true;
