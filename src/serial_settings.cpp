@@ -263,6 +263,7 @@ bool serial_settings_handle_line(char *line,
       arg[arg_len - 2] = 0;
     }
 
+    bool found = false;
     for(size_t i = 0; i < item_count; i++)
     {
       if(is_prefix)
@@ -280,6 +281,7 @@ bool serial_settings_handle_line(char *line,
         }
       }
 
+      found = true;
       if(ctx->out)
       {
         ctx->out->print(items[i].key);
@@ -294,6 +296,10 @@ bool serial_settings_handle_line(char *line,
       }
     }
 
+    if(!found)
+    {
+      print_error(ctx->out, "Unknown key");
+    }
     return true;
   }
 
