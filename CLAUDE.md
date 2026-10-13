@@ -32,7 +32,7 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - RFM9x: CS PA21, DIO0 PA14, DIO1 PA15 (`PIN_RFM9X_*` in `variants/co2ampel/variant.h`, the only pin definition)
 - Wire (SERCOM0): SCD30 0x61 / SCD4x 0x62 · Wire1 (SERCOM2): LPS22HB 0x5C / BMP280 0x76 / ATECC608 0x60
 - WINC1500 WiFi (CS PA18), optional RFM9x LoRa (CS PA21)
-- Dev unit (verified with `i2c scan`): SCD30 + LPS22HB + ATECC608, WINC1500 fw 19.6.1. No SCD4x or BMP280 to test against.
+- Dev unit (verified with `i2c scan` + self test): SCD30 + LPS22HB + ATECC608, WINC1500 fw 19.6.1, RFM9x. No SCD4x or BMP280.
 
 ## Known state (verified 2026-10-13)
 - v0.4.0. dev builds cleanly: RAM 19.5 %, Flash 35.2 % (88.8 KB) (of 246 KB; the last 2 KB are reserved for settings)
@@ -40,7 +40,7 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - Platform atmelsam 9.0.0. CO2 drivers: Sensirion I2C SCD30 1.1.1 (verified) and SCD4x 1.1.0 (compile-only)
 - Adafruit BMP280 3.0.0: relicense only (BSD → MIT), code identical to 2.6.8; compile-only (no BMP280 on the dev unit)
 - SCD30 temperature needs ~10 min after boot to settle; compare readings only after warm-up
-- Dev unit has an RFM95/96 and TTN coverage (per user); self test probes it, no LoRaWAN stack yet
+- Dev unit RFM9x verified by self test (`RFM9X: found`), TTN coverage available; no LoRaWAN stack yet
 
 ## Roadmap (agreed 2026-10-13)
 MQTT config (`<prefix>/<id>/cmd` → registry with `local=false`, reply on `resp`) → MQTTS (`WiFiSSLClient`,
