@@ -92,7 +92,6 @@ void setup()
 
   //serielle Schnittstelle (USB)
   Serial.begin(BAUDRATE); //seriellen Port starten
-  Serial.setTimeout(500); //500ms Timeout beim Lesen
   //while(!Serial); //warten auf USB-Verbindung
 
   delay(250); //250ms warten

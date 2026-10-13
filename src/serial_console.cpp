@@ -47,26 +47,53 @@ static const cfg_item_t settings_items[] =
 };
 static const size_t settings_items_count = sizeof(settings_items) / sizeof(settings_items[0]);
 
+#define LINE_IDLE_MS 500 //Zeile ohne CR/LF gilt nach 500ms Pause als fertig
+
+// Collects input without blocking. A line ends on CR or LF (so CR-only terminals work
+// and CRLF just adds an empty line), or after LINE_IDLE_MS without new characters.
+static bool read_line(char *buf, size_t size)
+{
+  static size_t len = 0;
+  static unsigned long t_last = 0;
+
+  while(Serial.available())
+  {
+    char c = Serial.read();
+    t_last = millis();
+    if((c == '\r') || (c == '\n'))
+    {
+      buf[len] = 0;
+      len = 0;
+      return true;
+    }
+    if(len < (size - 1))
+    {
+      buf[len++] = c;
+    }
+  }
+
+  if((len > 0) && ((millis() - t_last) > LINE_IDLE_MS))
+  {
+    buf[len] = 0;
+    len = 0;
+    return true;
+  }
+
+  return false;
+}
+
 void serial_service(void)
 {
-  char line_buf[192];
-  size_t len;
+  static char line_buf[192];
 
   if((features & FEATURE_USB) == 0)
   {
     return;
   }
 
-  if(Serial.available() == 0)
+  if(!read_line(line_buf, sizeof(line_buf)))
   {
     return;
-  }
-
-  len = Serial.readBytesUntil('\n', line_buf, sizeof(line_buf) - 1);
-  line_buf[len] = 0;
-  if(len > 0 && line_buf[len - 1] == '\r')
-  {
-    line_buf[len - 1] = 0;
   }
 
   char *line = line_buf;
