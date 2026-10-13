@@ -8,7 +8,8 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - Build: `pio run -e co2ampel_pro` · Upload: `pio run -e co2ampel_pro -t upload` · Monitor: `pio device monitor -b 9600`
 - Board/variant are custom: `boards/co2ampel.json`, `variants/co2ampel/`. USB IDs come from the board JSON
   (`build.hwids[0]` + `vendor`): app = 04D8:EACE, bootloader (sam-ba) = 04D8:EACF. Don't add `-DUSB_*` flags.
-- Upload: the 1200 bps reset is flaky. If it fails, enter the bootloader by hand and pass `--upload-port`. Uploading erases settings.
+- Upload: the 1200 bps reset is unreliable. Flashing works reliably from a bootloader entered by hand on a cold
+  start, with the device connected directly (no hub). Uploading erases settings.
 - `workfiles/` is local-only (gitignored). `workfiles/private/` holds real credentials: never commit or paste them.
 
 ## Code layout (split into modules, PR #3)
@@ -23,6 +24,7 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - PA27 status LED, PA05 buzzer, PA22 4x WS2812, PB03 button
 - Wire (SERCOM0): SCD30 0x61 / SCD4x 0x62 · Wire1 (SERCOM2): LPS22HB 0x5C / BMP280 0x76 / ATECC608 0x60
 - WINC1500 WiFi (CS PA18), optional RFM9x LoRa (CS PA21)
+- Dev unit (verified with `i2c scan`): SCD30 + LPS22HB + ATECC608, WINC1500 fw 19.6.1. No SCD4x or BMP280 to test against.
 
 ## Known state (verified 2026-10-13)
 - dev builds cleanly: RAM 18.8 %, Flash 33.0 %; version string is still `0.3` in platformio.ini
