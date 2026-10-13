@@ -21,6 +21,43 @@ void print_measurements(void)
   Serial.println();
 }
 
+void print_sensor_info(void) //Sensor-Konfiguration ausgeben
+{
+  Serial.print("CO2 Sensor: ");
+  if(features & FEATURE_SCD30)
+  {
+    uint16_t offset = 0, altitude = 0, asc = 0, interval = 0;
+    uint8_t fw_major = 0, fw_minor = 0;
+    Serial.print("SCD30");
+    if(scd30.readFirmwareVersion(fw_major, fw_minor) == 0)
+    {
+      Serial.print(" fw ");
+      Serial.print(fw_major);
+      Serial.print(".");
+      Serial.print(fw_minor);
+    }
+    Serial.println();
+    Serial.print("  Temp Offset (C): ");
+    if(scd30.getTemperatureOffset(offset) == 0) { Serial.println(offset / 100.0f, 2); } else { Serial.println("error"); }
+    Serial.print("  Altitude (m): ");
+    if(scd30.getAltitudeCompensation(altitude) == 0) { Serial.println(altitude); } else { Serial.println("error"); }
+    Serial.print("  ASC: ");
+    if(scd30.getAutoCalibrationStatus(asc) == 0) { Serial.println(asc ? "on" : "off"); } else { Serial.println("error"); }
+    Serial.print("  Interval (s): ");
+    if(scd30.getMeasurementInterval(interval) == 0) { Serial.println(interval); } else { Serial.println("error"); }
+  }
+  else if(features & FEATURE_SCD4X)
+  {
+    Serial.println("SCD4X");
+  }
+  else
+  {
+    Serial.println("none");
+  }
+  Serial.print("Firmware Temp Offset (C): ");
+  Serial.println(temp_offset, 2);
+}
+
 void show_data(void) //Daten anzeigen
 {
   if((features & FEATURE_USB) && settings.serial_output)
@@ -78,11 +115,14 @@ unsigned int check_sensors(void) //Sensoren auslesen
 {
   if(features & FEATURE_SCD30)
   {
-    if(scd30.dataAvailable())
+    uint16_t ready = 0;
+    float v_co2, v_temp, v_humi;
+    if((scd30.getDataReady(ready) == 0) && ready &&
+       (scd30.readMeasurementData(v_co2, v_temp, v_humi) == 0))
     {
-      co2_value  = scd30.getCO2();
-      temp_value = scd30.getTemperature();
-      humi_value = scd30.getHumidity();
+      co2_value  = (unsigned int)(v_co2 + 0.5f);
+      temp_value = v_temp;
+      humi_value = v_humi;
       if(features & FEATURE_LPS22HB)
       {
         pres_value  = lps22.readPressure()*10; //kPa -> hPa
@@ -96,7 +136,10 @@ unsigned int check_sensors(void) //Sensoren auslesen
       if((pres_value < (pres_last-DRUCK_DIFF)) || (pres_value > (pres_last+DRUCK_DIFF)))
       {
         pres_last = pres_value;
-        scd30.setAmbientPressure(pres_value); //hPa=mBar
+        if((pres_value >= 700) && (pres_value <= 1400)) //gueltiger Bereich
+        {
+          scd30.startPeriodicMeasurement(pres_value); //Druckkompensation, hPa=mBar
+        }
       }
       if(humi_value < 0)
       {

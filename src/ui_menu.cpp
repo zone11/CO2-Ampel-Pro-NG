@@ -77,7 +77,9 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
   //Altitude
   if(features & FEATURE_SCD30)
   {
-    value = scd30.getAltitudeCompensation() / 250; //Meter ueber dem Meeresspiegel
+    uint16_t altitude = 0;
+    scd30.getAltitudeCompensation(altitude); //Meter ueber dem Meeresspiegel
+    value = altitude / 250;
   }
   else if(features & FEATURE_SCD4X)
   {
@@ -108,7 +110,9 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
   //Temperaturoffset
   if(features & FEATURE_SCD30)
   {
-    value = scd30.getTemperatureOffset() / 2; //Temperaturoffset
+    uint16_t offset = 0;
+    scd30.getTemperatureOffset(offset); //degC*100
+    value = (offset / 100) / 2;
   }
   else if(features & FEATURE_SCD4X)
   {
@@ -121,7 +125,7 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
 
   if(features & FEATURE_SCD30)
   {
-    scd30.setTemperatureOffset(value); //Temperaturoffset
+    scd30.setTemperatureOffset(value * 100); //Temperaturoffset, degC*100
   }
   else if(features & FEATURE_SCD4X)
   {
@@ -174,16 +178,20 @@ void calibration(void) //Kalibrierung
   {
     if(AUTO_KALIBRIERUNG) //ASC on
     {
-      if(scd30.getAutoSelfCalibration() == 0)
+      uint16_t asc = 0;
+      scd30.getAutoCalibrationStatus(asc);
+      if(asc == 0)
       {
-        scd30.setAutoSelfCalibration(1);
+        scd30.activateAutoCalibration(1);
       }
     }
     else //ASC off
     {
-      if(scd30.getAutoSelfCalibration() != 0)
+      uint16_t asc = 0;
+      scd30.getAutoCalibrationStatus(asc);
+      if(asc != 0)
       {
-        scd30.setAutoSelfCalibration(0);
+        scd30.activateAutoCalibration(0);
       }
     }
   }
@@ -279,7 +287,7 @@ void calibration(void) //Kalibrierung
   {
     if(features & FEATURE_SCD30)
     {
-      scd30.setForcedRecalibrationFactor(400); //400ppm = Frischluft
+      scd30.forceRecalibration(400); //400ppm = Frischluft
       delay(500);
     }
     else if(features & FEATURE_SCD4X)

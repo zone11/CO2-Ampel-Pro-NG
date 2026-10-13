@@ -104,6 +104,7 @@ void serial_service(void)
   if(strcasecmp(line, "status") == 0)
   {
     print_measurements();
+    print_sensor_info();
     print_wifi_status();
     print_mqtt_status();
     return;

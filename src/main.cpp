@@ -10,7 +10,7 @@
 
 #include <Wire.h>
 #include <SPI.h>
-#include <SparkFun_SCD30_Arduino_Library.h>
+#include <SensirionI2cScd30.h>
 #include <SensirionI2CScd4x.h>
 #include <Adafruit_BMP280.h>
 #include <Arduino_LPS22HB.h>
@@ -34,7 +34,7 @@ extern USBDeviceClass USBDevice; //USBCore.cpp
 // via the definitions in variant.h (PIN_WIRE1_SDA, PIN_WIRE1_SCL, PERIPH_WIRE1, WIRE1_IT_HANDLER)
 
 SETTINGS settings;
-SCD30 scd30;
+SensirionI2cScd30 scd30;
 SensirionI2CScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
@@ -133,15 +133,17 @@ void setup()
     for(int t=5; t!=0; t--) //try 5 times
     {
       Wire.begin();
-      if(scd30.begin(Wire, AUTO_KALIBRIERUNG))
+      scd30.begin(Wire, ADDR_SCD30);
+      if(scd30.startPeriodicMeasurement(0) == 0) //0 = keine Druckkompensation
       {
+        scd30.activateAutoCalibration(AUTO_KALIBRIERUNG);
         features |= FEATURE_SCD30;
         break;
       }
       status_led(1000); //Status-LED
     }
     scd30.setMeasurementInterval(INTERVALL); //setze Messintervall
-    //scd30.setAmbientPressure(1000); //0 oder 700-1400, Luftdruck in hPa
+    //scd30.startPeriodicMeasurement(1000); //0 oder 700-1400, Luftdruck in hPa
   }
   if(check_i2c(SERCOM0, ADDR_SCD4X)) //SCD4X gefunden
   {
@@ -163,7 +165,11 @@ void setup()
   //Temperaturoffset
   if(features & FEATURE_SCD30)
   {
-    temp_offset = scd30.getTemperatureOffset();
+    uint16_t offset;
+    if(scd30.getTemperatureOffset(offset) == 0)
+    {
+      temp_offset = offset / 100.0f;
+    }
   }
   else if(features & FEATURE_SCD4X)
   {
@@ -225,11 +231,11 @@ void setup()
     temp_offset = TEMP_OFFSET;
     if(features & FEATURE_SCD30)
     {
-      float offset;
-      offset = scd30.getTemperatureOffset();
-      if((offset == 0) || (offset > 12))
+      uint16_t offset = 0;
+      scd30.getTemperatureOffset(offset); //degC*100
+      if((offset == 0) || (offset > 1200))
       {
-        scd30.setTemperatureOffset(temp_offset); //Temperaturoffset
+        scd30.setTemperatureOffset(temp_offset * 100); //Temperaturoffset
       }
     }
     else if(features & FEATURE_SCD4X)

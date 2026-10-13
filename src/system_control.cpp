@@ -23,8 +23,7 @@ void reset_mcu(void)
   }
   if(features & FEATURE_SCD30)
   {
-    scd30.StopMeasurement();
-    //scd30.reset; //soft reset
+    scd30.stopPeriodicMeasurement();
   }
   if(features & FEATURE_SCD4X)
   {

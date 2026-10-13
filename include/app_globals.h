@@ -4,7 +4,7 @@
 #include "app_config.h"
 #include "app_types.h"
 
-#include <SparkFun_SCD30_Arduino_Library.h>
+#include <SensirionI2cScd30.h>
 #include <SensirionI2CScd4x.h>
 #include <Adafruit_BMP280.h>
 #include <Arduino_LPS22HB.h>
@@ -13,7 +13,7 @@
 #include <MQTT.h>
 
 extern SETTINGS settings;
-extern SCD30 scd30;
+extern SensirionI2cScd30 scd30;
 extern SensirionI2CScd4x scd4x;
 extern Adafruit_BMP280 bmp280;
 extern LPS22HBClass lps22;

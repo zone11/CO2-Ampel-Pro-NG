@@ -10,6 +10,7 @@ float humi_sensor(void);
 float pres_sensor(void);
 unsigned int check_sensors(void);
 void print_measurements(void);
+void print_sensor_info(void);
 void show_data(void);
 
 #endif
