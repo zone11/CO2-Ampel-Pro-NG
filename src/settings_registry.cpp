@@ -46,7 +46,7 @@ static const cfg_item_t settings_items[] =
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
   { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
-  { "mqtt.discovery",   CFG_BOOL,  &settings.mqtt_discovery, 0, 0, 0, NULL, CFG_LOCAL },
+  { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, NULL, CFG_LOCAL },
   { "mqtt.config",      CFG_BOOL,  &settings.mqtt_config,    0, 0, 0, NULL, CFG_LOCAL },
   { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL },
 };

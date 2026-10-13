@@ -39,7 +39,7 @@ typedef struct
   boolean serial_output;      // Enable serial measurement output
   boolean asc;                // CO2 sensor automatic self-calibration (added in settings v2)
   boolean mqtt_config;        // Allow configuration over MQTT (added in settings v3)
-  boolean mqtt_discovery;     // Home Assistant MQTT discovery (added in settings v4)
+  boolean mqtt_ha;            // Home Assistant MQTT discovery (added in settings v4)
   // Struct padding is used up: the next field changes sizeof(SETTINGS) and needs a real migration
 } SETTINGS;
 

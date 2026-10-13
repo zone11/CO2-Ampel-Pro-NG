@@ -166,7 +166,7 @@ mqtt.user
 mqtt.pass
 mqtt.client_id
 mqtt.topic_prefix
-mqtt.discovery
+mqtt.ha
 mqtt.config
 mqtt.interval
 ```
@@ -176,7 +176,7 @@ Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with o
 Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
-WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass/discovery/config`) can only be
+WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass/ha/config`) can only be
 changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
 read as `***`.
 
@@ -278,12 +278,13 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 `sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023; 1024 until the first reading 1 minute after boot);
 `pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor.
 
-**Home Assistant discovery** (on by default, `mqtt.discovery`): on every connect the device publishes
+**Home Assistant discovery** (off by default): enable it with `remote on`, `set mqtt.ha=1`, `save`, `reset`.
+On every connect the device then publishes
 retained discovery configs to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
 the MQTT integration) creates a device "CO2-Ampel XXXX" with the entities CO2, Temperature, Humidity,
 Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and "WiFi signal" appear as
 diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and become unavailable when
-`<base>/status` is `offline`. With `set mqtt.discovery=0`, `save`, `reset` the device removes its entities
+`<base>/status` is `offline`. With `set mqtt.ha=0`, `save`, `reset` the device removes its entities
 again (empty retained configs).
 
 **Remote configuration** (off by default): enable it locally with `remote on`, `set mqtt.config=1`, `save`,

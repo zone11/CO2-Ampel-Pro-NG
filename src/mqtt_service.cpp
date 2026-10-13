@@ -209,7 +209,7 @@ static void mqtt_publish_discovery(void)
     snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/sensor/%s/%s/config", device_id, e.key);
 
     //aus oder Sensor fehlt: leere retained Nachricht entfernt die Entitaet in Home Assistant
-    if(!settings.mqtt_discovery || (e.needs && !(features & e.needs)))
+    if(!settings.mqtt_ha || (e.needs && !(features & e.needs)))
     {
       mqttClient.publish(topic, "", true, 0);
       continue;
@@ -271,7 +271,7 @@ void print_mqtt_status(void)
   Serial.print(settings.mqtt_interval);
   Serial.println("s");
   Serial.print("HA discovery: ");
-  Serial.println(settings.mqtt_discovery ? "on (" MQTT_DISCOVERY_PREFIX ")" : "off");
+  Serial.println(settings.mqtt_ha ? "on (" MQTT_DISCOVERY_PREFIX ")" : "off");
   Serial.print("Remote config: ");
   Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off");
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))

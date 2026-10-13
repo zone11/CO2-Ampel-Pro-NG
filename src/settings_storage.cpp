@@ -88,7 +88,7 @@ void settings_defaults(SETTINGS *data)
 
   data->asc           = AUTO_KALIBRIERUNG;
   data->mqtt_config   = MQTT_CONFIG;
-  data->mqtt_discovery = MQTT_DISCOVERY;
+  data->mqtt_ha       = MQTT_HA;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -111,7 +111,7 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_enabled  = to_bool(&data->mqtt_enabled);
   data->asc           = to_bool(&data->asc);
   data->mqtt_config   = to_bool(&data->mqtt_config);
-  data->mqtt_discovery = to_bool(&data->mqtt_discovery);
+  data->mqtt_ha       = to_bool(&data->mqtt_ha);
 
   if(data->brightness > 255)                                { data->brightness = def.brightness; changed = true; }
   if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
@@ -179,7 +179,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       memcpy(data, &rec.data, sizeof(SETTINGS));
       if(rec.version < 2) { data->asc = AUTO_KALIBRIERUNG; }
       if(rec.version < 3) { data->mqtt_config = MQTT_CONFIG; }
-      if(rec.version < 4) { data->mqtt_discovery = MQTT_DISCOVERY; }
+      if(rec.version < 4) { data->mqtt_ha = MQTT_HA; }
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }
@@ -199,7 +199,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       memcpy(data, &old, sizeof(SETTINGS));
       data->asc = AUTO_KALIBRIERUNG; //padding in the old layout
       data->mqtt_config = MQTT_CONFIG;
-      data->mqtt_discovery = MQTT_DISCOVERY;
+      data->mqtt_ha = MQTT_HA;
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }
