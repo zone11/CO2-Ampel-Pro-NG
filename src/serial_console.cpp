@@ -1,6 +1,7 @@
 #include "serial_console.h"
 
 #include "app_globals.h"
+#include "i2c_utils.h"
 #include "led_control.h"
 #include "mqtt_service.h"
 #include "sensors.h"
@@ -105,6 +106,12 @@ void serial_service(void)
     print_measurements();
     print_wifi_status();
     print_mqtt_status();
+    return;
+  }
+  if(strcasecmp(line, "i2c scan") == 0)
+  {
+    i2c_scan(Wire, "Wire (SERCOM0)", Serial);
+    i2c_scan(Wire1, "Wire1 (SERCOM2)", Serial);
     return;
   }
   if(strcasecmp(line, "reset") == 0)

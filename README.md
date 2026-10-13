@@ -109,6 +109,7 @@ Connect via USB serial at 9600 baud, 8N1:
 remote on      Enable remote control (required for set/save)
 remote off     Disable remote control
 status         Show measurements and WiFi/MQTT status
+i2c scan       List responding I2C devices on both buses (with chip IDs)
 reset          Reset device (remote must be on)
 version        Query firmware version
 get <key>      Read a single setting
