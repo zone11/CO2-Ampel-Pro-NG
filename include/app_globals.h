@@ -10,6 +10,7 @@
 #include <Arduino_LPS22HB.h>
 #include <Adafruit_NeoPixel.h>
 #include <WiFi101.h>
+#include "tls_client.h"
 #include <MQTT.h>
 
 extern SETTINGS settings;
@@ -19,6 +20,7 @@ extern Adafruit_BMP280 bmp280;
 extern LPS22HBClass lps22;
 extern Adafruit_NeoPixel ws2812;
 extern WiFiClient mqttWifiClient;
+extern VerifiedSSLClient mqttSslClient;
 extern MQTTClient mqttClient;
 extern WiFiServer server;
 

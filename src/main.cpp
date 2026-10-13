@@ -17,6 +17,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <WiFi101.h>
 #include <MQTT.h>
+#include "tls_client.h"
 
 #include "led_control.h"
 #include "sensors.h"
@@ -41,6 +42,7 @@ LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
 WiFiServer server(80); //Webserver Port 80
 WiFiClient mqttWifiClient;
+VerifiedSSLClient mqttSslClient; //TLS im WINC1500 inkl. Hostname-Pruefung (Root-Zertifikat muss im WINC gespeichert sein)
 MQTTClient mqttClient(512, 1536); //Lesen 512 Byte (Befehle), Schreiben 1536 Byte (Antworten bis ~1.4 KB)
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;

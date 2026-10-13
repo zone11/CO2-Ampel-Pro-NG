@@ -42,6 +42,7 @@ static const cfg_item_t settings_items[] =
   { "mqtt.enabled",     CFG_BOOL,  &settings.mqtt_enabled,   0, 0, 0, NULL, CFG_LOCAL },
   { "mqtt.broker",      CFG_STRING, settings.mqtt_broker,    0, 0, sizeof(settings.mqtt_broker) - 1, NULL, CFG_LOCAL },
   { "mqtt.port",        CFG_U32,   &settings.mqtt_port,      1, 65535, 0, NULL, CFG_LOCAL },
+  { "mqtt.tls",         CFG_BOOL,  &settings.mqtt_tls,       0, 0, 0, NULL, CFG_LOCAL },
   { "mqtt.user",        CFG_STRING, settings.mqtt_user,      0, 0, sizeof(settings.mqtt_user) - 1, NULL, CFG_LOCAL },
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },

@@ -244,7 +244,8 @@ void print_mqtt_status(void)
   Serial.print("Broker: ");
   Serial.print(settings.mqtt_broker);
   Serial.print(":");
-  Serial.println(settings.mqtt_port);
+  Serial.print(settings.mqtt_port);
+  Serial.println(settings.mqtt_tls ? " (TLS)" : "");
   Serial.print("Username: ");
   Serial.println(strlen(settings.mqtt_user) > 0 ? settings.mqtt_user : "(none)");
   Serial.print("Client ID: ");
@@ -327,6 +328,7 @@ void mqtt_connect(void)
     Serial.print(settings.mqtt_broker);
     Serial.print(":");
     Serial.print(settings.mqtt_port);
+    Serial.print(settings.mqtt_tls ? " (TLS)" : "");
     Serial.print(" as '");
     Serial.print(client_id);
     Serial.print("'");
@@ -341,7 +343,8 @@ void mqtt_connect(void)
 
   //MQTT Client initialisieren
   char topic[96];
-  mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, mqttWifiClient);
+  Client &net = settings.mqtt_tls ? (Client &)mqttSslClient : (Client &)mqttWifiClient;
+  mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
   mqttClient.setWill(topic, "offline", true, 1); //Broker meldet "offline" bei Verbindungsabbruch
 
@@ -388,7 +391,13 @@ void mqtt_connect(void)
         Serial.print("Error: ");
         switch(err)
         {
-          case LWMQTT_NETWORK_FAILED_CONNECT: Serial.println("Network connection failed"); break;
+          case LWMQTT_NETWORK_FAILED_CONNECT:
+            Serial.println("Network connection failed");
+            if(settings.mqtt_tls)
+            {
+              Serial.println("  TLS: root CA stored in the WINC1500? Does mqtt.broker match the certificate? (see README)");
+            }
+            break;
           case LWMQTT_NETWORK_TIMEOUT: Serial.println("Network timeout"); break;
           case LWMQTT_NETWORK_FAILED_READ: Serial.println("Network read failed"); break;
           case LWMQTT_NETWORK_FAILED_WRITE: Serial.println("Network write failed"); break;
