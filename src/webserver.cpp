@@ -88,7 +88,7 @@ void webserver_service(void)
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
   char buf[1024];
-  char req[2][64+1]; //HTTP request
+  char req[2][3*64+1]; //HTTP request / POST-Werte (URL-kodiert bis 3 Zeichen pro Byte)
   req[0][0] = 0;
   while(client.connected())
   {
@@ -229,6 +229,7 @@ void webserver_service(void)
           //HTTP Post Daten verarbeiten
           if((strncmp(req[0], "POST ", 5) == 0) && client.available())
           {
+            bool too_long = false;
             req[0][0] = 0; //SSID
             req[1][0] = 0; //Code
             for(unsigned int r=0, i=0, last_c=0; client.available();)
@@ -245,14 +246,25 @@ void webserver_service(void)
               }
               else if((r > 0) && (r < 3)) //1 bis 2
               {
-                req[r-1][i++] = c;
-                req[r-1][i] = 0;
+                if(i < (sizeof(req[0]) - 1))
+                {
+                  req[r-1][i++] = c;
+                  req[r-1][i] = 0;
+                }
+                else
+                {
+                  too_long = true; //Wert zu lang, nicht speichern
+                }
               }
               last_c = c;
             }
             urldecode(req[0]); //Serial.println(req[0]);
             urldecode(req[1]); //Serial.println(req[1]);
-            if(strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code))
+            if((strlen(req[0]) >= sizeof(settings.wifi_ssid)) || (strlen(req[1]) >= sizeof(settings.wifi_code)))
+            {
+              too_long = true;
+            }
+            if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
             {
               //todo: Leerzeichen am Ende entfernen
               strcpy(settings.wifi_ssid, req[0]);
