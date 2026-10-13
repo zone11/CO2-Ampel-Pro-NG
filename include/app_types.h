@@ -38,6 +38,7 @@ typedef struct
   uint32_t color_t4;           // Color for CO2 >= range[2] (alert)
   boolean serial_output;      // Enable serial measurement output
   boolean asc;                // CO2 sensor automatic self-calibration (added in settings v2)
+  boolean mqtt_config;        // Allow configuration over MQTT (added in settings v3)
 } SETTINGS;
 
 #endif

@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     2            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     3            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -87,6 +87,7 @@ void settings_defaults(SETTINGS *data)
   data->color_t4      = DEFAULT_COLOR_T4;
 
   data->asc           = AUTO_KALIBRIERUNG;
+  data->mqtt_config   = MQTT_CONFIG;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -108,6 +109,7 @@ static bool settings_validate(SETTINGS *data)
   data->serial_output = to_bool(&data->serial_output);
   data->mqtt_enabled  = to_bool(&data->mqtt_enabled);
   data->asc           = to_bool(&data->asc);
+  data->mqtt_config   = to_bool(&data->mqtt_config);
 
   if(data->brightness > 255)                                { data->brightness = def.brightness; changed = true; }
   if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
@@ -170,10 +172,11 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       settings_validate(data);
       return SETTINGS_LOADED;
     }
-    if(rec.version == 1) //v1: same layout, 'asc' was struct padding
+    if((rec.version == 1) || (rec.version == 2)) //same layout, newer fields were struct padding
     {
       memcpy(data, &rec.data, sizeof(SETTINGS));
-      data->asc = AUTO_KALIBRIERUNG;
+      if(rec.version < 2) { data->asc = AUTO_KALIBRIERUNG; }
+      data->mqtt_config = MQTT_CONFIG;
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }
@@ -187,6 +190,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
     {
       memcpy(data, &old, sizeof(SETTINGS));
       data->asc = AUTO_KALIBRIERUNG; //padding in the old layout
+      data->mqtt_config = MQTT_CONFIG;
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }

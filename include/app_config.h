@@ -32,6 +32,7 @@
 #define MQTT_CLIENT_ID     ""     //MQTT Client ID (leer = automatisch aus MAC)
 #define MQTT_TOPIC_PREFIX  "co2ampel" //MQTT Topic Prefix
 #define MQTT_INTERVAL      60     //MQTT Publish Intervall in Sekunden
+#define MQTT_CONFIG        0      //1 = Konfiguration ueber MQTT (Topic <prefix>/<id>/cmd) erlaubt
 
 //--- Ampelhelligkeit (LEDs) ---
 #define HELLIGKEIT         125 //1-255 (255=100%, 179=70%)
