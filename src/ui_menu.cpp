@@ -72,7 +72,7 @@ unsigned int select_value(unsigned int value, unsigned int min, unsigned int max
 
 void altitude_toffset(void) //Altitude und Temperaturoffset
 {
-  unsigned int timeout, sw, value=0;
+  unsigned int value=0;
 
   //Altitude
   if(features & FEATURE_SCD30)
@@ -310,7 +310,7 @@ void calibration(void) //Kalibrierung
 
 void menu(void)
 {
-  unsigned int timeout, sw, value;
+  unsigned int value;
 
   ws2812.setBrightness(30); //0...255
   leds(FARBE_VIOLETT); //LEDs violett

@@ -242,13 +242,6 @@ void setup()
       }
     }
   }
-  else
-  {
-    if(settings.serial_output > 1)
-    {
-      settings.serial_output = true;
-    }
-  }
   ws2812.setBrightness(settings.brightness); //0...255
 
   //USB-Verbindung

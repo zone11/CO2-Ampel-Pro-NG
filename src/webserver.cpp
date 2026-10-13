@@ -297,7 +297,7 @@ void webserver_service(void)
                 "<div id=data>\r\n" \
                 "CO2 (ppm): %i<br/>\r\n" \
                 "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (% rel): %.1f<br/>\r\n" \
+                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
                 "Druck (hPa): %.1f<br/>\r\n" \
                 "Temperatur (&deg;C): %.1f<br/>\r\n" \
                 "</div>\r\n",
@@ -310,7 +310,7 @@ void webserver_service(void)
                 "<div id=data>\r\n" \
                 "CO2 (ppm): %i<br/>\r\n" \
                 "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (% rel): %.1f<br/>\r\n" \
+                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
                 "</div>\r\n",
                 co2_value, temp_value, humi_value
             );

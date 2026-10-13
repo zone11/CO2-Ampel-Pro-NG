@@ -209,7 +209,6 @@ void mqtt_publish_sensors(void)
   char topic[128];
   char value[64];
   char device_id[32];
-  char chip_id[40];
 
   if(!settings.mqtt_enabled)
   {
