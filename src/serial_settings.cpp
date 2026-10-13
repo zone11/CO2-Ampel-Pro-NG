@@ -79,25 +79,25 @@ static bool match_cmd(char *line, const char *cmd, char **out_arg)
   return true;
 }
 
-static bool parse_u32(const char *s, uint32_t *out)
+// Numbers are decimal unless prefixed with 0x; colors (hex = true) are always hex, "0x" or "#" optional
+static bool parse_u32(const char *s, uint32_t *out, bool hex)
 {
   char *end = NULL;
-  int base = 10;
+  int base = hex ? 16 : 10;
 
   if((s[0] == '0') && (s[1] == 'x' || s[1] == 'X'))
   {
+    s += 2;
     base = 16;
   }
-  else
+  else if(hex && (s[0] == '#'))
   {
-    for(const char *p = s; *p; p++)
-    {
-      if(isalpha((unsigned char)*p))
-      {
-        base = 16;
-        break;
-      }
-    }
+    s++;
+  }
+
+  if(!isxdigit((unsigned char)s[0])) //strtoul would accept sign/whitespace
+  {
+    return false;
   }
 
   unsigned long val = strtoul(s, &end, base);
@@ -188,6 +188,16 @@ static void print_value(Print *out, const cfg_item_t *item)
   }
 }
 
+static void print_item_value(const serial_settings_ctx_t *ctx, const cfg_item_t *item)
+{
+  if((item->flags & CFG_SECRET) && !ctx->local)
+  {
+    ctx->out->print("***");
+    return;
+  }
+  print_value(ctx->out, item);
+}
+
 static const cfg_item_t *find_item(const cfg_item_t *items, size_t count, const char *key)
 {
   for(size_t i = 0; i < count; i++)
@@ -274,7 +284,7 @@ bool serial_settings_handle_line(char *line,
       {
         ctx->out->print(items[i].key);
         ctx->out->print("=");
-        print_value(ctx->out, &items[i]);
+        print_item_value(ctx, &items[i]);
         ctx->out->println();
       }
 
@@ -316,6 +326,11 @@ bool serial_settings_handle_line(char *line,
       print_error(ctx->out, "Unknown key");
       return true;
     }
+    if((item->flags & CFG_LOCAL) && !ctx->local)
+    {
+      print_error(ctx->out, "Only via serial or web");
+      return true;
+    }
 
     switch(item->type)
     {
@@ -325,7 +340,7 @@ bool serial_settings_handle_line(char *line,
       case CFG_COLOR:
         {
           uint32_t parsed = 0;
-          if(!parse_u32(value, &parsed))
+          if(!parse_u32(value, &parsed, item->type == CFG_COLOR))
           {
             print_error(ctx->out, "Invalid number");
             return true;
@@ -436,7 +451,7 @@ bool serial_settings_handle_line(char *line,
         ctx->out->print("set ");
         ctx->out->print(items[i].key);
         ctx->out->print("=");
-        print_value(ctx->out, &items[i]);
+        print_item_value(ctx, &items[i]);
         ctx->out->println();
       }
     }

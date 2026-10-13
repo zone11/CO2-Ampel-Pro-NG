@@ -69,6 +69,9 @@
 #define PIN_SWITCH      (2u)
 #define PIN_BUZZER      (4u)
 #define PIN_WS2812      (5u)
+#define PIN_RFM9X_CS    (20u) // PA21
+#define PIN_RFM9X_DIO0  (21u) // PA14
+#define PIN_RFM9X_DIO1  (22u) // PA15
 
 
 // LEDs

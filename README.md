@@ -10,8 +10,8 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 
 **Goals:**
 - ✅ Custom board definition for CO2-Ampel Pro hardware
-- ✅ Full hardware support (LEDs, buzzer, sensors, WiFi)
-- ✅ Multiple build configurations (Pro, Basic, Plus, COVID)
+- ✅ Hardware support: LEDs, buzzer, light sensor, CO2/pressure sensors, WiFi (LoRa radio: self test only)
+- ✅ One firmware image, configured at runtime (thresholds, colors, WiFi, MQTT, ASC)
 - ✅ Works with PlatformIO CLI and IDE
 
 ## Hardware
@@ -31,9 +31,12 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Configurable CO2 thresholds via serial commands (no recompilation needed!)
 - ✅ Customizable LED colors via serial commands
 - ✅ Settings dump feature for backup/restore (key/value)
-- ✅ MQTT support for IoT platforms
+- ✅ MQTT support for IoT platforms (publish only)
+- ✅ Settings with version and CRC, kept across `pio run -t upload`
+- ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 
 **Planned Features:**
+- [ ] Configuration commands over MQTT
 - [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
@@ -47,9 +50,10 @@ The firmware is designed for the CO2-Ampel Pro hardware with WiFi (WINC1500) and
 | Environment | Description |
 |------------|-------------|
 | `co2ampel_pro` | Default build for Pro hardware |
-| `co2ampel_pro_lora` | Pro hardware + LoRa support (future) |
+| `co2ampel_pro_lora` | Placeholder for LoRaWAN; currently the same firmware as `co2ampel_pro` |
 
-**Note:** CO2 thresholds and LED colors are now configurable at runtime via serial commands and saved to flash memory.
+The original firmware's variants (Basic, Plus, COVID) are not separate builds: the hardware is detected at
+boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 ## Usage
 
@@ -62,7 +66,16 @@ All thresholds and colors are configurable via serial commands!
 - **Yellow** (0xFF7F00): 1000-1199 ppm (ventilation recommended)
 - **Red** (0xFF0000): 1200-1399 ppm (ventilation needed)
 - **Red Blinking**: ≥ 1400 ppm (poor air quality)
-- **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation)
+- **Buzzer**: ≥ 1600 ppm (critical - requires immediate ventilation), beeps in time with the blinking
+
+Behavior:
+- The traffic light follows a running average of the CO2 value (updated every second); the SCD30 measures
+  every 5 s and is pressure-compensated automatically when a pressure sensor is present
+- The buzzer stays silent for the first 5 minutes after power-on; a button press mutes it and restarts
+  the 5-minute delay. `sys.buzzer=0` turns it off completely
+- Ambient light is checked 1 minute after boot and then every 10 minutes; in the dark (value < 20) the
+  LEDs dim to brightness 20 and return to `sys.brightness` when it is light again
+- The red status LED blinks briefly with every new measurement (not in the dark)
 
 **Customize your thresholds and colors:**
 ```bash
@@ -90,26 +103,34 @@ get led.color.*
 
 ### Button Functions
 
-- **Short press (100ms-3s)**: Cycle through brightness levels
-- **Long press (>3s)**: Start WiFi Access Point mode (WiFi versions only)
+- **Short press (100ms-3s)**: Halve the LED brightness; below the minimum it jumps back to the default (not saved)
+- **Any press**: mutes the buzzer and restarts its 5-minute start delay
+- **Long press (>3s)**: Start WiFi Access Point mode (WiFi versions only, LEDs turn violet; reboot to leave it)
 - **Hold during power-on**: Enter service menu
 
 ### Service Menu Options
 
-1. **Self Test**: Tests all hardware components
+1. **Self Test**: Buzzer, LEDs, WiFi module (if detected), LoRa radio (reported, optional), then sensors:
+   LED 1 light, LED 2 CO2, LED 3 temperature/pressure, LED 4 humidity turn on when in range
 2. **Air Test**: Live CO2 monitoring with color feedback
-3. **Configuration**: Adjust altitude, temperature offset, buzzer settings
-4. **Calibration**: Manual CO2 sensor calibration (requires fresh air)
+3. **Configuration**: three values in a row, each chosen with short presses and confirmed with a 2 s press
+   (or 10 s timeout): altitude 0–1000 m in 250 m steps (red LEDs), temperature offset 0–8 °C in 2 °C steps
+   (yellow LEDs), buzzer off/on (green). Altitude and offset are stored in the CO2 sensor, the buzzer in the settings
+4. **Calibration**: forced recalibration to 400 ppm in fresh air (see Calibration)
+
+Menu navigation: the number of violet LEDs is the selected option; a short press selects the next one, a 2 s
+press (or 10 s without pressing) starts it.
 
 ### Serial Commands
 
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-remote on      Enable remote control (required for set/save)
+remote on      Enable remote control (required for set/save; LEDs turn violet, traffic light paused)
 remote off     Disable remote control
-status         Show measurements and WiFi/MQTT status
-reset          Reset device (remote must be on)
+status         Show measurements, CO2 sensor info and WiFi/MQTT status
+i2c scan       List responding I2C devices on both buses (with chip IDs)
+reset          Reset device (with remote on it answers OK and turns the LEDs off first)
 version        Query firmware version
 get <key>      Read a single setting
 get <prefix.*> Read a group of settings by prefix
@@ -118,6 +139,8 @@ save           Save settings to flash
 dump           Print all settings as set commands
 help           List all available keys
 ```
+
+Lines may end with CR, LF or CRLF; a line without ending is accepted after 500 ms.
 
 **Key list (settings):**
 ```
@@ -129,6 +152,7 @@ co2.t2
 co2.t3
 co2.t4
 co2.t5
+co2.asc
 led.color.t1
 led.color.t2
 led.color.t3
@@ -145,9 +169,18 @@ mqtt.topic_prefix
 mqtt.interval
 ```
 
+Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
+(`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
+Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
+
+`co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
+WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass`) can only be changed
+via serial or the web form, and passwords are only shown to local (serial) callers. This matters once
+remote configuration (e.g. over MQTT) is added.
+
 ### Settings Backup and Restore
 
-**Important:** Settings are stored in flash and **will be lost** when uploading new firmware. Always backup your settings before updating!
+Settings are stored in flash (last 2 KB, with version and CRC). `pio run -t upload` keeps them: the upload script reads the settings area and writes it back with the new firmware. Flashing with another tool (e.g. plain bossac or the Arduino IDE) erases them, so keep a backup with `dump`. Settings from an incompatible firmware version are replaced by defaults.
 
 **Backup Settings:**
 ```bash
@@ -185,17 +218,27 @@ reset
 get wifi.*
 ```
 
-**Toggle serial measurement output:**
+**Serial measurement output** (off by default): with `sys.serial_output=1` every new measurement is printed as
+```
+c: 812        CO2 (ppm)
+t: 23.4       temperature (°C)
+h: 45.1       humidity (%)
+l: 512        light sensor
+p: 964.10     pressure (hPa, only with a pressure sensor)
+u: 26.80      pressure sensor temperature (°C, only with a pressure sensor)
+```
 ```bash
 remote on
-set sys.serial_output=0
+set sys.serial_output=1
 save
 ```
 
 **Notes:**
-- WiFi credentials are stored in flash (will be lost on firmware update - backup with `dump`)
+- WiFi credentials are stored in flash (kept across `pio run -t upload`; backup with `dump` anyway)
 - After setting WiFi credentials, device will auto-connect on next boot
-- If connection fails, device will create an AP (Access Point) mode instead
+- If the connection fails at boot, the device starts AP (Access Point) mode instead; a lost connection is
+  retried every 30 s (MQTT reconnects every 30 s as well)
+- The device registers as hostname `CO2AMPEL-XX-XX` (last two MAC bytes)
 
 ### WiFi Web Interface
 
@@ -204,21 +247,23 @@ When WiFi is enabled, the device creates either:
 - **AP Mode**: Creates access point `CO2AMPEL-XX-XX`
 
 Available endpoints:
-- `/` - Main web interface with live data
+- `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot)
 - `/json` - JSON API with sensor readings
-- `/cmk-agent` - CheckMK monitoring agent format
+- `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
 
 Example JSON response:
 ```json
-{
-  "c": 800,      // CO2 in ppm
-  "t": 22.5,     // Temperature in °C
-  "h": 45.0,     // Humidity in %
-  "p": 1013.2,   // Pressure in hPa (Pro only)
-  "u": 22.0,     // Secondary temperature (Pro only)
-  "l": 512       // Light sensor value
-}
+{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}
 ```
+`c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
+`u` pressure sensor temperature (°C) only with a pressure sensor. The page `/` refreshes every 2 minutes.
+
+### MQTT
+
+With `mqtt.enabled=1` the device publishes every `mqtt.interval` seconds (default 60) to
+`<mqtt.topic_prefix>/<device id>/<value>`, where the device id is the WiFi MAC address (e.g. `F8F0056E78A2`)
+and the values are `co2`, `temperature`, `humidity`, `light` and, with a pressure sensor, `pressure`.
+Messages are not retained. `mqtt.client_id` only sets the MQTT client id (empty = device id).
 
 ## Calibration
 
@@ -226,19 +271,30 @@ The CO2 sensor should be calibrated periodically via the service menu:
 
 1. Place device in fresh air (outdoor or well-ventilated area)
 2. Wait at least 2 minutes for sensor to stabilize
-3. Enter the service menu (hold button during power-on)
-4. Use the Calibration option and follow on-screen feedback
+3. Enter the service menu (hold button during power-on) and select option 4 (four violet LEDs)
+4. The LEDs turn white; LEDs 3–4 show the current CO2 value (blue ≤ 500, green ≤ 750, yellow ≤ 1500,
+   red above). For about 3 minutes the readings must be stable (±30 ppm, 200–800 ppm), then the sensor is
+   set to 400 ppm. Unstable readings restart the run automatically; a button press aborts it
+5. Done: LEDs blue and a short beep (serial: `Calibration OK`)
 
-Automatic Self-Calibration (ASC) is disabled by default. To enable, set `AUTO_KALIBRIERUNG=1` in `main.cpp` and rebuild. ASC requires 7 days of continuous operation with at least 1 hour of fresh air exposure daily.
+Automatic Self-Calibration (ASC) is disabled by default. Enable it with `remote on`, `set co2.asc=1`, `save`
+(the default for new devices is `AUTO_KALIBRIERUNG` in `include/app_config.h`). ASC requires 7 days of
+continuous operation with at least 1 hour of fresh air exposure daily.
 
 ## Development
 
 ### Adding New Features
 
-1. Edit `src/main.cpp` for firmware changes
-2. Add custom libraries to `lib/` directory
+1. The code is split into modules under `src/`: `main` (setup/loop, traffic light), `sensors`,
+   `led_control`, `settings_storage` (flash), `settings_registry` (key table used by serial and web),
+   `serial_settings`/`serial_console` (serial API), `wifi_manager`, `webserver`, `mqtt_service`,
+   `ui_menu`/`diagnostics` (service menu), `i2c_utils`, `system_control`. Compile-time defaults live in
+   `include/app_config.h`, pins in `variants/co2ampel/variant.h`
+2. New user settings: add the field at the end of `SETTINGS` (`include/app_types.h`), a default in
+   `settings_defaults()`, a migration in `settings_read()` with a `SETTINGS_VERSION` bump
+   (`src/settings_storage.cpp`), and a key in `src/settings_registry.cpp`
 3. Update `platformio.ini` if new dependencies are needed
-4. Test with `pio run -e co2ampel_debug`
+4. Build with `pio run`, upload with `pio run -t upload` (settings are kept)
 
 ### Code Style
 
