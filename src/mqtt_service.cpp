@@ -172,6 +172,71 @@ static void mqtt_handle_command(void)
   }
 }
 
+// Home Assistant MQTT discovery: one retained config per entity under
+// <discovery prefix>/sensor/<device id>/<key>/config, reading from the existing JSON topics.
+typedef struct
+{
+  const char *key;          // JSON key in the state topic
+  const char *name;         // entity name (shown after the device name)
+  const char *state;        // state topic suffix: "sensors" or "wifi"
+  const char *device_class; // NULL = none
+  const char *unit;         // NULL = none
+  bool diagnostic;
+  unsigned int needs;       // required feature bits, 0 = always
+} HA_ENTITY;
+
+static const HA_ENTITY ha_entities[] =
+{
+  { "co2",           "CO2",                         "sensors", "carbon_dioxide",       "ppm", false, 0 },
+  { "temperature",   "Temperature",                 "sensors", "temperature",          "°C",  false, 0 },
+  { "humidity",      "Humidity",                    "sensors", "humidity",             "%",   false, 0 },
+  { "pressure",      "Pressure",                    "sensors", "atmospheric_pressure", "hPa", false, FEATURE_LPS22HB|FEATURE_BMP280 },
+  { "pressure_temp", "Pressure sensor temperature", "sensors", "temperature",          "°C",  true,  FEATURE_LPS22HB|FEATURE_BMP280 },
+  { "light",         "Light",                       "sensors", NULL,                   NULL,  false, 0 },
+  { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0 },
+};
+
+static void mqtt_publish_discovery(void)
+{
+  char device_id[16], topic[96], base[64], json[768];
+  IPAddress ip = WiFi.localIP();
+
+  get_device_id(device_id, sizeof(device_id));
+  snprintf(base, sizeof(base), "%s/%s", settings.mqtt_topic_prefix, device_id);
+
+  for(const HA_ENTITY &e : ha_entities)
+  {
+    snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/sensor/%s/%s/config", device_id, e.key);
+
+    //aus oder Sensor fehlt: leere retained Nachricht entfernt die Entitaet in Home Assistant
+    if(!settings.mqtt_discovery || (e.needs && !(features & e.needs)))
+    {
+      mqttClient.publish(topic, "", true, 0);
+      continue;
+    }
+
+    size_t n = snprintf(json, sizeof(json),
+      "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\","
+      "\"state_topic\":\"%s/%s\",\"value_template\":\"{{ value_json.%s }}\","
+      "\"availability_topic\":\"%s/status\",\"state_class\":\"measurement\"",
+      e.name, device_id, e.key, base, e.state, e.key, base);
+    if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
+    if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
+    if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
+    n += snprintf(json + n, sizeof(json) - n,
+      ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"CO2-Ampel %s\","
+      "\"model\":\"CO2-Ampel Pro\",\"manufacturer\":\"Watterott\",\"sw_version\":\"%s\","
+      "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
+      device_id, device_id + 8, VERSION, ip[0], ip[1], ip[2], ip[3]);
+
+    if(n >= sizeof(json))
+    {
+      continue; //zu lang (sollte nicht vorkommen)
+    }
+    mqttClient.publish(topic, json, true, 0);
+  }
+}
+
 void print_mqtt_status(void)
 {
   Serial.print("MQTT Enabled: ");
@@ -205,6 +270,8 @@ void print_mqtt_status(void)
   Serial.print("Interval: ");
   Serial.print(settings.mqtt_interval);
   Serial.println("s");
+  Serial.print("HA discovery: ");
+  Serial.println(settings.mqtt_discovery ? "on (" MQTT_DISCOVERY_PREFIX ")" : "off");
   Serial.print("Remote config: ");
   Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off");
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
@@ -294,6 +361,7 @@ void mqtt_connect(void)
   if(connected)
   {
     mqttClient.publish(topic, "online", true, 1);
+    mqtt_publish_discovery();
     if(settings.mqtt_config)
     {
       mqttClient.onMessageAdvanced(mqtt_message);

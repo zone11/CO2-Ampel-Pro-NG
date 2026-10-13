@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     3            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     4            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -88,6 +88,7 @@ void settings_defaults(SETTINGS *data)
 
   data->asc           = AUTO_KALIBRIERUNG;
   data->mqtt_config   = MQTT_CONFIG;
+  data->mqtt_discovery = MQTT_DISCOVERY;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -110,6 +111,7 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_enabled  = to_bool(&data->mqtt_enabled);
   data->asc           = to_bool(&data->asc);
   data->mqtt_config   = to_bool(&data->mqtt_config);
+  data->mqtt_discovery = to_bool(&data->mqtt_discovery);
 
   if(data->brightness > 255)                                { data->brightness = def.brightness; changed = true; }
   if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
@@ -172,13 +174,19 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       settings_validate(data);
       return SETTINGS_LOADED;
     }
-    if((rec.version == 1) || (rec.version == 2)) //same layout, newer fields were struct padding
+    if((rec.version >= 1) && (rec.version < SETTINGS_VERSION)) //same layout, newer fields were struct padding
     {
       memcpy(data, &rec.data, sizeof(SETTINGS));
       if(rec.version < 2) { data->asc = AUTO_KALIBRIERUNG; }
-      data->mqtt_config = MQTT_CONFIG;
+      if(rec.version < 3) { data->mqtt_config = MQTT_CONFIG; }
+      if(rec.version < 4) { data->mqtt_discovery = MQTT_DISCOVERY; }
       settings_validate(data);
       return SETTINGS_MIGRATED;
+    }
+    if(rec.version > SETTINGS_VERSION) //nach Downgrade: nicht ueberschreiben, damit neuere Firmware sie wieder findet
+    {
+      settings_defaults(data);
+      return SETTINGS_NEWER;
     }
   }
 
@@ -191,6 +199,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       memcpy(data, &old, sizeof(SETTINGS));
       data->asc = AUTO_KALIBRIERUNG; //padding in the old layout
       data->mqtt_config = MQTT_CONFIG;
+      data->mqtt_discovery = MQTT_DISCOVERY;
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }

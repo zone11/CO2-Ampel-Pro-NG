@@ -188,7 +188,7 @@ void setup()
 
   //Einstellungen
   SETTINGS_LOAD load = settings_read(&settings); //Einstellungen lesen
-  if(load != SETTINGS_LOADED)
+  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
   {
     settings_write(&settings); //Defaults bzw. migrierte Einstellungen speichern
   }
@@ -232,7 +232,8 @@ void setup()
     if(features & FEATURE_WINC1500) { Serial.print(" WINC1500"); }
     Serial.println();
     Serial.print("Settings: ");
-    Serial.println((load == SETTINGS_LOADED) ? "loaded" : (load == SETTINGS_MIGRATED) ? "migrated from old layout" : "defaults");
+    Serial.println((load == SETTINGS_LOADED) ? "loaded" : (load == SETTINGS_MIGRATED) ? "migrated from old layout" :
+                   (load == SETTINGS_NEWER) ? "from newer firmware, using defaults (flash kept until save)" : "defaults");
     Serial.println();
   }
 
