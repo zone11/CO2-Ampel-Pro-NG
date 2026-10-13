@@ -8,6 +8,7 @@
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
+#include "winc_certs.h"
 
 #include <ctype.h>
 
@@ -55,6 +56,8 @@ void serial_service(void)
     return;
   }
 
+  winc_cert_add_poll(Serial);
+
   if(!read_line(line_buf, sizeof(line_buf)))
   {
     return;
@@ -68,6 +71,12 @@ void serial_service(void)
 
   if(*line == 0)
   {
+    return;
+  }
+
+  if(winc_cert_add_active()) //"cert add": Zeilen sind das PEM-Zertifikat
+  {
+    winc_cert_add_line(Serial, line);
     return;
   }
 
@@ -98,6 +107,30 @@ void serial_service(void)
     print_sensor_info();
     print_wifi_status();
     print_mqtt_status();
+    return;
+  }
+  if(strncasecmp(line, "cert ", 5) == 0) //WINC1500 Root-Zertifikate (nur lokal, nicht ueber MQTT)
+  {
+    if(!remote_on)
+    {
+      Serial.println("ERROR: Remote control not enabled");
+    }
+    else if(strcasecmp(line + 5, "list") == 0)
+    {
+      winc_cert_list(Serial);
+    }
+    else if(strcasecmp(line + 5, "add") == 0)
+    {
+      winc_cert_add_begin(Serial);
+    }
+    else if((strncasecmp(line + 5, "remove ", 7) == 0) && isdigit((unsigned char)line[12]))
+    {
+      winc_cert_remove(Serial, (unsigned int)atoi(line + 12));
+    }
+    else
+    {
+      Serial.println("ERROR: use cert list | cert add | cert remove <n>");
+    }
     return;
   }
   if(strcasecmp(line, "i2c scan") == 0)
