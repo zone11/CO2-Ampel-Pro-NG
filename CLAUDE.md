@@ -8,8 +8,8 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - Build: `pio run -e co2ampel_pro` · Upload: `pio run -e co2ampel_pro -t upload` · Monitor: `pio device monitor -b 9600`
 - Board/variant are custom: `boards/co2ampel.json`, `variants/co2ampel/`. USB IDs come from the board JSON
   (`build.hwids[0]` + `vendor`): app = 04D8:EACE, bootloader (sam-ba) = 04D8:EACF. Don't add `-DUSB_*` flags.
-- Upload: the 1200 bps reset is unreliable. Flashing works reliably from a bootloader entered by hand on a cold
-  start, with the device connected directly (no hub). Uploading erases settings.
+- Upload: PlatformIO's built-in 1200 bps reset + bossac is unreliable. What works: 1200 bps touch on the app port,
+  wait for the bootloader PID, pause ~0.5 s, then run bossac. Connect the device directly (no hub). Uploading erases settings.
 - `workfiles/` is local-only (gitignored). `workfiles/private/` holds real credentials: never commit or paste them.
 
 ## Code layout (split into modules, PR #3)
@@ -29,4 +29,6 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 ## Known state (verified 2026-10-13)
 - dev builds cleanly: RAM 18.8 %, Flash 33.0 %; version string is still `0.3` in platformio.ini
 - No warnings from project code (the only remaining one is in the WiFi101 library)
-- Outdated deps: atmelsam 8.3.0→9.0.0, Sensirion SCD4x 0.4→1.1 (major), BMP280 2.6.8→3.0.0 (major), minor bumps for NeoPixel/LPS22HB/MQTT
+- Platform atmelsam 9.0.0. CO2 drivers: Sensirion I2C SCD30 1.1.1 (verified) and SCD4x 1.1.0 (compile-only)
+- Deferred: Adafruit BMP280 stays at 2.6.8 (3.0.0 is a major update, and there's no BMP280 on the dev unit)
+- SCD30 temperature needs ~10 min after boot to settle; compare readings only after warm-up
