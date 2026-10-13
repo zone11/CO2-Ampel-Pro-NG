@@ -266,11 +266,14 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
-| `<base>/co2`, `/temperature`, `/humidity`, `/light`, `/pressure` | plain value (pressure only with a pressure sensor) | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"version":"0.4.0","uptime":3600}` (uptime in seconds) | every interval | yes |
+| `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
+| `<base>/device` | `{"version":"0.4.0","sensors":["SCD30","LPS22HB"]}` (detected sensors) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
+
+`sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023);
+`pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor.
 
 **Remote configuration** (off by default): enable it locally with `remote on`, `set mqtt.config=1`, `save`,
 `reset`. The device then accepts commands on `<base>/cmd`: one or more settings commands (`get`, `set`,

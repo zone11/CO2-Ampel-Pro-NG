@@ -1,6 +1,5 @@
 #include "mqtt_service.h"
 #include "settings_registry.h"
-#include "system_control.h"
 
 #define MQTT_CMD_MAX   400  //max. Laenge eines Befehls auf <base>/cmd (Lesepuffer 512)
 #define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
@@ -368,9 +367,9 @@ void mqtt_reconnect(void)
 
 void mqtt_publish_sensors(void)
 {
-  char topic[128];
-  char value[64];
-  char device_id[32];
+  char topic[96];
+  char json[192];
+  size_t n;
 
   if(!settings.mqtt_enabled)
   {
@@ -382,51 +381,34 @@ void mqtt_publish_sensors(void)
     return;
   }
 
-  //Device-ID aus MAC-Adresse generieren
-  get_device_id(device_id, sizeof(device_id));
-
- /*
-  //Chip-ID holen
-  get_chip_id(chip_id, sizeof(chip_id));
-
-
-  //Chip-ID publizieren
-  sprintf(topic, "%s/%s/chipid", settings.mqtt_topic_prefix, device_id);
-  mqttClient.publish(topic, chip_id, true, 0); //retained, damit immer verfugbar
-  */
-
-  //CO2
-  sprintf(topic, "%s/%s/co2", settings.mqtt_topic_prefix, device_id);
-  sprintf(value, "%d", co2_value);
-  mqttClient.publish(topic, value, false, 0);
-
-  //Temperatur
-  sprintf(topic, "%s/%s/temperature", settings.mqtt_topic_prefix, device_id);
-  sprintf(value, "%.1f", temp_value);
-  mqttClient.publish(topic, value, false, 0);
-
-  //Luftfeuchtigkeit
-  sprintf(topic, "%s/%s/humidity", settings.mqtt_topic_prefix, device_id);
-  sprintf(value, "%.1f", humi_value);
-  mqttClient.publish(topic, value, false, 0);
-
-  //Lichtsensor
-  sprintf(topic, "%s/%s/light", settings.mqtt_topic_prefix, device_id);
-  sprintf(value, "%d", light_value);
-  mqttClient.publish(topic, value, false, 0);
-
-  //Druck (nur Pro Version)
+  //Messwerte als ein JSON (ein konsistenter Datensatz pro Intervall)
+  n = snprintf(json, sizeof(json), "{\"co2\":%u,\"temperature\":%.1f,\"humidity\":%.1f,\"light\":%u",
+               co2_value, temp_value, humi_value, light_value);
   if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
   {
-    sprintf(topic, "%s/%s/pressure", settings.mqtt_topic_prefix, device_id);
-    sprintf(value, "%.1f", pres_value);
-    mqttClient.publish(topic, value, false, 0);
+    n += snprintf(json + n, sizeof(json) - n, ",\"pressure\":%.1f,\"pressure_temp\":%.1f", pres_value, temp2_value);
   }
+  snprintf(json + n, sizeof(json) - n, "}");
+  mqtt_topic(topic, sizeof(topic), "sensors");
+  mqttClient.publish(topic, json, false, 0);
 
-  //Geraet (retained, damit die Version immer abrufbar ist)
-  char json[160];
+  //Geraet: Firmware-Version und erkannte Sensoren (retained, damit immer abrufbar)
+  n = snprintf(json, sizeof(json), "{\"version\":\"%s\",\"sensors\":[", VERSION);
+  const struct { unsigned int feature; const char *name; } sensor_names[] =
+  {
+    { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
+  };
+  bool first = true;
+  for(const auto &s : sensor_names)
+  {
+    if(features & s.feature)
+    {
+      n += snprintf(json + n, sizeof(json) - n, "%s\"%s\"", first ? "" : ",", s.name);
+      first = false;
+    }
+  }
+  snprintf(json + n, sizeof(json) - n, "]}");
   mqtt_topic(topic, sizeof(topic), "device");
-  snprintf(json, sizeof(json), "{\"version\":\"%s\",\"uptime\":%lu}", VERSION, (unsigned long)uptime_seconds());
   mqttClient.publish(topic, json, true, 0);
 
   //WiFi
@@ -440,10 +422,9 @@ void mqtt_publish_sensors(void)
 
   if(features & FEATURE_USB)
   {
+    mqtt_topic(topic, sizeof(topic), "sensors");
     Serial.print("MQTT published to ");
-    Serial.print(settings.mqtt_topic_prefix);
-    Serial.print("/");
-    Serial.println(device_id);
+    Serial.println(topic);
   }
 }
 

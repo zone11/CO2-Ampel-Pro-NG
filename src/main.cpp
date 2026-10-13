@@ -27,7 +27,6 @@
 #include "serial_console.h"
 #include "i2c_utils.h"
 #include "ui_menu.h"
-#include "system_control.h"
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
 
@@ -322,8 +321,6 @@ void loop()
   static unsigned long t_switch=0, t_ampel=0, t_light=~((LICHT_INTERVALL*1000UL*60UL)-60000UL); //Lichtsensor nach 60s pruefen
   static unsigned long t_wifi=0;
   unsigned int overwrite=0;
-
-  uptime_seconds(); //Laufzeit-Zaehler aktuell halten (millis-Ueberlauf)
 
   //serielle Befehle verarbeiten
   serial_service();
