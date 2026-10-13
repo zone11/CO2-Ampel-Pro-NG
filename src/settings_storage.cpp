@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     1            // bump on any SETTINGS layout change
+#define SETTINGS_VERSION     2            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -23,6 +23,9 @@ typedef struct
   SETTINGS data;
   uint32_t crc;       // CRC32 over magic..data
 } SETTINGS_RECORD;
+
+// v1 records are migrated in place, which only works while the layout size stays the same
+static_assert(sizeof(SETTINGS) == 388, "SETTINGS size changed: bump SETTINGS_VERSION and add a migration");
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
@@ -82,6 +85,8 @@ void settings_defaults(SETTINGS *data)
   data->color_t2      = DEFAULT_COLOR_T2;
   data->color_t3      = DEFAULT_COLOR_T3;
   data->color_t4      = DEFAULT_COLOR_T4;
+
+  data->asc           = AUTO_KALIBRIERUNG;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -102,6 +107,7 @@ static bool settings_validate(SETTINGS *data)
   data->valid         = true;
   data->serial_output = to_bool(&data->serial_output);
   data->mqtt_enabled  = to_bool(&data->mqtt_enabled);
+  data->asc           = to_bool(&data->asc);
 
   if(data->brightness > 255)                                { data->brightness = def.brightness; changed = true; }
   if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
@@ -156,12 +162,21 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
 
   memcpy(&rec, (const void *)SETTINGS_FLASH_ADDR, sizeof(rec));
 
-  if((rec.magic == SETTINGS_MAGIC) && (rec.size == sizeof(SETTINGS)) &&
-     (rec.version == SETTINGS_VERSION) && (rec.crc == record_crc(&rec)))
+  if((rec.magic == SETTINGS_MAGIC) && (rec.size == sizeof(SETTINGS)) && (rec.crc == record_crc(&rec)))
   {
-    memcpy(data, &rec.data, sizeof(SETTINGS));
-    settings_validate(data);
-    return SETTINGS_LOADED;
+    if(rec.version == SETTINGS_VERSION)
+    {
+      memcpy(data, &rec.data, sizeof(SETTINGS));
+      settings_validate(data);
+      return SETTINGS_LOADED;
+    }
+    if(rec.version == 1) //v1: same layout, 'asc' was struct padding
+    {
+      memcpy(data, &rec.data, sizeof(SETTINGS));
+      data->asc = AUTO_KALIBRIERUNG;
+      settings_validate(data);
+      return SETTINGS_MIGRATED;
+    }
   }
 
   if(rec.magic != SETTINGS_MAGIC)
@@ -171,6 +186,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
     if(legacy_plausible(&old))
     {
       memcpy(data, &old, sizeof(SETTINGS));
+      data->asc = AUTO_KALIBRIERUNG; //padding in the old layout
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }

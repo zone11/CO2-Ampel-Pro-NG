@@ -135,7 +135,6 @@ void setup()
       scd30.begin(Wire, ADDR_SCD30);
       if(scd30.startPeriodicMeasurement(0) == 0) //0 = keine Druckkompensation
       {
-        scd30.activateAutoCalibration(AUTO_KALIBRIERUNG);
         features |= FEATURE_SCD30;
         break;
       }
@@ -216,6 +215,7 @@ void setup()
       }
     }
   }
+  co2_set_asc(settings.asc); //ASC laut Einstellungen
   ws2812.setBrightness(settings.brightness); //0...255
 
   //USB-Verbindung

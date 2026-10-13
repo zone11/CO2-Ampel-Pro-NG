@@ -9,6 +9,7 @@ float temp_sensor(void);
 float humi_sensor(void);
 float pres_sensor(void);
 unsigned int check_sensors(void);
+void co2_set_asc(bool on);
 void print_measurements(void);
 void print_sensor_info(void);
 void show_data(void);

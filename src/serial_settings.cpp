@@ -188,6 +188,16 @@ static void print_value(Print *out, const cfg_item_t *item)
   }
 }
 
+static void print_item_value(const serial_settings_ctx_t *ctx, const cfg_item_t *item)
+{
+  if((item->flags & CFG_SECRET) && !ctx->local)
+  {
+    ctx->out->print("***");
+    return;
+  }
+  print_value(ctx->out, item);
+}
+
 static const cfg_item_t *find_item(const cfg_item_t *items, size_t count, const char *key)
 {
   for(size_t i = 0; i < count; i++)
@@ -274,7 +284,7 @@ bool serial_settings_handle_line(char *line,
       {
         ctx->out->print(items[i].key);
         ctx->out->print("=");
-        print_value(ctx->out, &items[i]);
+        print_item_value(ctx, &items[i]);
         ctx->out->println();
       }
 
@@ -314,6 +324,11 @@ bool serial_settings_handle_line(char *line,
     if(item == NULL)
     {
       print_error(ctx->out, "Unknown key");
+      return true;
+    }
+    if((item->flags & CFG_LOCAL) && !ctx->local)
+    {
+      print_error(ctx->out, "Only via serial or web");
       return true;
     }
 
@@ -436,7 +451,7 @@ bool serial_settings_handle_line(char *line,
         ctx->out->print("set ");
         ctx->out->print(items[i].key);
         ctx->out->print("=");
-        print_value(ctx->out, &items[i]);
+        print_item_value(ctx, &items[i]);
         ctx->out->println();
       }
     }

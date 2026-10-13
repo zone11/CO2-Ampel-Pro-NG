@@ -122,6 +122,30 @@ float pres_sensor(void)
   return pres_value;
 }
 
+// Automatische Selbstkalibrierung (ASC) setzen, nur wenn abweichend
+void co2_set_asc(bool on)
+{
+  uint16_t asc = 0;
+
+  if(features & FEATURE_SCD30)
+  {
+    if((scd30.getAutoCalibrationStatus(asc) != 0) || ((asc != 0) != on))
+    {
+      scd30.activateAutoCalibration(on ? 1 : 0);
+    }
+  }
+  else if(features & FEATURE_SCD4X)
+  {
+    scd4x.stopPeriodicMeasurement(); //Einstellungen nur im Idle-Modus
+    delay(500);
+    if((scd4x.getAutomaticSelfCalibrationEnabled(asc) != 0) || ((asc != 0) != on))
+    {
+      scd4x.setAutomaticSelfCalibrationEnabled(on ? 1 : 0);
+    }
+    scd4x.startPeriodicMeasurement();
+  }
+}
+
 unsigned int check_sensors(void) //Sensoren auslesen
 {
   if(features & FEATURE_SCD30)

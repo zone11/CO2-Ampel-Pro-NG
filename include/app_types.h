@@ -37,6 +37,7 @@ typedef struct
   uint32_t color_t3;        // Color for range[1] <= CO2 < range[2] (warning)
   uint32_t color_t4;           // Color for CO2 >= range[2] (alert)
   boolean serial_output;      // Enable serial measurement output
+  boolean asc;                // CO2 sensor automatic self-calibration (added in settings v2)
 } SETTINGS;
 
 #endif

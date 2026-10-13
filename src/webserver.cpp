@@ -1,5 +1,5 @@
 #include "webserver.h"
-#include "settings_storage.h"
+#include "settings_registry.h"
 #include "wifi_manager.h"
 
 #include <ctype.h>
@@ -266,10 +266,10 @@ void webserver_service(void)
             }
             if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
             {
-              //todo: Leerzeichen am Ende entfernen
-              strcpy(settings.wifi_ssid, req[0]);
-              strcpy(settings.wifi_code, req[1]);
-              settings_write(&settings); //Einstellungen speichern
+              if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
+              {
+                settings_save(); //Einstellungen speichern
+              }
             }
           }
           //HTTP Header+Daten

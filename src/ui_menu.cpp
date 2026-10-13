@@ -4,7 +4,7 @@
 #include "diagnostics.h"
 #include "led_control.h"
 #include "sensors.h"
-#include "settings_storage.h"
+#include "settings_registry.h"
 
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off)
 {
@@ -150,7 +150,7 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
   }
 
   //Ende
-  settings_write(&settings); //Einstellungen speichern
+  settings_save(); //Einstellungen speichern
   leds(COLOR_BLUE);//LEDs blau
   buzzer(250); //250ms Buzzer an
 
@@ -173,53 +173,8 @@ void calibration(void) //Kalibrierung
     interval = 5; //5s
   }
 
-  //ASC
-  if(features & FEATURE_SCD30)
-  {
-    if(AUTO_KALIBRIERUNG) //ASC on
-    {
-      uint16_t asc = 0;
-      scd30.getAutoCalibrationStatus(asc);
-      if(asc == 0)
-      {
-        scd30.activateAutoCalibration(1);
-      }
-    }
-    else //ASC off
-    {
-      uint16_t asc = 0;
-      scd30.getAutoCalibrationStatus(asc);
-      if(asc != 0)
-      {
-        scd30.activateAutoCalibration(0);
-      }
-    }
-  }
-  else if(features & FEATURE_SCD4X)
-  {
-    scd4x.stopPeriodicMeasurement();
-    delay(1000);
-    if(AUTO_KALIBRIERUNG) //ASC on
-    {
-      uint16_t asc;
-      scd4x.getAutomaticSelfCalibrationEnabled(asc);
-      if(asc == 0)
-      {
-        scd4x.setAutomaticSelfCalibrationEnabled(1);
-      }
-    }
-    else //ASC off
-    {
-      uint16_t asc;
-      scd4x.getAutomaticSelfCalibrationEnabled(asc);
-      if(asc != 0)
-      {
-        scd4x.setAutomaticSelfCalibrationEnabled(0);
-      }
-    }
-    delay(500);
-    scd4x.startPeriodicMeasurement();
-  }
+  //ASC laut Einstellungen (co2.asc)
+  co2_set_asc(settings.asc);
 
   calibration_start:
 
