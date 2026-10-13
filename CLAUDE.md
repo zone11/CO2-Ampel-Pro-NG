@@ -33,5 +33,5 @@ PlatformIO firmware for the Watterott CO2-Ampel Pro (SAMD21G18A). Port of origin
 - v0.4.0. dev builds cleanly: RAM 18.9 %, Flash 35.0 % (of 246 KB; the last 2 KB are reserved for settings)
 - No warnings from project code (the only remaining one is in the WiFi101 library)
 - Platform atmelsam 9.0.0. CO2 drivers: Sensirion I2C SCD30 1.1.1 (verified) and SCD4x 1.1.0 (compile-only)
-- Deferred: Adafruit BMP280 stays at 2.6.8 (3.0.0 is a major update, and there's no BMP280 on the dev unit)
+- Adafruit BMP280 3.0.0: relicense only (BSD → MIT), code identical to 2.6.8; compile-only (no BMP280 on the dev unit)
 - SCD30 temperature needs ~10 min after boot to settle; compare readings only after warm-up
