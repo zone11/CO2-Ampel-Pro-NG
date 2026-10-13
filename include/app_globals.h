@@ -5,7 +5,7 @@
 #include "app_types.h"
 
 #include <SensirionI2cScd30.h>
-#include <SensirionI2CScd4x.h>
+#include <SensirionI2cScd4x.h>
 #include <Adafruit_BMP280.h>
 #include <Arduino_LPS22HB.h>
 #include <Adafruit_NeoPixel.h>
@@ -14,7 +14,7 @@
 
 extern SETTINGS settings;
 extern SensirionI2cScd30 scd30;
-extern SensirionI2CScd4x scd4x;
+extern SensirionI2cScd4x scd4x;
 extern Adafruit_BMP280 bmp280;
 extern LPS22HBClass lps22;
 extern Adafruit_NeoPixel ws2812;

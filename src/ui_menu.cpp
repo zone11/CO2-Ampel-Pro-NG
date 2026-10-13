@@ -202,19 +202,19 @@ void calibration(void) //Kalibrierung
     if(AUTO_KALIBRIERUNG) //ASC on
     {
       uint16_t asc;
-      scd4x.getAutomaticSelfCalibration(asc);
+      scd4x.getAutomaticSelfCalibrationEnabled(asc);
       if(asc == 0)
       {
-        scd4x.setAutomaticSelfCalibration(1);
+        scd4x.setAutomaticSelfCalibrationEnabled(1);
       }
     }
     else //ASC off
     {
       uint16_t asc;
-      scd4x.getAutomaticSelfCalibration(asc);
+      scd4x.getAutomaticSelfCalibrationEnabled(asc);
       if(asc != 0)
       {
-        scd4x.setAutomaticSelfCalibration(0);
+        scd4x.setAutomaticSelfCalibrationEnabled(0);
       }
     }
     delay(500);

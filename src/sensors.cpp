@@ -177,7 +177,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
         pres_last = pres_value;
         scd4x.stopPeriodicMeasurement();
         delay(1000);
-        scd4x.setAmbientPressure(pres_value); //hPa=mBar
+        scd4x.setAmbientPressure((uint32_t)(pres_value * 100)); //hPa -> Pa
         delay(500);
         scd4x.startPeriodicMeasurement();
       }

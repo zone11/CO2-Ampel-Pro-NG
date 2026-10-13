@@ -11,7 +11,7 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <SensirionI2cScd30.h>
-#include <SensirionI2CScd4x.h>
+#include <SensirionI2cScd4x.h>
 #include <Adafruit_BMP280.h>
 #include <Arduino_LPS22HB.h>
 #include <Adafruit_NeoPixel.h>
@@ -35,7 +35,7 @@ extern USBDeviceClass USBDevice; //USBCore.cpp
 
 SETTINGS settings;
 SensirionI2cScd30 scd30;
-SensirionI2CScd4x scd4x;
+SensirionI2cScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
@@ -150,7 +150,7 @@ void setup()
     for(int t=5; t!=0; t--) //try 5 times
     {
       Wire.begin();
-      scd4x.begin(Wire);
+      scd4x.begin(Wire, ADDR_SCD4X);
       scd4x.stopPeriodicMeasurement();
       delay(100);
       if(scd4x.startPeriodicMeasurement() == 0)
