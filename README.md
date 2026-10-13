@@ -36,6 +36,7 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 
 **Planned Features:**
+- [ ] Home Assistant MQTT discovery
 - [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
@@ -272,7 +273,7 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
 
-`sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023);
+`sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023; 1024 until the first reading 1 minute after boot);
 `pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor.
 
 **Remote configuration** (off by default): enable it locally with `remote on`, `set mqtt.config=1`, `save`,
