@@ -130,6 +130,9 @@ remote on      Enable remote control (required for set/save; LEDs turn violet, t
 remote off     Disable remote control
 status         Show measurements, CO2 sensor info and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
+cert list      List the TLS root certificates in the WiFi module (remote on; restarts the device)
+cert add       Add a root certificate: paste the PEM afterwards (remote on; restarts the device)
+cert remove <n> Remove root certificate n from the list (remote on; restarts the device)
 reset          Reset device (with remote on it answers OK and turns the LEDs off first)
 version        Query firmware version
 get <key>      Read a single setting
@@ -284,7 +287,20 @@ against its stored root CAs and against the hostname in `mqtt.broker` (use the n
 not an IP address). TLS 1.2 with RSA certificate chains.
 
 1. Make sure the broker's root CA is in the WiFi module. The module ships with a few roots; Let's Encrypt
-   (ISRG Root X1) is not among them. To add it (a backup of the store is saved first):
+   (ISRG Root X1) is not among them. Directly on the device, in any serial terminal:
+   ```
+   remote on
+   cert add
+   (paste the root certificate, from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----,
+    e.g. "ISRG Root X1" from https://letsencrypt.org/certificates/)
+   ```
+   The device shows the certificate name, writes it, verifies it and restarts. `cert list` shows the
+   stored roots (key size, validity, name hash), `cert remove <n>` removes one. Only RSA root certificates
+   are supported; if the store is full, expired roots are removed (the date comes from the network). WiFi
+   is stopped while the store is changed; a power loss in that moment leaves the store empty (WiFi itself
+   keeps working, the root has to be added again).
+
+   Alternatively from a PC with PlatformIO (also makes a backup of the whole store first):
    ```bash
    pio run -d tools/winc_updater -t upload                    # temporary flash tool, settings are kept
    ~/.platformio/penv/bin/python scripts/winc_rootcert.py add --host mqtt.example.com:8883
