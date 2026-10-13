@@ -5,6 +5,21 @@
 
 #include <Wire.h>
 
+// Sekunden seit Start; zaehlt millis()-Ueberlaeufe (alle 49 Tage), muss daher regelmaessig laufen (loop)
+uint32_t uptime_seconds(void)
+{
+  static uint32_t last_ms = 0, wraps = 0;
+  uint32_t now = millis();
+
+  if(now < last_ms)
+  {
+    wraps++;
+  }
+  last_ms = now;
+
+  return (uint32_t)((((uint64_t)wraps << 32) | now) / 1000);
+}
+
 void reset_mcu(void)
 {
   if(features & FEATURE_USB)

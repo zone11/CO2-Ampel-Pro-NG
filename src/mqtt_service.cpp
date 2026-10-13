@@ -1,4 +1,5 @@
 #include "mqtt_service.h"
+#include "system_control.h"
 
 // Holt die eindeutige Chip-ID des SAMD21
 void get_chip_id(char *buffer, size_t buffer_size)
@@ -21,6 +22,33 @@ void get_device_id(char *buffer, size_t buffer_size)
   WiFi.macAddress(mac);
   snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+}
+
+// Topic <prefix>/<device id>/<suffix>
+static void mqtt_topic(char *buffer, size_t buffer_size, const char *suffix)
+{
+  char device_id[16];
+  get_device_id(device_id, sizeof(device_id));
+  snprintf(buffer, buffer_size, "%s/%s/%s", settings.mqtt_topic_prefix, device_id, suffix);
+}
+
+// Copies src into dst as JSON string content (escapes " and \, drops control characters)
+static void json_escape(char *dst, size_t size, const char *src)
+{
+  size_t n = 0;
+  for(; *src && (n + 2 < size); src++)
+  {
+    if((*src == '"') || (*src == '\\'))
+    {
+      dst[n++] = '\\';
+    }
+    else if((unsigned char)*src < 0x20)
+    {
+      continue;
+    }
+    dst[n++] = *src;
+  }
+  dst[n] = 0;
 }
 
 void print_mqtt_status(void)
@@ -122,7 +150,10 @@ void mqtt_connect(void)
   }
 
   //MQTT Client initialisieren
+  char topic[96];
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, mqttWifiClient);
+  mqtt_topic(topic, sizeof(topic), "status");
+  mqttClient.setWill(topic, "offline", true, 1); //Broker meldet "offline" bei Verbindungsabbruch
 
   //Verbinden
   boolean connected = false;
@@ -139,6 +170,7 @@ void mqtt_connect(void)
 
   if(connected)
   {
+    mqttClient.publish(topic, "online", true, 1);
     if(features & FEATURE_USB)
     {
       Serial.println("MQTT connected successfully");
@@ -260,6 +292,21 @@ void mqtt_publish_sensors(void)
     sprintf(value, "%.1f", pres_value);
     mqttClient.publish(topic, value, false, 0);
   }
+
+  //Geraet (retained, damit die Version immer abrufbar ist)
+  char json[160];
+  mqtt_topic(topic, sizeof(topic), "device");
+  snprintf(json, sizeof(json), "{\"version\":\"%s\",\"uptime\":%lu}", VERSION, (unsigned long)uptime_seconds());
+  mqttClient.publish(topic, json, true, 0);
+
+  //WiFi
+  char ssid[2*32+1];
+  IPAddress ip = WiFi.localIP();
+  json_escape(ssid, sizeof(ssid), WiFi.SSID());
+  mqtt_topic(topic, sizeof(topic), "wifi");
+  snprintf(json, sizeof(json), "{\"ssid\":\"%s\",\"ip\":\"%u.%u.%u.%u\",\"rssi\":%ld}",
+           ssid, ip[0], ip[1], ip[2], ip[3], (long)WiFi.RSSI());
+  mqttClient.publish(topic, json, false, 0);
 
   if(features & FEATURE_USB)
   {
