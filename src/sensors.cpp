@@ -68,27 +68,38 @@ void show_data(void) //Daten anzeigen
   return;
 }
 
-unsigned int light_sensor(void) //Auslesen des Lichtsensors
+// Reads the ambient light sensor. The sensor sits next to the LEDs, so they must be
+// dark during the reading. The sensor supply settles while the LEDs are still on;
+// the LEDs are then switched off only for dark_ms plus the two ADC reads, and the
+// exact pixel buffer is restored afterwards (getPixelColor() is lossy with brightness).
+static unsigned int light_read(unsigned int dark_ms)
 {
   unsigned int i;
-  uint32_t color = ws2812.getPixelColor(0); //aktuelle Farbe speichern
+  uint8_t saved[NUM_LEDS * 3]; //NEO_GRB: 3 bytes per LED, brightness-scaled
 
-  //ws2812.setPixelColor(2, FARBE_AUS); //LED 3 aus
-  ws2812.fill(COLOR_OFF, 0, 4); //alle 4 LEDs aus
-  ws2812.show();
+  memcpy(saved, ws2812.getPixels(), sizeof(saved));
 
   digitalWrite(PIN_LSENSOR_PWR, HIGH); //Lichtsensor an
   delay(40); //40ms warten
+
+  ws2812.clear(); //alle LEDs aus
+  ws2812.show();
+  delay(dark_ms);
   i = analogRead(PIN_LSENSOR); //0...1024
-  delay(10); //10ms warten
   i += analogRead(PIN_LSENSOR); //0...1024
   i /= 2;
+
+  memcpy(ws2812.getPixels(), saved, sizeof(saved));
+  ws2812.show();
+
   digitalWrite(PIN_LSENSOR_PWR, LOW); //Lichtsensor aus
 
-  //ws2812.setPixelColor(2, color); //LED 3 an
-  leds(color);
-
   return i;
+}
+
+unsigned int light_sensor(void) //Auslesen des Lichtsensors
+{
+  return light_read(LICHT_DUNKEL_MS);
 }
 
 float co2_sensor(void)

@@ -41,6 +41,7 @@
 //--- Lichtsensor ---
 #define LICHT_DUNKEL       20   //<20 -> dunkel
 #define LICHT_INTERVALL    10 //10-120min (Sensorpruefung)
+#define LICHT_DUNKEL_MS    3  //ms LEDs aus vor der Messung (Sensor reagiert sofort)
 
 //--- Allgemein ---
 #define INTERVALL          5 //2-1800s Messintervall (nur SCD30, SCD4X immer 5s)
