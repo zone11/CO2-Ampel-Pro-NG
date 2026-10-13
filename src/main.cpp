@@ -42,7 +42,7 @@ LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
 WiFiServer server(80); //Webserver Port 80
 WiFiClient mqttWifiClient;
-MQTTClient mqttClient(256); //256 Byte Buffer
+MQTTClient mqttClient(512, 1536); //Lesen 512 Byte (Befehle), Schreiben 1536 Byte (Antworten bis ~1.4 KB)
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;

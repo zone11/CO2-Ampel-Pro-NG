@@ -1,5 +1,47 @@
 #include "mqtt_service.h"
+#include "settings_registry.h"
 #include "system_control.h"
+
+#define MQTT_CMD_MAX   400  //max. Laenge eines Befehls auf <base>/cmd (Lesepuffer 512)
+#define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
+
+typedef enum { CMD_NONE, CMD_READY, CMD_TOO_LONG } CMD_STATE;
+
+static char cmd_pending[MQTT_CMD_MAX + 1];
+static volatile CMD_STATE cmd_state = CMD_NONE;
+
+// Collects a command reply as text; lines end with \n only
+class ReplyBuffer : public Print
+{
+public:
+  void clear(void) { len = 0; overflow = false; buf[0] = 0; }
+  const char *c_str(void) const { return buf; }
+  size_t write(uint8_t c) override
+  {
+    static const char truncated[] = "\n...truncated";
+    if(c == '\r')
+    {
+      return 1;
+    }
+    if(len < (sizeof(buf) - sizeof(truncated)))
+    {
+      buf[len++] = (char)c;
+      buf[len] = 0;
+    }
+    else if(!overflow)
+    {
+      overflow = true;
+      memcpy(&buf[len], truncated, sizeof(truncated)); //inkl. Nullterminator
+    }
+    return 1;
+  }
+private:
+  char buf[MQTT_REPLY_MAX + 1];
+  size_t len = 0;
+  bool overflow = false;
+};
+
+static ReplyBuffer reply;
 
 // Holt die eindeutige Chip-ID des SAMD21
 void get_chip_id(char *buffer, size_t buffer_size)
@@ -51,6 +93,86 @@ static void json_escape(char *dst, size_t size, const char *src)
   dst[n] = 0;
 }
 
+// Called from mqttClient.loop(). The library must not publish from here, so the command is only
+// stored and handled by mqtt_handle_command() after loop() returns.
+static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int length)
+{
+  (void)client;
+  (void)topic; //nur <base>/cmd ist abonniert
+
+  if(length <= 0) //leer = eigenes Loeschen eines retained Befehls
+  {
+    return;
+  }
+  if(cmd_state != CMD_NONE) //vorheriger Befehl noch nicht bearbeitet
+  {
+    return;
+  }
+  if(length > MQTT_CMD_MAX)
+  {
+    cmd_state = CMD_TOO_LONG;
+    return;
+  }
+  memcpy(cmd_pending, bytes, length);
+  cmd_pending[length] = 0;
+  cmd_state = CMD_READY;
+}
+
+// Runs every line of the pending command through the settings API (as a remote caller:
+// secrets masked, CFG_LOCAL keys refused) and publishes the reply on <base>/resp.
+static void mqtt_handle_command(void)
+{
+  char topic[96];
+  char first[32] = "";
+
+  //retained Befehl loeschen, damit er nicht bei jeder Verbindung erneut ausgefuehrt wird
+  mqtt_topic(topic, sizeof(topic), "cmd");
+  mqttClient.publish(topic, "", true, 0);
+
+  reply.clear();
+  if(cmd_state == CMD_TOO_LONG)
+  {
+    reply.print("ERROR: Command too long (max ");
+    reply.print(MQTT_CMD_MAX);
+    reply.println(" bytes)");
+  }
+  else
+  {
+    for(char *line = strtok(cmd_pending, "\n"); line != NULL; line = strtok(NULL, "\n"))
+    {
+      size_t n = strlen(line);
+      if((n > 0) && (line[n - 1] == '\r'))
+      {
+        line[n - 1] = 0;
+      }
+      if(first[0] == 0)
+      {
+        sscanf(line, "%31s", first); //nur das Kommando fuers Log, keine Werte
+      }
+      if(!settings_handle_line(line, &reply, true, false))
+      {
+        if(line[strspn(line, " \t")] != 0) //Leerzeilen ignorieren
+        {
+          reply.println("ERROR: Unknown command");
+        }
+      }
+    }
+  }
+  cmd_state = CMD_NONE;
+
+  if(reply.c_str()[0] != 0)
+  {
+    mqtt_topic(topic, sizeof(topic), "resp");
+    mqttClient.publish(topic, reply.c_str(), false, 0);
+  }
+
+  if(features & FEATURE_USB)
+  {
+    Serial.print("MQTT cmd: ");
+    Serial.println(first[0] ? first : "(too long)");
+  }
+}
+
 void print_mqtt_status(void)
 {
   Serial.print("MQTT Enabled: ");
@@ -84,6 +206,8 @@ void print_mqtt_status(void)
   Serial.print("Interval: ");
   Serial.print(settings.mqtt_interval);
   Serial.println("s");
+  Serial.print("Remote config: ");
+  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off");
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
   {
     Serial.print("WiFi: ");
@@ -171,6 +295,12 @@ void mqtt_connect(void)
   if(connected)
   {
     mqttClient.publish(topic, "online", true, 1);
+    if(settings.mqtt_config)
+    {
+      mqttClient.onMessageAdvanced(mqtt_message);
+      mqtt_topic(topic, sizeof(topic), "cmd");
+      mqttClient.subscribe(topic, 0);
+    }
     if(features & FEATURE_USB)
     {
       Serial.println("MQTT connected successfully");
@@ -333,6 +463,19 @@ void mqtt_service(void)
 
   //MQTT Loop (non-blocking)
   mqttClient.loop();
+
+  //Befehl aus <base>/cmd bearbeiten (ausserhalb des Callbacks)
+  if(cmd_state != CMD_NONE)
+  {
+    if(settings.mqtt_config && mqttClient.connected())
+    {
+      mqtt_handle_command();
+    }
+    else
+    {
+      cmd_state = CMD_NONE;
+    }
+  }
 
   //Verbindung pruefen
   if(!mqttClient.connected())
