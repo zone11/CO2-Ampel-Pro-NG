@@ -33,11 +33,11 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Settings dump feature for backup/restore (key/value)
 - ✅ MQTT support: measurements, device/WiFi info, online status, remote configuration
 - ✅ Home Assistant MQTT discovery
+- ✅ MQTTS (MQTT over TLS, certificate and hostname checked)
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 
 **Planned Features:**
-- [ ] MQTTS (secure MQTT with TLS)
 - [ ] LoRaWAN/TTN integration
 - [ ] Enhanced web interface with charts
 - [ ] Over-the-air (OTA) firmware updates
@@ -162,6 +162,7 @@ wifi.pass
 mqtt.enabled
 mqtt.broker
 mqtt.port
+mqtt.tls
 mqtt.user
 mqtt.pass
 mqtt.client_id
@@ -176,7 +177,7 @@ Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with o
 Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
-WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/user/pass/ha/config`) can only be
+WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) can only be
 changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
 read as `***`.
 
@@ -277,6 +278,24 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 
 `sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023; 1024 until the first reading 1 minute after boot);
 `pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor.
+
+**MQTTS (TLS)** (off by default): the WiFi module does the TLS itself and checks the broker certificate
+against its stored root CAs and against the hostname in `mqtt.broker` (use the name from the certificate,
+not an IP address). TLS 1.2 with RSA certificate chains.
+
+1. Make sure the broker's root CA is in the WiFi module. The module ships with a few roots; Let's Encrypt
+   (ISRG Root X1) is not among them. To add it (a backup of the store is saved first):
+   ```bash
+   pio run -d tools/winc_updater -t upload                    # temporary flash tool, settings are kept
+   ~/.platformio/penv/bin/python scripts/winc_rootcert.py add --host mqtt.example.com:8883
+   pio run -e co2ampel_pro -t upload                          # firmware back
+   ```
+   `scripts/winc_rootcert.py list` shows the stored roots, `add --pem root.pem` adds a root from a file,
+   `restore <backup>.bin` restores a backup. If the store is full, expired roots are removed.
+2. Switch MQTT to TLS: `remote on`, `set mqtt.tls=1`, `set mqtt.port=8883`, `save`, `reset`.
+
+If the connection fails, the boot log shows `TLS: root CA stored in the WINC1500? Does mqtt.broker match
+the certificate?`.
 
 **Home Assistant discovery** (off by default): enable it with `remote on`, `set mqtt.ha=1`, `save`, `reset`.
 On every connect the device then publishes
