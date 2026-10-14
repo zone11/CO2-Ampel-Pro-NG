@@ -37,6 +37,8 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ PC tool for provisioning (settings + TLS root certificate in one run, no extra flashing)
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
+- ✅ LED brightness: maximum, dark level, automatic dimming on/off, LEDs + buzzer off (`led.*`)
+- ✅ Optional enable password for serial, MQTT and the web form; settings as JSON (`dump json`)
 
 **Planned Features:**
 - [ ] LoRaWAN/TTN integration
@@ -84,13 +86,16 @@ Behavior:
 - The buzzer stays silent for the first 5 minutes after power-on; a button press mutes it and restarts
   the 5-minute delay. `sys.buzzer=0` turns it off completely
 - Ambient light is checked 1 minute after boot and then every 10 minutes; in the dark (value < 20) the
-  LEDs dim to brightness 20 and return to `sys.brightness` when it is light again
+  LEDs dim to `led.brightness_dark` and return to `led.brightness` when it is light again (`led.auto=0`:
+  always `led.brightness`)
+- `led.disable=1` turns the LEDs, the status LED and the buzzer off (e.g. at night over MQTT); measuring
+  and MQTT continue. Without `save` it lasts until the next restart
 - The red status LED blinks briefly with every new measurement (not in the dark)
 
 **Customize your thresholds and colors:**
 ```bash
 # Example: Set stricter thresholds (COVID mode)
-remote on
+enable
 set co2.t1=600
 set co2.t2=800
 set co2.t3=1000
@@ -99,7 +104,7 @@ set co2.t5=1400
 save
 
 # Example: Change LED colors
-remote on
+enable
 set led.color.t1=0000FF
 set led.color.t2=00FF00
 set led.color.t3=FFA500
@@ -113,7 +118,8 @@ get led.color.*
 
 ### Button Functions
 
-- **Short press (100ms-3s)**: Halve the LED brightness; below the minimum it jumps back to the default (not saved)
+- **Short press (100ms-3s)**: Halve the LED brightness; below `led.brightness_dark` it jumps back to
+  `led.brightness` (not saved)
 - **Any press**: mutes the buzzer and restarts its 5-minute start delay
 - **Long press (>3s)**: Start WiFi Access Point mode (WiFi versions only, LEDs turn violet; reboot to leave it)
 - **Hold during power-on**: Enter service menu
@@ -136,18 +142,19 @@ press (or 10 s without pressing) starts it.
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-remote on      Enable remote control (required for set/save; LEDs turn violet, traffic light paused)
-remote off     Disable remote control
+enable [pw]    Allow changes (set/save; LEDs violet, traffic light paused); with sys.password: enable <password>
+exit           Leave enable mode
 status         Show measurements, CO2 sensor info and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
-winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (remote on; restarts the device)
-reset          Reset device (with remote on it answers OK and turns the LEDs off first)
+winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (enable; restarts the device)
+reset          Reset device (after enable it answers OK and turns the LEDs off first)
 version        Query firmware version
 get <key>      Read a single setting
 get <prefix.*> Read a group of settings by prefix
 set <key>=<v>  Update a setting value
 save           Save settings to flash
-dump           Print all settings as set commands
+dump           Print all settings as set commands (backup, provisioning format)
+dump json      Print all settings as one JSON object
 help           List all available keys
 ```
 
@@ -156,7 +163,7 @@ Lines may end with CR, LF or CRLF; a line without ending is accepted after 500 m
 **Key list (settings):**
 ```
 sys.serial_output
-sys.brightness
+sys.password
 sys.buzzer
 co2.t1
 co2.t2
@@ -164,6 +171,10 @@ co2.t3
 co2.t4
 co2.t5
 co2.asc
+led.brightness
+led.brightness_dark
+led.auto
+led.disable
 led.color.t1
 led.color.t2
 led.color.t3
@@ -187,6 +198,17 @@ Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with o
 (`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
 Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
+LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
+the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
+`status` shows the current LED state. `dump json` gives all settings in one line, e.g.
+`{"sys.serial_output":false,...,"led.color.t1":"007CB0",...}` (numbers, `true`/`false`, colors as hex).
+
+**Enable password** (`sys.password`, empty = none): once set (`enable`, `set sys.password=...`, `save`),
+`enable <password>` is required before `get`, `dump`, `set`, `save` and `winc bridge`; the web WiFi form
+asks for it as well and an MQTT command must start with the line `enable <password>`. A wrong password
+locks further attempts for 1, 2, 4 ... 30 s. A forgotten password can only be cleared with a factory reset,
+which erases all settings: `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`.
+
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
 WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) can only be
 changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
@@ -195,9 +217,10 @@ read as `***`.
 ### Provisioning (before deployment)
 
 `scripts/co2ampel_tool.py provision --config site.txt` sets up a device in one run: it sends the
-`set key=value` lines of the file (same format as `dump`; `remote on`, `save`, `reset` and `#` comments
-are ignored), saves, installs the MQTT broker's root CA if `mqtt.tls` is on, restarts the device and reports
-whether MQTT connects. Values are never printed; if a value is rejected, nothing is saved.
+`set key=value` lines of the file (same format as `dump`; `enable`, `exit`, `save`, `reset` and `#`
+comments are ignored), saves, installs the MQTT broker's root CA if `mqtt.tls` is on, restarts the device and reports
+whether MQTT connects. Values are never printed; if a value is rejected, nothing is saved. With an enable
+password set, export it first: `export CO2AMPEL_PASSWORD=...` (all tool commands use it).
 
 ```
 # site.txt
@@ -232,8 +255,8 @@ You can configure WiFi settings via serial commands:
 # 1. Connect to serial monitor
 pio device monitor -b 9600
 
-# 2. Enable remote control
-remote on
+# 2. Allow changes
+enable
 
 # 3. Set WiFi credentials
 set wifi.ssid=YourWiFiSSID
@@ -262,7 +285,7 @@ p: 964.10     pressure (hPa, only with a pressure sensor)
 u: 26.80      pressure sensor temperature (°C, only with a pressure sensor)
 ```
 ```bash
-remote on
+enable
 set sys.serial_output=1
 save
 ```
@@ -281,7 +304,8 @@ When WiFi is enabled, the device creates either:
 - **AP Mode**: Creates access point `CO2AMPEL-XX-XX`
 
 Available endpoints:
-- `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot)
+- `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot; with
+  `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
 - `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
 
@@ -335,12 +359,12 @@ not an IP address). TLS 1.2 with RSA certificate chains.
    The root CA is only needed once: renewed broker certificates (e.g. Let's Encrypt every few months)
    need nothing on the device. Run the tool again when the broker moves to another CA, or after a
    firmware update of the WiFi module itself (that resets the store to the factory roots).
-2. Switch MQTT to TLS: `remote on`, `set mqtt.tls=1`, `set mqtt.port=8883`, `save`, `reset`.
+2. Switch MQTT to TLS: `enable`, `set mqtt.tls=1`, `set mqtt.port=8883`, `save`, `reset`.
 
 If the connection fails, the boot log shows `TLS: root CA stored in the WINC1500? Does mqtt.broker match
 the certificate?`.
 
-**Home Assistant discovery** (off by default): enable it with `remote on`, `set mqtt.ha=1`, `save`, `reset`.
+**Home Assistant discovery** (off by default): enable it with `enable`, `set mqtt.ha=1`, `save`, `reset`.
 On every connect the device then publishes
 retained discovery configs to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
 the MQTT integration) creates a device "CO2-Ampel XXXX" with the entities CO2, Temperature, Humidity,
@@ -349,9 +373,9 @@ diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and becom
 `<base>/status` is `offline`. With `set mqtt.ha=0`, `save`, `reset` the device removes its entities
 again (empty retained configs).
 
-**Remote configuration** (off by default): enable it locally with `remote on`, `set mqtt.config=1`, `save`,
+**Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`,
 `reset`. The device then accepts commands on `<base>/cmd`: one or more settings commands (`get`, `set`,
-`save`, `dump`, `help`), one per line, max. 400 bytes. The reply has the same text as on serial
+`save`, `dump`, `dump json`, `help`), one per line, max. 400 bytes. The reply has the same text as on serial
 (`OK`, `ERROR: ...`, `key=value`), one line per result, on `<base>/resp`.
 
 ```bash
@@ -362,7 +386,9 @@ mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'set co2.t1=
 ```
 
 Rules and notes:
-- No `remote on` is needed over MQTT; changes apply like on serial and are kept only after `save`
+- No `enable` is needed over MQTT, unless `sys.password` is set: then the first line must be
+  `enable <password>` (use TLS, the password travels in the message). Changes apply like on serial and are
+  kept only after `save`; e.g. `set led.disable=1` in the evening and `set led.disable=0` in the morning
 - Passwords read as `***`, and WiFi/MQTT connection settings (including `mqtt.config` itself) are refused
   with `ERROR: Only via serial or web`, so a remote mistake can't cut the device off the network
 - After handling a command the device clears `<base>/cmd` with an empty retained message, so a command
@@ -383,7 +409,7 @@ The CO2 sensor should be calibrated periodically via the service menu:
    set to 400 ppm. Unstable readings restart the run automatically; a button press aborts it
 5. Done: LEDs blue and a short beep (serial: `Calibration OK`)
 
-Automatic Self-Calibration (ASC) is disabled by default. Enable it with `remote on`, `set co2.asc=1`, `save`
+Automatic Self-Calibration (ASC) is disabled by default. Enable it with `enable`, `set co2.asc=1`, `save`
 (the default for new devices is `AUTO_KALIBRIERUNG` in `include/app_config.h`). ASC requires 7 days of
 continuous operation with at least 1 hour of fresh air exposure daily.
 
