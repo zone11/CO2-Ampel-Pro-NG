@@ -229,8 +229,8 @@ json import {"co2.t1":650,"co2.t2":900,"led.brightness":80,"save":true}
 
 **Enable password** (`sys.password`, empty = none): once set (`enable`, `set sys.password=...`, `save`),
 `enable <password>` is required before `get`, `dump`, `json export/import`, `set`, `save` and
-`winc bridge`; the web WiFi form and the web JSON import ask for it as well (without a password both are
-open to anyone on the network). MQTT needs no password: protect `<base>/cmd` with broker ACLs. A wrong password
+`winc bridge`; the web WiFi form and the web configuration page ask for it as well (without a password
+both are open to anyone on the network, except for the passwords themselves). MQTT needs no password: protect `<base>/cmd` with broker ACLs. A wrong password
 locks further attempts for 1, 2, 4 ... 30 s. A forgotten password can only be cleared with a factory reset,
 which erases all settings: `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`.
 
@@ -340,7 +340,12 @@ Available endpoints:
   `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
 - `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
-- `/config` - JSON import (paste e.g. a `json export`; saved immediately, asks for `sys.password` if set)
+- `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,
+  an empty password field keeps the current one), "Save" stores immediately (all or nothing, like
+  `json import`); JSON upload (file or paste) and download; restart button (WiFi/MQTT changes apply after
+  a restart). With `sys.password` set, every action asks for it
+- `/config.json` - Download of all settings as JSON, passwords as `***` (importing such a file keeps the
+  current passwords); with `sys.password` set, the config page also offers a download with passwords
 
 Example JSON response:
 ```json
