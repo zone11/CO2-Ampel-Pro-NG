@@ -25,7 +25,6 @@ static bool on_save_settings(void *user)
 static const cfg_item_t settings_items[] =
 {
   { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
-  { "sys.brightness",   CFG_U32,   &settings.brightness,     0, 255, 0, apply_brightness },
   { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },
   { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL },
   { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL },
@@ -33,6 +32,10 @@ static const cfg_item_t settings_items[] =
   { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, NULL },
   { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, NULL },
   { "co2.asc",          CFG_BOOL,  &settings.asc,            0, 0, 0, apply_asc },
+  { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness },
+  { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness },
+  { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness },
+  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, NULL },
   { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },

@@ -52,6 +52,8 @@
 //--- Ampelhelligkeit (LEDs) ---
 #define HELLIGKEIT         125 //1-255 (255=100%, 179=70%)
 #define HELLIGKEIT_DUNKEL  20  //1-255 (255=100%, 25=10%)
+#define HELLIGKEIT_AUTO    1   //1 = mit dem Lichtsensor abdunkeln (led.auto)
+#define HELLIGKEIT_REMOTE  30  //Helligkeit bei "enable" und im Servicemenue
 #define NUM_LEDS           4   //Anzahl der LEDs
 
 //--- Lichtsensor ---

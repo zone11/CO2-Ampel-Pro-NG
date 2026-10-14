@@ -77,7 +77,7 @@ void serial_service(void)
   {
     remote_on = 1;
     buzzer(0);
-    ws2812.setBrightness(30);
+    led_brightness_update();
     leds(COLOR_MENU);
     Serial.println("OK");
     return;
@@ -85,7 +85,7 @@ void serial_service(void)
   if(strcasecmp(line, "exit") == 0)
   {
     remote_on = 0;
-    ws2812.setBrightness(settings.brightness);
+    led_brightness_update();
     Serial.println("OK");
     return;
   }
@@ -98,6 +98,7 @@ void serial_service(void)
   {
     print_measurements();
     print_sensor_info();
+    print_led_status();
     print_wifi_status();
     print_mqtt_status();
     return;

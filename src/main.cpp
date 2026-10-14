@@ -220,7 +220,7 @@ void setup()
     }
   }
   co2_set_asc(settings.asc); //ASC laut Einstellungen
-  ws2812.setBrightness(settings.brightness); //0...255
+  led_brightness_update();
 
   //USB-Verbindung
   if(USBDevice.connected()) //(Serial) nutzt Flow-Control zur Erkennung
@@ -381,12 +381,7 @@ void loop()
     }
     else if((millis()-t_switch) > 100) //100ms Tastendruck
     {
-      settings.brightness = settings.brightness/2; //Helligkeit halbieren
-      if(settings.brightness < HELLIGKEIT_DUNKEL)
-      {
-        settings.brightness = HELLIGKEIT;
-      }
-      ws2812.setBrightness(settings.brightness);
+      led_button_step(); //Helligkeit halbieren (nicht gespeichert)
       overwrite = 1;
     }
   }
@@ -414,7 +409,7 @@ void loop()
     if(check_sensors())
     {
       show_data();
-      if(dark == 0)
+      if((dark == 0) && !settings.led_disable)
       {
         status_led(2); //Status-LED
       }
@@ -450,10 +445,7 @@ void loop()
         if(dark == 0)
         {
           dark = 1;
-          if(settings.brightness > HELLIGKEIT_DUNKEL)
-          {
-            ws2812.setBrightness(HELLIGKEIT_DUNKEL); //dunkel
-          }
+          led_set_dark(true); //dunkel (nur mit led.auto)
         }
       }
       else
@@ -461,7 +453,7 @@ void loop()
         if(dark == 1)
         {
           dark = 0;
-          ws2812.setBrightness(settings.brightness); //hell
+          led_set_dark(false); //hell
         }
       }
     }

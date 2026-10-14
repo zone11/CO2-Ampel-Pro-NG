@@ -6,11 +6,59 @@ void leds(uint32_t color)
   ws2812.show();
 }
 
+static unsigned int led_level = 0; //aktuelle Stufe (Taster), 0 = led.brightness
+static bool led_dark = false;
+
+void led_brightness_update(void)
+{
+  unsigned int level = (led_level > 0) ? led_level : settings.brightness;
+
+  if(remote_on)
+  {
+    level = HELLIGKEIT_REMOTE;
+  }
+  else if(settings.led_auto && led_dark && (settings.brightness_dark < level))
+  {
+    level = settings.brightness_dark;
+  }
+  ws2812.setBrightness(level);
+}
+
+void led_set_dark(bool dark)
+{
+  led_dark = dark;
+  led_brightness_update();
+}
+
+void led_button_step(void)
+{
+  unsigned int level = ((led_level > 0) ? led_level : settings.brightness) / 2;
+  unsigned int min = settings.led_auto ? settings.brightness_dark : 1;
+
+  led_level = ((level < min) || (level < 1)) ? 0 : level; //unter dem Minimum: zurueck zum Maximum
+  led_brightness_update();
+}
+
+void print_led_status(void)
+{
+  Serial.print("LEDs: ");
+  if(settings.led_disable)
+  {
+    Serial.println("off (led.disable)");
+    return;
+  }
+  Serial.print("brightness ");
+  Serial.print(ws2812.getBrightness());
+  Serial.print(led_dark ? " (dark" : " (light");
+  Serial.println(settings.led_auto ? ", auto)" : ", fixed)");
+}
+
 bool apply_brightness(void *user, const cfg_item_t *item)
 {
   (void)user;
   (void)item;
-  ws2812.setBrightness(settings.brightness);
+  led_level = 0;
+  led_brightness_update();
   ws2812.show();
   return true;
 }
@@ -60,6 +108,13 @@ void buzzer(unsigned int on)
 void ampel(unsigned int co2)
 {
   static unsigned int blinken=0;
+
+  if(settings.led_disable) //LEDs und Buzzer aus (z.B. nachts)
+  {
+    leds(FARBE_AUS);
+    buzzer(0);
+    return;
+  }
 
   //LEDs
   if(co2 < settings.range[0]) //blau (very fresh air)

@@ -275,7 +275,7 @@ void menu(void)
 {
   unsigned int value;
 
-  ws2812.setBrightness(30); //0...255
+  ws2812.setBrightness(HELLIGKEIT_REMOTE); //0...255
   leds(FARBE_VIOLETT); //LEDs violett
   delay(500); //500ms warten
   leds(FARBE_AUS); //LEDs aus
@@ -291,7 +291,7 @@ void menu(void)
     case 4: calibration();      break;
   }
 
-  ws2812.setBrightness(settings.brightness); //0...255
+  led_brightness_update();
   leds(ws2812.Color(20,20,20));//LEDs weiss
 
   return;
