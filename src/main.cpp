@@ -45,7 +45,11 @@ WiFiServer server(80); //Webserver Port 80
 #endif
 WiFiClient mqttWifiClient;
 VerifiedSSLClient mqttSslClient; //TLS im WINC1500 inkl. Hostname-Pruefung (Root-Zertifikat muss im WINC gespeichert sein)
-MQTTClient mqttClient(512, 1536); //Lesen 512 Byte (Befehle), Schreiben 1536 Byte (Antworten bis ~1.4 KB)
+#if WITH_MQTT_CONFIG
+MQTTClient mqttClient(1200, 1536); //Lesen: JSON-Befehle bis 1 KB, Schreiben: Antworten bis ~1.4 KB
+#else
+MQTTClient mqttClient(256, 1536);
+#endif
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;

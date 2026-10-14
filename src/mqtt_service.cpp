@@ -3,7 +3,7 @@
 #include "settings_registry.h"
 
 #if WITH_MQTT_CONFIG
-#define MQTT_CMD_MAX   400  //max. Laenge eines Befehls auf <base>/cmd (Lesepuffer 512)
+#define MQTT_CMD_MAX   1024 //max. JSON auf <base>/cmd (Lesepuffer MQTT_READ_BUF in main.cpp)
 #define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
 
 typedef enum { CMD_NONE, CMD_READY, CMD_TOO_LONG } CMD_STATE;
@@ -126,46 +126,28 @@ static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int len
 static void mqtt_handle_command(void)
 {
   char topic[96];
-  char first[32] = "";
 
   //retained Befehl loeschen, damit er nicht bei jeder Verbindung erneut ausgefuehrt wird
   mqtt_topic(topic, sizeof(topic), "cmd");
   mqttClient.publish(topic, "", true, 0);
 
+  //nur JSON (wie "json import"): Einstellungen ohne Passwort, Schutz ueber die Broker-ACLs;
+  //Verbindungsdaten (CFG_LOCAL) bleiben gesperrt
   reply.clear();
+  const char *json = cmd_pending + strspn(cmd_pending, " \t\r\n");
   if(cmd_state == CMD_TOO_LONG)
   {
-    reply.print("ERROR: Command too long (max ");
+    reply.print("{\"result\":\"ERROR\",\"errors\":{\"payload\":\"too long (max ");
     reply.print(MQTT_CMD_MAX);
-    reply.println(" bytes)");
+    reply.println(" bytes)\"}}");
+  }
+  else if(*json != '{')
+  {
+    reply.println("{\"result\":\"ERROR\",\"errors\":{\"payload\":\"JSON object expected\"}}");
   }
   else
   {
-    bool enabled = !settings_password_set(); //mit Passwort: erste Zeile "enable <password>"
-    for(char *line = strtok(cmd_pending, "\n"); line != NULL; line = strtok(NULL, "\n"))
-    {
-      size_t n = strlen(line);
-      if((n > 0) && (line[n - 1] == '\r'))
-      {
-        line[n - 1] = 0;
-      }
-      if(first[0] == 0)
-      {
-        sscanf(line, "%31s", first); //nur das Kommando fuers Log, keine Werte
-      }
-      if((strncasecmp(line, "enable", 6) == 0) && ((line[6] == 0) || (line[6] == ' ')))
-      {
-        enabled = settings_enable(line + ((line[6] == ' ') ? 7 : 6), &reply);
-        continue;
-      }
-      if(!settings_handle_line(line, &reply, enabled, false))
-      {
-        if(line[strspn(line, " \t")] != 0) //Leerzeilen ignorieren
-        {
-          reply.println("ERROR: Unknown command");
-        }
-      }
-    }
+    settings_json_import(json, &reply, false, true);
   }
   cmd_state = CMD_NONE;
 
@@ -178,7 +160,7 @@ static void mqtt_handle_command(void)
   if(features & FEATURE_USB)
   {
     Serial.print("MQTT cmd: ");
-    Serial.println(first[0] ? first : "(too long)");
+    Serial.println(reply.c_str()[11] == 'O' ? "OK" : "ERROR"); //{"result":"OK"...
   }
 }
 #endif //WITH_MQTT_CONFIG
