@@ -219,7 +219,7 @@ static void config_page(WiFiClient &client, const char *result)
             "<script>function pw(f){var p=document.getElementById('pw'),h=f.elements[0];if(p)h.value=p.value;}\r\n"
             "function ld(i){var r=new FileReader();r.onload=function(){document.getElementById('j').value=r.result;};"
             "r.readAsText(i.files[0]);}</script>\r\n"
-            "</head><body>\r\n<h2>CO2-Ampel Konfiguration / configuration</h2>\r\n");
+            "</head><body>\r\n<h2>CO2-Ampel configuration</h2>\r\n");
   if((result != NULL) && result[0])
   {
     out.print("<pre>");
@@ -228,7 +228,7 @@ static void config_page(WiFiClient &client, const char *result)
   }
   if(pw)
   {
-    out.print("<p><label for=pw>Passwort / password</label> <input id=pw type=password maxlength=32></p>\r\n");
+    out.print("<p><label for=pw>Password</label> <input id=pw type=password maxlength=32></p>\r\n");
   }
 
   //settings, grouped by prefix (sys, co2, led, wifi, mqtt)
@@ -252,25 +252,25 @@ static void config_page(WiFiClient &client, const char *result)
     }
     print_field(out, item);
   }
-  out.print("</fieldset>\r\n<input type=submit value='Speichern / save'> "
-            "(sofort gespeichert; WiFi/MQTT nach Neustart / saved now, WiFi/MQTT after a restart)</form>\r\n");
+  out.print("</fieldset>\r\n<input type=submit value='Save'> "
+            "(saved immediately; WiFi/MQTT apply after a restart)</form>\r\n");
 
   //JSON
-  out.print("<h3>JSON</h3>\r\n<a href='/config.json'>Download</a> (Passwoerter als *** / passwords masked)\r\n");
+  out.print("<h3>JSON</h3>\r\n<a href='/config.json'>Download</a> (passwords masked as ***)\r\n");
   if(pw)
   {
     out.print("<form method=post action=/config/export onsubmit='pw(this)'><input type=hidden name=_pw>"
-              "<input type=submit value='Download mit Passwoertern / with passwords'></form>\r\n");
+              "<input type=submit value='Download with passwords'></form>\r\n");
   }
   out.print("<form method=post action=/config/import enctype=text/plain onsubmit='pw(this)'><input type=hidden name=p>\r\n"
             "<p>Upload: <input type=file accept='.json,application/json' onchange='ld(this)'></p>\r\n"
             "<textarea id=j name=j rows=8 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
-            "<input type=submit value='Import'> (alles oder nichts, wird gespeichert / all or nothing, saved)</form>\r\n");
+            "<input type=submit value='Import'> (all or nothing, saved)</form>\r\n");
 
   //restart
-  out.print("<h3>Neustart / restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
-            "<input type=submit value='Neustart / restart'></form>\r\n"
-            "<p><a href='/'>Zurueck / back</a></p>\r\n</body></html>\r\n");
+  out.print("<h3>Restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
+            "<input type=submit value='Restart'></form>\r\n"
+            "<p><a href='/'>Back</a></p>\r\n</body></html>\r\n");
 }
 
 // GET /config.json (masked) or POST /config/export (with password: full backup)
@@ -673,14 +673,14 @@ void webserver_service(void)
             }
             if(!settings_enable(req[2], NULL)) //with sys.password: password required
             {
-              form_msg = "<b>Falsches Passwort / wrong password</b><br/>\r\n";
+              form_msg = "<b>Wrong password</b><br/>\r\n";
             }
             else if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
             {
               if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
               {
                 settings_save();
-                form_msg = "<b>Gespeichert / saved</b><br/>\r\n";
+                form_msg = "<b>Saved</b><br/>\r\n";
               }
             }
           }
@@ -721,14 +721,14 @@ void webserver_service(void)
           int n = sprintf(buf,
               "<div id=data>\r\n" \
               "CO2 (ppm): %s<br/>\r\n" \
-              "Temperatur (&deg;C): %s<br/>\r\n" \
-              "Luftfeuchte (%% rel): %s<br/>\r\n",
+              "Temperature (&deg;C): %s<br/>\r\n" \
+              "Humidity (%% rel): %s<br/>\r\n",
               co2_valid ? co2_text : "--", co2_valid ? fmt1(f1, temp_value) : "--", co2_valid ? fmt1(f2, humi_value) : "--");
           if(pres_valid)
           {
             n += sprintf(buf + n,
-                "Druck (hPa): %s<br/>\r\n" \
-                "Temperatur (&deg;C): %s<br/>\r\n",
+                "Pressure (hPa): %s<br/>\r\n" \
+                "Temperature 2 (&deg;C): %s<br/>\r\n",
                 fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
           sprintf(buf + n, "</div>\r\n");
@@ -747,7 +747,7 @@ void webserver_service(void)
               "SSID <input name=1 size=30 maxlength=64 placeholder=SSID value='%s'><br/>\r\n" \
               "Code <input name=2 size=30 maxlength=64 placeholder=Password value=''><br/>\r\n" \
               "%s" \
-              "<input type=submit> (Neustart erforderlich, requires reboot)<br/>\r\n" \
+              "<input type=submit> (requires a restart)<br/>\r\n" \
               "</form><br/>\r\n" \
               "<div id=info>\r\n" \
               "Firmware: v" VERSION ", \r\n" \
@@ -759,7 +759,7 @@ void webserver_service(void)
               "</html>\r\n",
               form_msg,
               settings_password_set() ? "" : settings.wifi_ssid, /*settings.wifi_code, */
-              settings_password_set() ? "Passwort <input name=3 type=password size=30 maxlength=32><br/>\r\n" : "",
+              settings_password_set() ? "Password <input name=3 type=password size=30 maxlength=32><br/>\r\n" : "",
               fv.c_str(), 
               mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]
           );
