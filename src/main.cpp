@@ -52,7 +52,7 @@ MQTTClient mqttClient(256, 1536);
 #endif
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
-unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;
+unsigned int co2_value=CO2_START, co2_average=CO2_START, light_value=1024;
 float temp_value=20, temp_offset=TEMP_OFFSET, humi_value=50, pres_value=1013, pres_last=1013, temp2_value=20;
 bool co2_valid=false, pres_valid=false; //Startwerte oben sind keine Messwerte (nicht veroeffentlichen)
 
@@ -88,8 +88,8 @@ void setup()
 
   //WS2812
   ws2812.begin();
-  ws2812.setBrightness(HELLIGKEIT); //0...255
-  ws2812.fill(FARBE_AUS, 0, NUM_LEDS); //LEDs aus
+  ws2812.setBrightness(BRIGHTNESS); //0...255
+  ws2812.fill(COLOR_OFF, 0, NUM_LEDS); //LEDs aus
   ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs weiss
   ws2812.show();
 
@@ -151,7 +151,7 @@ void setup()
       }
       status_led(1000); //Status-LED
     }
-    scd30.setMeasurementInterval(INTERVALL); //setze Messintervall
+    scd30.setMeasurementInterval(MEASURE_INTERVAL); //setze Messintervall
     //scd30.startPeriodicMeasurement(1000); //0 oder 700-1400, Luftdruck in hPa
   }
   if(check_i2c(SERCOM0, ADDR_SCD4X)) //SCD4X gefunden
@@ -310,11 +310,11 @@ void setup()
   }
 
   //Messung starten
-  co2_value = co2_average = STARTWERT;
+  co2_value = co2_average = CO2_START;
   if(features & FEATURE_SCD30)
   {
-    scd30.setMeasurementInterval(INTERVALL); //setze Messintervall
-    delay(INTERVALL*1000UL); //Intervallsekunden warten
+    scd30.setMeasurementInterval(MEASURE_INTERVAL); //setze Messintervall
+    delay(MEASURE_INTERVAL*1000UL); //Intervallsekunden warten
   }
   else if(features & FEATURE_SCD4X)
   {
@@ -328,7 +328,7 @@ void setup()
     }
     leds(COLOR_RED);
     status_led(1000); //Status-LED
-    leds(FARBE_AUS);
+    leds(COLOR_OFF);
     co2_value = co2_average = settings.range[2]; // Set to red threshold
   }
 
@@ -339,7 +339,7 @@ void setup()
 void loop()
 {
   static unsigned int dark=0, sw=0;
-  static unsigned long t_switch=0, t_ampel=0, t_light=~((LICHT_INTERVALL*1000UL*60UL)-60000UL); //Lichtsensor nach 60s pruefen
+  static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //Lichtsensor nach 60s pruefen
   static unsigned long t_wifi=0;
   unsigned int overwrite=0;
 
@@ -391,7 +391,7 @@ void loop()
     {
       if(features & FEATURE_WINC1500)
       {
-        leds(FARBE_VIOLETT); //LEDs violett
+        leds(COLOR_MENU); //LEDs violett
         wifi_start_ap();
       }
     }
@@ -402,9 +402,9 @@ void loop()
     }
   }
 
-  if((millis()-t_ampel) > 1000) //Ampelfunktion nur jede Sekunde ausfuehren
+  if((millis()-t_traffic) > 1000) //Ampelfunktion nur jede Sekunde ausfuehren
   {
-    t_ampel = millis(); //Zeit speichern
+    t_traffic = millis(); //Zeit speichern
 
     if(buzzer_timer > 0)
     {
@@ -441,22 +441,22 @@ void loop()
   //Ampel
   if(remote_on == 0)
   {
-    #if AMPEL_DURCHSCHNITT > 0
-      ampel(co2_average);
+    #if USE_CO2_AVERAGE > 0
+      traffic_light(co2_average);
     #else
-      ampel(co2_value);
+      traffic_light(co2_value);
     #endif
   }
 
   //Lichtsensor
   if(remote_on == 0)
   {
-    if((millis()-t_light) > (LICHT_INTERVALL*1000UL*60UL))
+    if((millis()-t_light) > (LIGHT_INTERVAL*1000UL*60UL))
     {
       t_light = millis(); //Zeit speichern
 
       light_value = light_sensor();
-      if(light_value < LICHT_DUNKEL)
+      if(light_value < LIGHT_DARK)
       {
         if(dark == 0)
         {

@@ -9,77 +9,72 @@
 // Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).
 // Runtime settings of a disabled feature stay in the settings record but are not offered.
 #ifndef WITH_WEB
-#define WITH_WEB           1 //Webserver: Messwerte, /json, /cmk-agent, WiFi-Formular
+#define WITH_WEB           1 //web server: readings, /json, /cmk-agent, /config, WiFi form
 #endif
 #ifndef WITH_HA
-#define WITH_HA            1 //Home Assistant MQTT Discovery (mqtt.ha)
+#define WITH_HA            1 //Home Assistant MQTT discovery (mqtt.ha)
 #endif
 #ifndef WITH_MQTT_CONFIG
-#define WITH_MQTT_CONFIG   1 //Konfiguration ueber MQTT (mqtt.config)
+#define WITH_MQTT_CONFIG   1 //configuration over MQTT (mqtt.config)
 #endif
 
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
-#define DEFAULT_T1              600 //>= 600ppm
-#define DEFAULT_T2              1000 //>=1000ppm
-#define DEFAULT_T3              1200 //>=1200ppm
-#define DEFAULT_T4              1400 //>=1400ppm
-#define DEFAULT_T5              1600 //>=1600ppm
+#define DEFAULT_T1         600  //>= 600ppm
+#define DEFAULT_T2         1000 //>=1000ppm
+#define DEFAULT_T3         1200 //>=1200ppm
+#define DEFAULT_T4         1400 //>=1400ppm
+#define DEFAULT_T5         1600 //>=1600ppm
 
 // Default LED colors (can be changed via serial commands and saved to flash)
-#define DEFAULT_COLOR_T1         0x007CB0 //Himmelblau
-#define DEFAULT_COLOR_T2        0x00FF00 //Gruen
-#define DEFAULT_COLOR_T3         0xFF7F00 //Orange-Gelb
-#define DEFAULT_COLOR_T4          0xFF0000 //Rot
+#define DEFAULT_COLOR_T1   0x007CB0 //sky blue
+#define DEFAULT_COLOR_T2   0x00FF00 //green
+#define DEFAULT_COLOR_T3   0xFF7F00 //orange-yellow
+#define DEFAULT_COLOR_T4   0xFF0000 //red
 
-//--- WiFi/WLAN ---
+//--- WiFi ---
 #define WIFI_SSID          "" //WiFi SSID
-#define WIFI_CODE          "" //WiFi Passwort
+#define WIFI_CODE          "" //WiFi password
 
 //--- MQTT ---
-#define MQTT_ENABLED       0      //0 = MQTT deaktiviert, 1 = MQTT aktiviert
-#define MQTT_BROKER        ""     //MQTT Broker Hostname oder IP
-#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883, TLS: 8883)
-#define MQTT_TLS           0      //1 = MQTT ueber TLS (MQTTS)
-#define MQTT_USER          ""     //MQTT Benutzername (optional)
-#define MQTT_PASS          ""     //MQTT Passwort (optional)
-#define MQTT_CLIENT_ID     ""     //MQTT Client ID (leer = automatisch aus MAC)
-#define MQTT_TOPIC_PREFIX  "co2ampel" //MQTT Topic Prefix
-#define MQTT_INTERVAL      60     //MQTT Publish Intervall in Sekunden
-#define MQTT_HA            0      //1 = Home Assistant MQTT Discovery (mqtt.ha)
-#define MQTT_DISCOVERY_PREFIX "homeassistant" //Home Assistant Discovery Prefix
-#define MQTT_CONFIG        0      //1 = Konfiguration ueber MQTT (Topic <prefix>/<id>/cmd) erlaubt
+#define MQTT_ENABLED       0      //0 = MQTT off, 1 = MQTT on
+#define MQTT_BROKER        ""     //broker hostname or IP
+#define MQTT_PORT          1883   //broker port (default 1883, TLS 8883)
+#define MQTT_TLS           0      //1 = MQTT over TLS (MQTTS)
+#define MQTT_USER          ""     //user name (optional)
+#define MQTT_PASS          ""     //password (optional)
+#define MQTT_CLIENT_ID     ""     //client ID (empty = derived from the MAC)
+#define MQTT_TOPIC_PREFIX  "co2ampel" //topic prefix
+#define MQTT_INTERVAL      60     //publish interval in seconds
+#define MQTT_HA            0      //1 = Home Assistant MQTT discovery (mqtt.ha)
+#define MQTT_DISCOVERY_PREFIX "homeassistant" //Home Assistant discovery prefix
+#define MQTT_CONFIG        0      //1 = configuration over MQTT (topic <prefix>/<id>/cmd) allowed
 
-//--- Ampelhelligkeit (LEDs) ---
-#define HELLIGKEIT         125 //1-255 (255=100%, 179=70%)
-#define HELLIGKEIT_DUNKEL  20  //1-255 (255=100%, 25=10%)
-#define HELLIGKEIT_AUTO    1   //1 = mit dem Lichtsensor abdunkeln (led.auto)
-#define HELLIGKEIT_REMOTE  30  //Helligkeit bei "enable" und im Servicemenue
-#define NUM_LEDS           4   //Anzahl der LEDs
+//--- LED brightness ---
+#define BRIGHTNESS         125 //1-255 (255=100%, 179=70%)
+#define BRIGHTNESS_DARK    20  //1-255 (255=100%, 25=10%)
+#define BRIGHTNESS_AUTO    1   //1 = dim with the light sensor (led.auto)
+#define BRIGHTNESS_MENU    30  //brightness with "enable" and in the service menu
+#define NUM_LEDS           4   //number of LEDs
 
-//--- Lichtsensor ---
-#define LICHT_DUNKEL       20   //<20 -> dunkel
-#define LICHT_INTERVALL    10 //10-120min (Sensorpruefung)
-#define LICHT_DUNKEL_MS    3  //ms LEDs aus vor der Messung (Sensor reagiert sofort)
+//--- Light sensor ---
+#define LIGHT_DARK         20  //<20 -> dark
+#define LIGHT_INTERVAL     10  //10-120min (sensor check)
+#define LIGHT_LEDS_OFF_MS  3   //ms LEDs off before the reading (sensor reacts immediately)
 
-//--- Allgemein ---
-#define INTERVALL          5 //2-1800s Messintervall (nur SCD30, SCD4X immer 5s)
-#define AMPEL_DURCHSCHNITT 1 //1 = CO2 Durchschnitt fuer Ampel verwenden
-#define AUTO_KALIBRIERUNG  0 //1 = automatische Kalibrierung (ASC) an (erfordert 7 Tage Dauerbetrieb mit 1h Frischluft pro Tag)
-#define BUZZER             1 //Buzzer aktivieren
-#define BUZZER_DELAY     300 //300s, Buzzer Startverzogerung
-#define TEMP_OFFSET        6 //Pro WiFi, Temperaturoffset in C (0-20)
-#define DRUCK_DIFF         5 //Druckunterschied in hPa (5-20)
-#define BAUDRATE           9600 //9600 Baud
-#define STARTWERT          500 //500ppm, CO2-Startwert
+//--- General ---
+#define MEASURE_INTERVAL   5   //2-1800s measurement interval (SCD30 only, SCD4X always 5s)
+#define USE_CO2_AVERAGE    1   //1 = traffic light follows the CO2 average
+#define CO2_ASC            0   //1 = automatic self calibration (ASC) on (needs 7 days of operation with 1h fresh air per day)
+#define BUZZER             1   //buzzer on
+#define BUZZER_DELAY       300 //300s, buzzer start delay
+#define TEMP_OFFSET        6   //Pro WiFi, temperature offset in C (0-20)
+#define PRESSURE_DIFF      5   //pressure change in hPa (5-20)
+#define BAUDRATE           9600
+#define CO2_START          500 //500ppm, CO2 start value
 
-//--- Fixed Colors (not configurable) ---
-#define FARBE_VIOLETT      0xFF00FF //0xFF00FF (used for menu UI)
-#define FARBE_WEISS        0xFFFFFF //0xFFFFFF (used for menu UI)
-#define FARBE_AUS          0x000000 //0x000000 (LEDs off)
-
-// LED Colors
-#define COLOR_SETTINGS     0x007CB0 //Lightblue
-#define COLOR_MENU         0xFF00FF //Violett
+//--- Fixed LED colors (not configurable) ---
+#define COLOR_SETTINGS     0x007CB0 //light blue
+#define COLOR_MENU         0xFF00FF //violet (menu, "enable")
 #define COLOR_WHITE        0xFFFFFF
 #define COLOR_BLUE         0x0000FF
 #define COLOR_GREEN        0x00FF00

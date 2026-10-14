@@ -116,7 +116,7 @@ static unsigned int light_read(unsigned int dark_ms)
 
 unsigned int light_sensor(void) //Auslesen des Lichtsensors
 {
-  return light_read(LICHT_DUNKEL_MS);
+  return light_read(LIGHT_LEDS_OFF_MS);
 }
 
 float co2_sensor(void)
@@ -193,7 +193,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       temp_value = v_temp;
       humi_value = v_humi;
       read_pressure();
-      if((pres_value < (pres_last-DRUCK_DIFF)) || (pres_value > (pres_last+DRUCK_DIFF)))
+      if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
       {
         pres_last = pres_value;
         if((pres_value >= 700) && (pres_value <= 1400)) //gueltiger Bereich
@@ -224,7 +224,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       temp_value = v_temp;
       humi_value = v_humi;
       read_pressure();
-      if((pres_value < (pres_last-DRUCK_DIFF)) || (pres_value > (pres_last+DRUCK_DIFF)))
+      if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
       {
         pres_last = pres_value;
         scd4x.stopPeriodicMeasurement();
@@ -245,7 +245,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       return 1;
     }
   }
-  else if((millis() - t_pres) > (INTERVALL*1000UL)) //ohne CO2-Sensor: Druck trotzdem messen
+  else if((millis() - t_pres) > (MEASURE_INTERVAL*1000UL)) //ohne CO2-Sensor: Druck trotzdem messen
   {
     t_pres = millis();
     read_pressure();

@@ -15,7 +15,7 @@ void led_brightness_update(void)
 
   if(remote_on)
   {
-    level = HELLIGKEIT_REMOTE;
+    level = BRIGHTNESS_MENU;
   }
   else if(settings.led_auto && led_dark && (settings.brightness_dark < level))
   {
@@ -45,12 +45,12 @@ bool apply_led_disable(void *user, const cfg_item_t *item)
   (void)item;
   if(settings.led_disable)
   {
-    leds(FARBE_AUS); //sofort, auch bei "enable"
+    leds(COLOR_OFF); //sofort, auch bei "enable"
     buzzer(0);
   }
   else if(remote_on)
   {
-    leds(COLOR_MENU); //Anzeige "enable" wieder herstellen; sonst uebernimmt ampel() im naechsten Takt
+    leds(COLOR_MENU); //Anzeige "enable" wieder herstellen; sonst uebernimmt traffic_light() im naechsten Takt
   }
   return true;
 }
@@ -136,13 +136,13 @@ void buzzer(unsigned int on)
   return;
 }
 
-void ampel(unsigned int co2)
+void traffic_light(unsigned int co2)
 {
   static unsigned int blinken=0;
 
   if(settings.led_disable) //LEDs und Buzzer aus (z.B. nachts)
   {
-    leds(FARBE_AUS);
+    leds(COLOR_OFF);
     buzzer(0);
     return;
   }

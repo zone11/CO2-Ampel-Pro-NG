@@ -65,7 +65,7 @@ void settings_defaults(SETTINGS *data)
   memset(data, 0, sizeof(SETTINGS));
   data->valid         = true;
   data->serial_output = false;
-  data->brightness    = HELLIGKEIT;
+  data->brightness    = BRIGHTNESS;
   data->range[0]      = DEFAULT_T1;
   data->range[1]      = DEFAULT_T2;
   data->range[2]      = DEFAULT_T3;
@@ -91,13 +91,13 @@ void settings_defaults(SETTINGS *data)
   data->color_t3      = DEFAULT_COLOR_T3;
   data->color_t4      = DEFAULT_COLOR_T4;
 
-  data->asc           = AUTO_KALIBRIERUNG;
+  data->asc           = CO2_ASC;
   data->mqtt_config   = MQTT_CONFIG;
   data->mqtt_ha       = MQTT_HA;
   data->mqtt_tls      = MQTT_TLS;
 
-  data->brightness_dark = HELLIGKEIT_DUNKEL;
-  data->led_auto      = HELLIGKEIT_AUTO;
+  data->brightness_dark = BRIGHTNESS_DARK;
+  data->led_auto      = BRIGHTNESS_AUTO;
   data->led_disable   = false;
   data->password[0]   = 0;
 }
@@ -179,7 +179,7 @@ static bool legacy_plausible(const SETTINGS *old)
 // Fields that lived in struct padding before they existed (v1-v4 share one 388-byte layout)
 static void default_padding_fields(SETTINGS *data, uint16_t version)
 {
-  if(version < 2) { data->asc         = AUTO_KALIBRIERUNG; }
+  if(version < 2) { data->asc         = CO2_ASC; }
   if(version < 3) { data->mqtt_config = MQTT_CONFIG; }
   if(version < 4) { data->mqtt_ha     = MQTT_HA; }
 }

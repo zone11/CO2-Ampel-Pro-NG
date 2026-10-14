@@ -90,7 +90,7 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
     value = altitude/250;
   }
 
-  value = select_value(value, 0, 4, 1, COLOR_RED, FARBE_WEISS) * 250;
+  value = select_value(value, 0, 4, 1, COLOR_RED, COLOR_WHITE) * 250;
 
   if(features & FEATURE_SCD30)
   {
@@ -159,13 +159,13 @@ void altitude_toffset(void) //Altitude und Temperaturoffset
 
 void calibration(void) //Kalibrierung
 {
-  unsigned int abort=0, cycle, again, interval=INTERVALL, co2, co2_last;
+  unsigned int abort=0, cycle, again, interval=MEASURE_INTERVAL, co2, co2_last;
 
   //Der Messintervall waehrend der Kalibrierung und im Betrieb sollte gleich sein.
   //Unterschiedliche Intervalle koennen zu Abweichungen und schwankenden Messwerten fuehren.
-  //scd30.setMeasurementInterval(INTERVALL); //setze Messintervall
+  //scd30.setMeasurementInterval(MEASURE_INTERVAL); //setze Messintervall
 
-  ws2812.fill(FARBE_WEISS, 0, 4); //LEDs weiss
+  ws2812.fill(COLOR_WHITE, 0, 4); //LEDs weiss
   ws2812.show();
 
   if(features & FEATURE_SCD4X)
@@ -275,13 +275,13 @@ void menu(void)
 {
   unsigned int value;
 
-  ws2812.setBrightness(HELLIGKEIT_REMOTE); //0...255
-  leds(FARBE_VIOLETT); //LEDs violett
+  ws2812.setBrightness(BRIGHTNESS_MENU); //0...255
+  leds(COLOR_MENU); //LEDs violett
   delay(500); //500ms warten
-  leds(FARBE_AUS); //LEDs aus
+  leds(COLOR_OFF); //LEDs aus
   buzzer(250); //250ms Buzzer an
 
-  value = select_value(1, 1, 4, 1, FARBE_VIOLETT, ws2812.Color(20,20,20));
+  value = select_value(1, 1, 4, 1, COLOR_MENU, ws2812.Color(20,20,20));
 
   switch(value)
   {

@@ -461,7 +461,7 @@ The CO2 sensor should be calibrated periodically via the service menu:
 5. Done: LEDs blue and a short beep (serial: `Calibration OK`)
 
 Automatic Self-Calibration (ASC) is disabled by default. Enable it with `enable`, `set co2.asc=1`, `save`
-(the default for new devices is `AUTO_KALIBRIERUNG` in `include/app_config.h`). ASC requires 7 days of
+(the default for new devices is `CO2_ASC` in `include/app_config.h`). ASC requires 7 days of
 continuous operation with at least 1 hour of fresh air exposure daily.
 
 ## Development

@@ -18,7 +18,7 @@ void self_test(void) //Testprogramm
   delay(1000); //1s warten
   leds(0x0000FF); //LEDs blau
   delay(1000); //1s warten
-  leds(FARBE_AUS); //LEDs aus
+  leds(COLOR_OFF); //LEDs aus
 
   //ATWINC1500-Test (nur wenn beim Start erkannt)
   if(features & FEATURE_WINC1500)
@@ -39,7 +39,7 @@ void self_test(void) //Testprogramm
     }
     else
     {
-      leds(FARBE_WEISS); //LEDs weiss
+      leds(COLOR_WHITE); //LEDs weiss
       buzzer(1000); //1s Buzzer an
     }
   }
@@ -54,7 +54,7 @@ void self_test(void) //Testprogramm
   SPI.endTransaction();
   if(rfm_version == 0x12) //check version
   {
-    leds(FARBE_WEISS); //LEDs weiss
+    leds(COLOR_WHITE); //LEDs weiss
     buzzer(1000); //1s Buzzer an
   }
   if(features & FEATURE_USB)
@@ -70,7 +70,7 @@ void self_test(void) //Testprogramm
   temp_value = 0;
   humi_value = 0;
   pres_value = 0;
-  ws2812.fill(FARBE_AUS, 0, 4); //LEDs aus
+  ws2812.fill(COLOR_OFF, 0, 4); //LEDs aus
   for(unsigned int okay=0; okay < 15;)
   {
     if(digitalRead(PIN_SWITCH) == 0) //Taster gedrueckt?

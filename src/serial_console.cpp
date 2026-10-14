@@ -185,7 +185,7 @@ void serial_service(void)
       remote_on = 1;
       buzzer(0);
       led_brightness_update();
-      leds(settings.led_disable ? FARBE_AUS : COLOR_MENU); //led.disable gilt auch hier
+      leds(settings.led_disable ? COLOR_OFF : COLOR_MENU); //led.disable gilt auch hier
     }
     return;
   }
