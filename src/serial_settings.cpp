@@ -150,7 +150,7 @@ static void print_hex_padded(Print *out, uint32_t val, uint8_t digits)
   }
 }
 
-static void print_value(Print *out, const cfg_item_t *item)
+void cfg_print_value(Print *out, const cfg_item_t *item)
 {
   switch(item->type)
   {
@@ -195,7 +195,7 @@ static void print_item_value(const serial_settings_ctx_t *ctx, const cfg_item_t 
     ctx->out->print("***");
     return;
   }
-  print_value(ctx->out, item);
+  cfg_print_value(ctx->out, item);
 }
 
 void print_json_string(Print *out, const char *str)
@@ -246,11 +246,11 @@ static void print_item_json(const serial_settings_ctx_t *ctx, const cfg_item_t *
       break;
     case CFG_IP:
       out->print('"');
-      print_value(out, item);
+      cfg_print_value(out, item);
       out->print('"');
       break;
     default:
-      print_value(out, item);
+      cfg_print_value(out, item);
       break;
   }
 }

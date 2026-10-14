@@ -366,3 +366,25 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   }
   return ok;
 }
+
+size_t settings_item_count(void)
+{
+  return settings_items_count;
+}
+
+const cfg_item_t *settings_item(size_t index)
+{
+  return (index < settings_items_count) ? &settings_items[index] : NULL;
+}
+
+void settings_print_json(Print *out, bool mask_secrets)
+{
+  serial_settings_ctx_t ctx;
+  ctx.user = NULL;
+  ctx.remote_on = true;
+  ctx.locked = false;
+  ctx.local = !mask_secrets;
+  ctx.out = out;
+  ctx.on_save = NULL;
+  cfg_print_json(settings_items, settings_items_count, &ctx);
+}

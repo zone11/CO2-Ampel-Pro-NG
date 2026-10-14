@@ -22,6 +22,14 @@ bool settings_enable(const char *password, Print *out);
 // control_only: only CFG_CONTROL keys (MQTT with mqtt.config=0), no save/export.
 bool settings_json_import(const char *json, Print *out, bool local, bool enabled, bool control_only = false);
 
+// Read access to the key table (e.g. to build the web configuration page).
+#include "serial_settings.h"
+size_t settings_item_count(void);
+const cfg_item_t *settings_item(size_t index);
+
+// All settings as one JSON object (as "json export"); mask_secrets prints passwords as "***".
+void settings_print_json(Print *out, bool mask_secrets);
+
 // Sets one item by key from text, with the same parsing/validation as "set". Local, no output.
 bool settings_set(const char *key, const char *value);
 

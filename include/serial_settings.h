@@ -49,6 +49,9 @@ typedef struct
 const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decimal, void *user);
 const cfg_item_t *cfg_find_item(const cfg_item_t *items, size_t count, const char *key);
 
+// Current value as text, as "get" prints it (colors 0xRRGGBB); secrets are not masked here.
+void cfg_print_value(Print *out, const cfg_item_t *item);
+
 // All items as one JSON object (no line end); secrets masked unless ctx->local.
 void cfg_print_json(const cfg_item_t *items, size_t item_count, const serial_settings_ctx_t *ctx);
 void print_json_string(Print *out, const char *str);
