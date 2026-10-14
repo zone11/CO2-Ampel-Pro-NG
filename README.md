@@ -59,7 +59,7 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 80 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 84 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -142,9 +142,10 @@ press (or 10 s without pressing) starts it.
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-enable [pw]    Allow changes (set/save; LEDs violet, traffic light paused); with sys.password: enable <password>
-exit           Leave enable mode
-status         Show measurements, CO2 sensor info and WiFi/MQTT status
+enable [pw]    Allow changes (set/save; LEDs violet and dimmed, traffic light and buzzer paused);
+               with sys.password set: enable <password>
+exit           Leave enable mode (traffic light resumes)
+status         Show measurements, CO2 sensor info, LED state and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
 winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (enable; restarts the device)
 reset          Reset device (after enable it answers OK and turns the LEDs off first)
@@ -196,7 +197,7 @@ mqtt.interval
 
 Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
 (`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
-Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
+Thresholds, colors, LED settings and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
 
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
@@ -210,9 +211,9 @@ locks further attempts for 1, 2, 4 ... 30 s. A forgotten password can only be cl
 which erases all settings: `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`.
 
 `co2.asc` turns the CO2 sensor's automatic self-calibration on or off (default off; see Calibration).
-WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) can only be
-changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
-read as `***`.
+WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) and
+`sys.password` can only be changed via serial (WiFi also via the web form); passwords are only shown to local
+(serial) callers, over MQTT they read as `***`.
 
 ### Provisioning (before deployment)
 
@@ -239,11 +240,14 @@ set mqtt.pass=secret
 Settings are stored in flash (last 2 KB, with version and CRC). `pio run -t upload` keeps them: the upload script reads the settings area and writes it back with the new firmware. Flashing with another tool (e.g. plain bossac or the Arduino IDE) erases them, so keep a backup with `dump`. Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware runs
 with defaults until you `save`, and going back to the newer firmware finds the original settings again.
 
-**Backup Settings:**
-```bash
-# Connect to serial port and send:
-dump
-```
+**Backup Settings:** send `dump` (after `enable <password>` if a password is set) and keep the output. It
+contains the WiFi/MQTT passwords in clear text, so store it safely.
+
+**Restore Settings:** send `enable`, then the saved `set ...` lines, then `save` and `reset`, or use the file
+with `scripts/co2ampel_tool.py provision --config <file>`.
+
+**Factory reset:** `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload` flashes the firmware without
+the stored settings; the device starts with the defaults (also clears a forgotten `sys.password`).
 
 
 ### WiFi Configuration via Serial
@@ -383,6 +387,7 @@ BASE=co2ampel/F8F0056E78A2
 mosquitto_sub -h broker -u user -P pass -t "$BASE/resp" &
 mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m 'get co2.*'
 mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'set co2.t1=650\nset led.color.t1=0000FF\nsave')"
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'enable MyPassword\nset led.disable=1')"  # with sys.password
 ```
 
 Rules and notes:
@@ -417,16 +422,23 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 
 ### Adding New Features
 
-1. The code is split into modules under `src/`: `main` (setup/loop, traffic light), `sensors`,
-   `led_control`, `settings_storage` (flash), `settings_registry` (key table used by serial and web),
-   `serial_settings`/`serial_console` (serial API), `wifi_manager`, `webserver`, `mqtt_service`,
-   `ui_menu`/`diagnostics` (service menu), `i2c_utils`, `system_control`. Compile-time defaults live in
-   `include/app_config.h`, pins in `variants/co2ampel/variant.h`
-2. New user settings: add the field at the end of `SETTINGS` (`include/app_types.h`), a default in
-   `settings_defaults()`, a migration in `settings_read()` with a `SETTINGS_VERSION` bump
-   (`src/settings_storage.cpp`), and a key in `src/settings_registry.cpp`
+1. The code is split into modules under `src/`: `main` (setup/loop), `sensors`, `led_control` (traffic
+   light, brightness, buzzer), `settings_storage` (flash record), `settings_registry` (key table and enable
+   password, used by serial, web and MQTT), `serial_settings` (get/set/save/dump parser), `serial_console`
+   (serial commands), `wifi_manager`, `webserver`, `mqtt_service` (publish, HA discovery, commands),
+   `tls_client` (TLS with hostname check), `winc_bridge` (WiFi module flash access), `ui_menu`/`diagnostics`
+   (service menu, self test), `i2c_utils`, `system_control`. Compile-time defaults and feature switches live
+   in `include/app_config.h`, pins in `variants/co2ampel/variant.h`. PC tools are in `scripts/`
+   (`upload_samba.py` upload with settings kept, `co2ampel_tool.py` provisioning and root certificates)
+2. New user settings: append the field to `SETTINGS` (`include/app_types.h`), set a default in
+   `settings_defaults()` and validate it in `settings_validate()`, bump `SETTINGS_VERSION`
+   (`src/settings_storage.cpp`), and add a key in `src/settings_registry.cpp`. Older, shorter records are
+   read with their own size and get the defaults for the new fields automatically
 3. Update `platformio.ini` if new dependencies are needed
-4. Build with `pio run`, upload with `pio run -t upload` (settings are kept)
+4. Build with `pio run`, upload with `pio run -t upload` (settings are kept; connect the device directly,
+   not through a hub, and close any serial monitor first)
+5. Never use `%f` in printf formats: the build uses link time optimization without printf float support,
+   format one-decimal values with `fmt1()` (`include/sensors.h`)
 
 ### Code Style
 
