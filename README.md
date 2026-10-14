@@ -488,10 +488,10 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 
 ### Code Style
 
-The original code is in German and follows Arduino conventions. Future enhancements should:
+- English only: code, comments, web UI and documentation (`legacy/` keeps the original German firmware
+  as a reference and is not changed)
+- Arduino conventions, PlatformIO best practices
 - Maintain compatibility with existing hardware
-- Document changes in English
-- Follow PlatformIO best practices
 
 ## License
 
