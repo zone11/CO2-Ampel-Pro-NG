@@ -55,6 +55,16 @@ The firmware is designed for the CO2-Ampel Pro hardware with WiFi (WINC1500) and
 The original firmware's variants (Basic, Plus, COVID) are not separate builds: the hardware is detected at
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
+Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
+`build_flags` in `platformio.ini` (flash use with all features: about 89 KB of 246 KB):
+
+| Switch | Leaves out | Saves |
+|--------|-----------|-------|
+| `-DWITH_CERT_CMDS=0` | serial `cert` commands (the PC tool still works) | ~10 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, WiFi form; AP mode then has no use) | ~5 KB |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.8 KB RAM |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~1.5 KB |
+
 ## Usage
 
 ### LED Color Codes (Default Values)
