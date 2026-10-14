@@ -17,6 +17,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <WiFi101.h>
 #include <MQTT.h>
+#include "tls_client.h"
 
 #include "led_control.h"
 #include "sensors.h"
@@ -39,13 +40,21 @@ SensirionI2cScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
+#if WITH_WEB
 WiFiServer server(80); //Webserver Port 80
+#endif
 WiFiClient mqttWifiClient;
-MQTTClient mqttClient(256); //256 Byte Buffer
+VerifiedSSLClient mqttSslClient; //TLS im WINC1500 inkl. Hostname-Pruefung (Root-Zertifikat muss im WINC gespeichert sein)
+#if WITH_MQTT_CONFIG
+MQTTClient mqttClient(1200, 1536); //Lesen: JSON-Befehle bis 1 KB, Schreiben: Antworten bis ~1.4 KB
+#else
+MQTTClient mqttClient(256, 1536);
+#endif
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=STARTWERT, co2_average=STARTWERT, light_value=1024;
 float temp_value=20, temp_offset=TEMP_OFFSET, humi_value=50, pres_value=1013, pres_last=1013, temp2_value=20;
+bool co2_valid=false, pres_valid=false; //Startwerte oben sind keine Messwerte (nicht veroeffentlichen)
 
 
 void setup()
@@ -84,7 +93,9 @@ void setup()
   ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs weiss
   ws2812.show();
 
-  //Wire/I2C
+  //Wire/I2C: haengende Busse freigeben (z.B. Neustart waehrend der SCD30 sendet), dann starten
+  bool bus0_stuck = i2c_bus_recover(PIN_WIRE_SDA, PIN_WIRE_SCL);
+  bool bus1_stuck = i2c_bus_recover(PIN_WIRE1_SDA, PIN_WIRE1_SCL);
   Wire.begin();
   Wire.setClock(50000); //50kHz, empfohlen fuer SCD30
   Wire1.begin();
@@ -188,7 +199,7 @@ void setup()
 
   //Einstellungen
   SETTINGS_LOAD load = settings_read(&settings); //Einstellungen lesen
-  if(load != SETTINGS_LOADED)
+  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
   {
     settings_write(&settings); //Defaults bzw. migrierte Einstellungen speichern
   }
@@ -216,7 +227,7 @@ void setup()
     }
   }
   co2_set_asc(settings.asc); //ASC laut Einstellungen
-  ws2812.setBrightness(settings.brightness); //0...255
+  led_brightness_update();
 
   //USB-Verbindung
   if(USBDevice.connected()) //(Serial) nutzt Flow-Control zur Erkennung
@@ -231,8 +242,18 @@ void setup()
     if(features & FEATURE_BMP280)   { Serial.print(" BMP280"); }
     if(features & FEATURE_WINC1500) { Serial.print(" WINC1500"); }
     Serial.println();
+    if(bus0_stuck || bus1_stuck)
+    {
+      Serial.print("I2C bus recovered (SDA was held low):");
+      Serial.println(bus0_stuck ? (bus1_stuck ? " Wire, Wire1" : " Wire") : " Wire1");
+    }
+    if((features & (FEATURE_SCD30|FEATURE_SCD4X)) == 0)
+    {
+      Serial.println("Error: CO2 sensor not found (no CO2/temperature/humidity values; power-cycle the device)");
+    }
     Serial.print("Settings: ");
-    Serial.println((load == SETTINGS_LOADED) ? "loaded" : (load == SETTINGS_MIGRATED) ? "migrated from old layout" : "defaults");
+    Serial.println((load == SETTINGS_LOADED) ? "loaded" : (load == SETTINGS_MIGRATED) ? "migrated from old layout" :
+                   (load == SETTINGS_NEWER) ? "from newer firmware, using defaults (flash kept until save)" : "defaults");
     Serial.println();
   }
 
@@ -325,8 +346,10 @@ void loop()
   //serielle Befehle verarbeiten
   serial_service();
 
+#if WITH_WEB
   //WiFi-Daten verarbeiten
   webserver_service();
+#endif
 
   //MQTT-Daten verarbeiten
   mqtt_service();
@@ -374,12 +397,7 @@ void loop()
     }
     else if((millis()-t_switch) > 100) //100ms Tastendruck
     {
-      settings.brightness = settings.brightness/2; //Helligkeit halbieren
-      if(settings.brightness < HELLIGKEIT_DUNKEL)
-      {
-        settings.brightness = HELLIGKEIT;
-      }
-      ws2812.setBrightness(settings.brightness);
+      led_button_step(); //Helligkeit halbieren (nicht gespeichert)
       overwrite = 1;
     }
   }
@@ -407,7 +425,7 @@ void loop()
     if(check_sensors())
     {
       show_data();
-      if(dark == 0)
+      if((dark == 0) && !settings.led_disable)
       {
         status_led(2); //Status-LED
       }
@@ -443,10 +461,7 @@ void loop()
         if(dark == 0)
         {
           dark = 1;
-          if(settings.brightness > HELLIGKEIT_DUNKEL)
-          {
-            ws2812.setBrightness(HELLIGKEIT_DUNKEL); //dunkel
-          }
+          led_set_dark(true); //dunkel (nur mit led.auto)
         }
       }
       else
@@ -454,7 +469,7 @@ void loop()
         if(dark == 1)
         {
           dark = 0;
-          ws2812.setBrightness(settings.brightness); //hell
+          led_set_dark(false); //hell
         }
       }
     }

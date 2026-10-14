@@ -1,8 +1,128 @@
 #include "webserver.h"
+#include "sensors.h"
 #include "settings_registry.h"
 #include "wifi_manager.h"
 
 #include <ctype.h>
+
+#if WITH_WEB
+
+#define CONFIG_BODY_MAX 2048 //max. POST auf /config (Passwort + JSON)
+
+// Writes text into a fixed buffer (for the JSON import reply on the page)
+class BufPrint : public Print
+{
+public:
+  BufPrint(char *b, size_t n) : buf(b), size(n) { buf[0] = 0; }
+  size_t write(uint8_t c) override
+  {
+    if(len < (size - 1))
+    {
+      buf[len++] = (char)c;
+      buf[len] = 0;
+    }
+    return 1;
+  }
+private:
+  char *buf;
+  size_t size;
+  size_t len = 0;
+};
+
+static void print_html(WiFiClient &client, const char *text) //Antwort/Benutzertext HTML-sicher ausgeben
+{
+  for(; *text; text++)
+  {
+    if(*text == '<')      { client.print("&lt;"); }
+    else if(*text == '>') { client.print("&gt;"); }
+    else if(*text == '&') { client.print("&amp;"); }
+    else                  { client.print(*text); }
+  }
+}
+
+// GET/POST /config: JSON import (as "json import" on serial, always saved). The form is sent as
+// text/plain ("p=<password>\r\nj=<json>"), so the JSON arrives unencoded.
+static void config_page(WiFiClient &client, bool post, size_t content_length)
+{
+  char result[400];
+  result[0] = 0;
+
+  if(post)
+  {
+    char *body = (content_length < CONFIG_BODY_MAX) ? (char *)malloc(content_length + 1) : NULL;
+    if(body == NULL)
+    {
+      strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"too long (max 2 KB) or empty\"}}");
+    }
+    else
+    {
+      size_t n = 0;
+      unsigned long t = millis();
+      while((n < content_length) && client.connected() && ((millis() - t) < 3000UL))
+      {
+        if(client.available())
+        {
+          body[n++] = client.read();
+        }
+      }
+      body[n] = 0;
+
+      const char *pw = "";
+      char *json = body;
+      if(strncmp(body, "p=", 2) == 0) //Passwortfeld (nur vorhanden, wenn sys.password gesetzt ist)
+      {
+        pw = body + 2;
+        json = strstr(body, "\r\n");
+        if(json != NULL)
+        {
+          *json = 0;
+          json += 2;
+        }
+      }
+      if((json == NULL) || (strncmp(json, "j=", 2) != 0))
+      {
+        strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"no JSON\"}}");
+      }
+      else
+      {
+        BufPrint out(result, sizeof(result));
+        if(settings_enable(pw, &out)) //ohne sys.password immer erlaubt
+        {
+          BufPrint reply(result, sizeof(result));
+          if(settings_json_import(json + 2, &reply, true, true))
+          {
+            settings_save(); //Web-Import wird immer gespeichert
+          }
+        }
+      }
+      free(body);
+    }
+  }
+
+  client.print("HTTP/1.1 200 OK\r\n"
+               "Content-Type: text/html\r\n"
+               "Connection: close\r\n"
+               "\r\n"
+               "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><title>CO2-Ampel Config</title>\r\n"
+               "<style>body { font-family:Lato,sans-serif; padding:10px; } textarea { width:100%; max-width:40em; }</style>\r\n"
+               "</head><body>\r\n<h3>JSON import</h3>\r\n");
+  if(result[0])
+  {
+    client.print("<pre>");
+    print_html(client, result);
+    client.print("</pre>\r\n");
+  }
+  client.print("<form method=post enctype=text/plain>\r\n");
+  if(settings_password_set())
+  {
+    client.print("Passwort <input name=p type=password size=30 maxlength=32><br/>\r\n");
+  }
+  client.print("<textarea name=j rows=14 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
+               "<input type=submit value=Import> (wird gespeichert, saved; WiFi/MQTT nach Neustart, after reboot)\r\n"
+               "</form><br/>\r\n"
+               "Export: serial <code>json export</code> or MQTT <code>{\"export\":true}</code><br/><br/>\r\n"
+               "<a href='/'>Back</a>\r\n</body></html>\r\n");
+}
 
 static void urldecode(char *src) //URL Parameter dekodieren
 {
@@ -88,7 +208,11 @@ void webserver_service(void)
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
   char buf[1024];
-  char req[2][3*64+1]; //HTTP request / POST-Werte (URL-kodiert bis 3 Zeichen pro Byte)
+  char req[3][3*64+1]; //HTTP request / POST-Werte SSID, Code, Passwort (URL-kodiert bis 3 Zeichen pro Byte)
+  const char *form_msg = "";
+  char f1[16], f2[16], f3[16], f4[16]; //Messwerte mit einer Nachkommastelle (fmt1)
+  char hline[24]; //aktuelle Headerzeile (nur fuer Content-Length)
+  size_t hlen = 0, content_length = 0;
   req[0][0] = 0;
   while(client.connected())
   {
@@ -114,40 +238,23 @@ void webserver_service(void)
         }
         else if(strncmp(req[0], "GET /json", 9) == 0) //JSON
         {
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          //nur echte Messwerte (ohne CO2-Sensor fehlen c/t/h, ohne Drucksensor p/u)
+          int n = sprintf(buf,
+              "HTTP/1.1 200 OK\r\n" \
+              "Content-Type: application/json\r\n" \
+              "Connection: close\r\n" \
+              "\r\n" \
+              "{\r\n");
+          if(co2_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: application/json\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                "{\r\n" \
-                " \"c\": %i,\r\n" \
-                " \"t\": %.1f,\r\n" \
-                " \"h\": %.1f,\r\n" \
-                " \"p\": %.1f,\r\n" \
-                " \"u\": %.1f,\r\n" \
-                " \"l\": %i\r\n" \
-                "}\r\n",
-                co2_value, temp_value, humi_value, pres_value, temp2_value, light_value
-            );
+            n += sprintf(buf + n, " \"c\": %u,\r\n \"t\": %s,\r\n \"h\": %s,\r\n",
+                         co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
           }
-          else
+          if(pres_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: application/json\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                "{\r\n" \
-                " \"c\": %i,\r\n" \
-                " \"t\": %.1f,\r\n" \
-                " \"h\": %.1f,\r\n" \
-                " \"l\": %i\r\n" \
-                "}\r\n",
-                co2_value, temp_value, humi_value, light_value
-            );
+            n += sprintf(buf + n, " \"p\": %s,\r\n \"u\": %s,\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
+          sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
           client.print(buf);
         }
         else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk Agent
@@ -157,61 +264,45 @@ void webserver_service(void)
           //Da HTTP als Uebertragungsweg genutzt wird, "Data Source" 
           //verwenden: wget -O - http://ip_address/cmk-agent
           //Siehe: https://docs.checkmk.com/latest/de/datasource_programs.html
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          int n = sprintf(buf,
+              "HTTP/1.1 200 OK\r\n" \
+              "Content-Type: text/plain\r\n" \
+              "Connection: close\r\n" \
+              "\r\n" \
+              //Plaintext im von Checkmk erwarteten Format
+              //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
+              "<<<check_mk>>>\r\n" \
+              "AgentOS: arduino\r\n" \
+              //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten
+              "<<<watterott_co2ampel_plugin>>>\r\n");
+          if(co2_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: text/plain\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                //Plaintext im von Checkmk erwarteten Format
-                //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
-                "<<<check_mk>>>\r\n" \
-                "AgentOS: arduino\r\n" \
-                //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
-                "<<<watterott_co2ampel_plugin>>>\r\n" \
-                "co2 %i\r\n" \
-                "temp %.1f\r\n" \
-                "humidity %.1f\r\n" \
-                "lighting %i\r\n" \
-                "pressure %.1f\r\n" \
-                "temp2 %.1f\r\n" \
-                //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
-                //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
-                //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
-                "<<<local:sep(0)>>>\r\n" \
-                "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, temp_value, humi_value, light_value, pres_value, temp2_value,
-                co2_value, settings.range[1], settings.range[2]
-            );
+            n += sprintf(buf + n, "co2 %u\r\ntemp %s\r\nhumidity %s\r\n", co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
+          }
+          n += sprintf(buf + n, "lighting %u\r\n", light_value);
+          if(pres_valid)
+          {
+            n += sprintf(buf + n, "pressure %s\r\ntemp2 %s\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
+          }
+          //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
+          //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
+          //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
+          if(co2_valid)
+          {
+            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
+                "P \"CO2 level (ppm)\" co2ppm=%u;%u;%u CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
+                co2_value, settings.range[1], settings.range[2]);
           }
           else
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: text/plain\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                //Plaintext im von Checkmk erwarteten Format
-                //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
-                "<<<check_mk>>>\r\n" \
-                "AgentOS: arduino\r\n" \
-                //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
-                "<<<watterott_co2ampel_plugin>>>\r\n" \
-                "co2 %i\r\n" \
-                "temp %.1f\r\n" \
-                "humidity %.1f\r\n" \
-                "lighting %i\r\n" \
-                //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
-                //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
-                //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
-                "<<<local:sep(0)>>>\r\n" \
-                "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, temp_value, humi_value, light_value,
-                co2_value, settings.range[1], settings.range[2]
-            );
+            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
+                "3 \"CO2 level (ppm)\" - CO2 sensor not found\r\n");
           }
           client.print(buf);
+        }
+        else if((strncmp(req[0], "GET /config", 11) == 0) || (strncmp(req[0], "POST /config", 12) == 0))
+        {
+          config_page(client, req[0][0] == 'P', content_length);
         }
         else if(strncmp(req[0], "GET /favicon", 12) == 0) //Favicon 
         {
@@ -232,6 +323,7 @@ void webserver_service(void)
             bool too_long = false;
             req[0][0] = 0; //SSID
             req[1][0] = 0; //Code
+            req[2][0] = 0; //Passwort (sys.password)
             for(unsigned int r=0, i=0, last_c=0; client.available();)
             {
               c = client.read();
@@ -244,7 +336,7 @@ void webserver_service(void)
                 r = last_c-'0';
                 i = 0;
               }
-              else if((r > 0) && (r < 3)) //1 bis 2
+              else if((r > 0) && (r < 4)) //1 bis 3
               {
                 if(i < (sizeof(req[0]) - 1))
                 {
@@ -260,15 +352,21 @@ void webserver_service(void)
             }
             urldecode(req[0]); //Serial.println(req[0]);
             urldecode(req[1]); //Serial.println(req[1]);
+            urldecode(req[2]);
             if((strlen(req[0]) >= sizeof(settings.wifi_ssid)) || (strlen(req[1]) >= sizeof(settings.wifi_code)))
             {
               too_long = true;
             }
-            if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
+            if(!settings_enable(req[2], NULL)) //mit sys.password: Passwort erforderlich
+            {
+              form_msg = "<b>Falsches Passwort / wrong password</b><br/>\r\n";
+            }
+            else if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
             {
               if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
               {
                 settings_save(); //Einstellungen speichern
+                form_msg = "<b>Gespeichert / saved</b><br/>\r\n";
               }
             }
           }
@@ -303,30 +401,23 @@ void webserver_service(void)
           );
           client.print(buf);
 
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          //ohne CO2-Sensor "--" statt Startwerten; Druckzeilen nur mit Drucksensor
+          char co2_text[12];
+          sprintf(co2_text, "%u", co2_value);
+          int n = sprintf(buf,
+              "<div id=data>\r\n" \
+              "CO2 (ppm): %s<br/>\r\n" \
+              "Temperatur (&deg;C): %s<br/>\r\n" \
+              "Luftfeuchte (%% rel): %s<br/>\r\n",
+              co2_valid ? co2_text : "--", co2_valid ? fmt1(f1, temp_value) : "--", co2_valid ? fmt1(f2, humi_value) : "--");
+          if(pres_valid)
           {
-            sprintf(buf,
-                "<div id=data>\r\n" \
-                "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
-                "Druck (hPa): %.1f<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "</div>\r\n",
-                co2_value, temp_value, humi_value, pres_value, temp2_value
-            );
+            n += sprintf(buf + n,
+                "Druck (hPa): %s<br/>\r\n" \
+                "Temperatur (&deg;C): %s<br/>\r\n",
+                fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
-          else
-          {
-            sprintf(buf,
-                "<div id=data>\r\n" \
-                "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
-                "</div>\r\n",
-                co2_value, temp_value, humi_value
-            );
-          }
+          sprintf(buf + n, "</div>\r\n");
           client.print(buf);
 
           String fv = WiFi.firmwareVersion();
@@ -334,12 +425,14 @@ void webserver_service(void)
           WiFi.macAddress(mac);
           sprintf(buf,
               "<br/><br/>\r\n" \
-              "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a>\r\n" \
+              "%s" \
+              "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a> - <a href='/config'>Config</a>\r\n" \
               "<br/><br/>\r\n" \
               "<div id=wifi>\r\n" \
               "<form method=post>\r\n" \
               "SSID <input name=1 size=30 maxlength=64 placeholder=SSID value='%s'><br/>\r\n" \
               "Code <input name=2 size=30 maxlength=64 placeholder=Password value=''><br/>\r\n" \
+              "%s" \
               "<input type=submit> (Neustart erforderlich, requires reboot)<br/>\r\n" \
               "</form><br/>\r\n" \
               "<div id=info>\r\n" \
@@ -350,7 +443,10 @@ void webserver_service(void)
               "</div>\r\n" \
               "</body>\r\n" \
               "</html>\r\n",
-              settings.wifi_ssid, /*settings.wifi_code, */ fv.c_str(), 
+              form_msg,
+              settings_password_set() ? "" : settings.wifi_ssid, /*settings.wifi_code, */
+              settings_password_set() ? "Passwort <input name=3 type=password size=30 maxlength=32><br/>\r\n" : "",
+              fv.c_str(), 
               mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]
           );
           client.print(buf);
@@ -367,10 +463,20 @@ void webserver_service(void)
       }
       if(c == '\n')
       {
+        hline[hlen] = 0;
+        if(strncasecmp(hline, "Content-Length:", 15) == 0)
+        {
+          content_length = (size_t)atol(hline + 15);
+        }
+        hlen = 0;
         currentLineIsBlank = true;
       }
       else if(c != '\r')
       {
+        if(hlen < (sizeof(hline) - 1))
+        {
+          hline[hlen++] = c;
+        }
         currentLineIsBlank = false;
       }
     }
@@ -381,3 +487,5 @@ void webserver_service(void)
 
   return;
 }
+
+#endif //WITH_WEB

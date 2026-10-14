@@ -198,6 +198,75 @@ static void print_item_value(const serial_settings_ctx_t *ctx, const cfg_item_t 
   print_value(ctx->out, item);
 }
 
+void print_json_string(Print *out, const char *str)
+{
+  out->print('"');
+  for(; *str; str++)
+  {
+    unsigned char c = (unsigned char)*str;
+    if((c == '"') || (c == '\\'))
+    {
+      out->print('\\');
+      out->print((char)c);
+    }
+    else if(c < 0x20)
+    {
+      out->print("\\u00");
+      print_hex_padded(out, c, 2);
+    }
+    else
+    {
+      out->print((char)c);
+    }
+  }
+  out->print('"');
+}
+
+// One JSON value: numbers plain, bools true/false, colors as "RRGGBB" (accepted by set), rest as strings
+static void print_item_json(const serial_settings_ctx_t *ctx, const cfg_item_t *item)
+{
+  Print *out = ctx->out;
+  if((item->flags & CFG_SECRET) && !ctx->local)
+  {
+    out->print("\"***\"");
+    return;
+  }
+  switch(item->type)
+  {
+    case CFG_BOOL:
+      out->print(*(bool *)item->ptr ? "true" : "false");
+      break;
+    case CFG_STRING:
+      print_json_string(out, (const char *)item->ptr);
+      break;
+    case CFG_COLOR:
+      out->print('"');
+      print_hex_padded(out, *(uint32_t *)item->ptr, 6);
+      out->print('"');
+      break;
+    case CFG_IP:
+      out->print('"');
+      print_value(out, item);
+      out->print('"');
+      break;
+    default:
+      print_value(out, item);
+      break;
+  }
+}
+
+void cfg_print_json(const cfg_item_t *items, size_t item_count, const serial_settings_ctx_t *ctx)
+{
+  for(size_t i = 0; i < item_count; i++)
+  {
+    ctx->out->print((i == 0) ? "{" : ",");
+    print_json_string(ctx->out, items[i].key);
+    ctx->out->print(':');
+    print_item_json(ctx, &items[i]);
+  }
+  ctx->out->print("}");
+}
+
 static const cfg_item_t *find_item(const cfg_item_t *items, size_t count, const char *key)
 {
   for(size_t i = 0; i < count; i++)
@@ -207,6 +276,85 @@ static const cfg_item_t *find_item(const cfg_item_t *items, size_t count, const 
       return &items[i];
     }
   }
+  return NULL;
+}
+
+const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decimal, void *user)
+{
+  switch(item->type)
+  {
+    case CFG_U8:
+    case CFG_U16:
+    case CFG_U32:
+    case CFG_COLOR:
+      {
+        uint32_t parsed = 0;
+        if(!parse_u32(value, &parsed, (item->type == CFG_COLOR) && !decimal))
+        {
+          return "Invalid number";
+        }
+        if(item->min_val <= item->max_val)
+        {
+          if(parsed < item->min_val || parsed > item->max_val)
+          {
+            return "Out of range";
+          }
+        }
+        if(item->type == CFG_U8)
+        {
+          *(uint8_t *)item->ptr = (uint8_t)parsed;
+        }
+        else if(item->type == CFG_U16)
+        {
+          *(uint16_t *)item->ptr = (uint16_t)parsed;
+        }
+        else
+        {
+          *(uint32_t *)item->ptr = (uint32_t)parsed;
+        }
+      }
+      break;
+    case CFG_BOOL:
+      {
+        bool b = false;
+        if(!parse_bool(value, &b))
+        {
+          return "Invalid bool";
+        }
+        *(bool *)item->ptr = b;
+      }
+      break;
+    case CFG_STRING:
+      {
+        size_t len = strlen(value);
+        if(item->max_len > 0 && len > item->max_len)
+        {
+          return "String too long";
+        }
+        strncpy((char *)item->ptr, value, item->max_len);
+        ((char *)item->ptr)[item->max_len] = 0;
+      }
+      break;
+    case CFG_IP:
+      {
+        IPAddress ip;
+        if(!parse_ip(value, &ip))
+        {
+          return "Invalid IP";
+        }
+        *(IPAddress *)item->ptr = ip;
+      }
+      break;
+  }
+
+  if(item->apply)
+  {
+    if(!item->apply(user, item))
+    {
+      return "Apply failed";
+    }
+  }
+
   return NULL;
 }
 
@@ -250,6 +398,11 @@ bool serial_settings_handle_line(char *line,
 
   if(match_cmd(line, "get", &arg))
   {
+    if(ctx->locked)
+    {
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
     if(*arg == 0)
     {
       print_error(ctx->out, "Missing key");
@@ -263,6 +416,7 @@ bool serial_settings_handle_line(char *line,
       arg[arg_len - 2] = 0;
     }
 
+    bool found = false;
     for(size_t i = 0; i < item_count; i++)
     {
       if(is_prefix)
@@ -280,6 +434,7 @@ bool serial_settings_handle_line(char *line,
         }
       }
 
+      found = true;
       if(ctx->out)
       {
         ctx->out->print(items[i].key);
@@ -294,6 +449,10 @@ bool serial_settings_handle_line(char *line,
       }
     }
 
+    if(!found)
+    {
+      print_error(ctx->out, "Unknown key");
+    }
     return true;
   }
 
@@ -301,7 +460,7 @@ bool serial_settings_handle_line(char *line,
   {
     if(!ctx->remote_on)
     {
-      print_error(ctx->out, "Remote control not enabled");
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
       return true;
     }
 
@@ -332,84 +491,11 @@ bool serial_settings_handle_line(char *line,
       return true;
     }
 
-    switch(item->type)
+    const char *err = cfg_set_value(item, value, false, ctx->user);
+    if(err != NULL)
     {
-      case CFG_U8:
-      case CFG_U16:
-      case CFG_U32:
-      case CFG_COLOR:
-        {
-          uint32_t parsed = 0;
-          if(!parse_u32(value, &parsed, item->type == CFG_COLOR))
-          {
-            print_error(ctx->out, "Invalid number");
-            return true;
-          }
-          if(item->min_val <= item->max_val)
-          {
-            if(parsed < item->min_val || parsed > item->max_val)
-            {
-              print_error(ctx->out, "Out of range");
-              return true;
-            }
-          }
-          if(item->type == CFG_U8)
-          {
-            *(uint8_t *)item->ptr = (uint8_t)parsed;
-          }
-          else if(item->type == CFG_U16)
-          {
-            *(uint16_t *)item->ptr = (uint16_t)parsed;
-          }
-          else
-          {
-            *(uint32_t *)item->ptr = (uint32_t)parsed;
-          }
-        }
-        break;
-      case CFG_BOOL:
-        {
-          bool b = false;
-          if(!parse_bool(value, &b))
-          {
-            print_error(ctx->out, "Invalid bool");
-            return true;
-          }
-          *(bool *)item->ptr = b;
-        }
-        break;
-      case CFG_STRING:
-        {
-          size_t len = strlen(value);
-          if(item->max_len > 0 && len > item->max_len)
-          {
-            print_error(ctx->out, "String too long");
-            return true;
-          }
-          strncpy((char *)item->ptr, value, item->max_len);
-          ((char *)item->ptr)[item->max_len] = 0;
-        }
-        break;
-      case CFG_IP:
-        {
-          IPAddress ip;
-          if(!parse_ip(value, &ip))
-          {
-            print_error(ctx->out, "Invalid IP");
-            return true;
-          }
-          *(IPAddress *)item->ptr = ip;
-        }
-        break;
-    }
-
-    if(item->apply)
-    {
-      if(!item->apply(ctx->user, item))
-      {
-        print_error(ctx->out, "Apply failed");
-        return true;
-      }
+      print_error(ctx->out, err);
+      return true;
     }
 
     print_ok(ctx->out);
@@ -420,7 +506,7 @@ bool serial_settings_handle_line(char *line,
   {
     if(!ctx->remote_on)
     {
-      print_error(ctx->out, "Remote control not enabled");
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
       return true;
     }
 
@@ -444,6 +530,16 @@ bool serial_settings_handle_line(char *line,
 
   if(match_cmd(line, "dump", &arg))
   {
+    if(ctx->locked)
+    {
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
+    if(*arg != 0)
+    {
+      print_error(ctx->out, "Use dump (or json export)");
+      return true;
+    }
     for(size_t i = 0; i < item_count; i++)
     {
       if(ctx->out)
@@ -454,6 +550,21 @@ bool serial_settings_handle_line(char *line,
         print_item_value(ctx, &items[i]);
         ctx->out->println();
       }
+    }
+    return true;
+  }
+
+  if((match_cmd(line, "json", &arg)) && (strcasecmp(arg, "export") == 0))
+  {
+    if(ctx->locked)
+    {
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
+    if(ctx->out)
+    {
+      cfg_print_json(items, item_count, ctx);
+      ctx->out->println();
     }
     return true;
   }
@@ -471,4 +582,9 @@ bool serial_settings_handle_line(char *line,
   }
 
   return false;
+}
+
+const cfg_item_t *cfg_find_item(const cfg_item_t *items, size_t count, const char *key)
+{
+  return find_item(items, count, key);
 }

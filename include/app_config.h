@@ -6,6 +6,18 @@
 #define VERSION "SET VERSION!"
 #endif
 
+// Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).
+// Runtime settings of a disabled feature stay in the settings record but are not offered.
+#ifndef WITH_WEB
+#define WITH_WEB           1 //Webserver: Messwerte, /json, /cmk-agent, WiFi-Formular
+#endif
+#ifndef WITH_HA
+#define WITH_HA            1 //Home Assistant MQTT Discovery (mqtt.ha)
+#endif
+#ifndef WITH_MQTT_CONFIG
+#define WITH_MQTT_CONFIG   1 //Konfiguration ueber MQTT (mqtt.config)
+#endif
+
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
 #define DEFAULT_T1              600 //>= 600ppm
 #define DEFAULT_T2              1000 //>=1000ppm
@@ -26,16 +38,22 @@
 //--- MQTT ---
 #define MQTT_ENABLED       0      //0 = MQTT deaktiviert, 1 = MQTT aktiviert
 #define MQTT_BROKER        ""     //MQTT Broker Hostname oder IP
-#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883)
+#define MQTT_PORT          1883   //MQTT Broker Port (Standard: 1883, TLS: 8883)
+#define MQTT_TLS           0      //1 = MQTT ueber TLS (MQTTS)
 #define MQTT_USER          ""     //MQTT Benutzername (optional)
 #define MQTT_PASS          ""     //MQTT Passwort (optional)
 #define MQTT_CLIENT_ID     ""     //MQTT Client ID (leer = automatisch aus MAC)
 #define MQTT_TOPIC_PREFIX  "co2ampel" //MQTT Topic Prefix
 #define MQTT_INTERVAL      60     //MQTT Publish Intervall in Sekunden
+#define MQTT_HA            0      //1 = Home Assistant MQTT Discovery (mqtt.ha)
+#define MQTT_DISCOVERY_PREFIX "homeassistant" //Home Assistant Discovery Prefix
+#define MQTT_CONFIG        0      //1 = Konfiguration ueber MQTT (Topic <prefix>/<id>/cmd) erlaubt
 
 //--- Ampelhelligkeit (LEDs) ---
 #define HELLIGKEIT         125 //1-255 (255=100%, 179=70%)
 #define HELLIGKEIT_DUNKEL  20  //1-255 (255=100%, 25=10%)
+#define HELLIGKEIT_AUTO    1   //1 = mit dem Lichtsensor abdunkeln (led.auto)
+#define HELLIGKEIT_REMOTE  30  //Helligkeit bei "enable" und im Servicemenue
 #define NUM_LEDS           4   //Anzahl der LEDs
 
 //--- Lichtsensor ---

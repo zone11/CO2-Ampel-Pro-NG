@@ -8,6 +8,8 @@
 # area, so the script first reads the flash, takes the settings area (last 2KB,
 # reserved in the linker script) and appends it to the firmware image before
 # the usual erase + write + verify.
+#
+# Factory reset (e.g. forgotten enable password): CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload
 
 Import("env")
 
@@ -92,6 +94,9 @@ def upload(source, target, env):
     else:
         print("Warning: could not read flash, settings will be lost")
 
+    if settings and os.environ.get("CO2AMPEL_FACTORY_RESET") == "1":
+        print("CO2AMPEL_FACTORY_RESET=1: settings area is erased (device starts with defaults)")
+        settings = b""
     if settings:
         print("Keeping settings area (%d bytes at 0x%X)" % (len(settings), SETTINGS_ADDR))
         image = image + b"\xff" * (settings_off - len(image)) + settings

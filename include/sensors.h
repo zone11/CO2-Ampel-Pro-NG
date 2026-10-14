@@ -13,5 +13,6 @@ void co2_set_asc(bool on);
 void print_measurements(void);
 void print_sensor_info(void);
 void show_data(void);
+const char *fmt1(char *buf, float value); // value with one decimal like "%.1f", buf >= 16 bytes
 
 #endif

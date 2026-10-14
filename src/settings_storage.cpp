@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     2            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     6            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -24,8 +24,13 @@ typedef struct
   uint32_t crc;       // CRC32 over magic..data
 } SETTINGS_RECORD;
 
-// v1 records are migrated in place, which only works while the layout size stays the same
-static_assert(sizeof(SETTINGS) == 388, "SETTINGS size changed: bump SETTINGS_VERSION and add a migration");
+#define RECORD_HEADER     offsetof(SETTINGS_RECORD, data)
+#define SETTINGS_V1_SIZE  388 // layout size of settings v1-v4 and of the pre-versioning raw struct
+
+// Older records are read with their own size: the CRC follows their (shorter) data
+static_assert(offsetof(SETTINGS_RECORD, crc) == RECORD_HEADER + sizeof(SETTINGS), "crc must follow data");
+static_assert(sizeof(SETTINGS) >= SETTINGS_V1_SIZE, "fields may only be appended");
+static_assert(offsetof(SETTINGS, brightness_dark) == 392, "v6 fields must start after the v5 record (392 bytes)");
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
@@ -87,6 +92,14 @@ void settings_defaults(SETTINGS *data)
   data->color_t4      = DEFAULT_COLOR_T4;
 
   data->asc           = AUTO_KALIBRIERUNG;
+  data->mqtt_config   = MQTT_CONFIG;
+  data->mqtt_ha       = MQTT_HA;
+  data->mqtt_tls      = MQTT_TLS;
+
+  data->brightness_dark = HELLIGKEIT_DUNKEL;
+  data->led_auto      = HELLIGKEIT_AUTO;
+  data->led_disable   = false;
+  data->password[0]   = 0;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -108,8 +121,14 @@ static bool settings_validate(SETTINGS *data)
   data->serial_output = to_bool(&data->serial_output);
   data->mqtt_enabled  = to_bool(&data->mqtt_enabled);
   data->asc           = to_bool(&data->asc);
+  data->mqtt_config   = to_bool(&data->mqtt_config);
+  data->mqtt_ha       = to_bool(&data->mqtt_ha);
+  data->mqtt_tls      = to_bool(&data->mqtt_tls);
+  data->led_auto      = to_bool(&data->led_auto);
+  data->led_disable   = to_bool(&data->led_disable);
 
-  if(data->brightness > 255)                                { data->brightness = def.brightness; changed = true; }
+  if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
+  if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }
   if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
   if((data->mqtt_port < 1) || (data->mqtt_port > 65535))    { data->mqtt_port = def.mqtt_port; changed = true; }
   if((data->mqtt_interval < 10) || (data->mqtt_interval > 3600)) { data->mqtt_interval = def.mqtt_interval; changed = true; }
@@ -142,6 +161,7 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_pass[sizeof(data->mqtt_pass) - 1] = 0;
   data->mqtt_client_id[sizeof(data->mqtt_client_id) - 1] = 0;
   data->mqtt_topic_prefix[sizeof(data->mqtt_topic_prefix) - 1] = 0;
+  data->password[sizeof(data->password) - 1] = 0;
 
   return changed;
 }
@@ -156,37 +176,55 @@ static bool legacy_plausible(const SETTINGS *old)
          (memchr(old->mqtt_broker, 0, sizeof(old->mqtt_broker)) != NULL);
 }
 
+// Fields that lived in struct padding before they existed (v1-v4 share one 388-byte layout)
+static void default_padding_fields(SETTINGS *data, uint16_t version)
+{
+  if(version < 2) { data->asc         = AUTO_KALIBRIERUNG; }
+  if(version < 3) { data->mqtt_config = MQTT_CONFIG; }
+  if(version < 4) { data->mqtt_ha     = MQTT_HA; }
+}
+
 SETTINGS_LOAD settings_read(SETTINGS *data)
 {
-  SETTINGS_RECORD rec;
+  const uint8_t *flash = (const uint8_t *)SETTINGS_FLASH_ADDR;
+  uint32_t magic;
+  uint16_t version, size;
 
-  memcpy(&rec, (const void *)SETTINGS_FLASH_ADDR, sizeof(rec));
+  memcpy(&magic, flash, sizeof(magic));
+  memcpy(&version, flash + 4, sizeof(version));
+  memcpy(&size, flash + 6, sizeof(size));
 
-  if((rec.magic == SETTINGS_MAGIC) && (rec.size == sizeof(SETTINGS)) && (rec.crc == record_crc(&rec)))
+  if(magic == SETTINGS_MAGIC)
   {
-    if(rec.version == SETTINGS_VERSION)
+    if(version > SETTINGS_VERSION) //nach Downgrade: nicht ueberschreiben, damit neuere Firmware sie wieder findet
     {
-      memcpy(data, &rec.data, sizeof(SETTINGS));
-      settings_validate(data);
-      return SETTINGS_LOADED;
+      settings_defaults(data);
+      return SETTINGS_NEWER;
     }
-    if(rec.version == 1) //v1: same layout, 'asc' was struct padding
+    if((version >= 1) && (size >= SETTINGS_V1_SIZE) && (size <= sizeof(SETTINGS)) && ((size % 4) == 0))
     {
-      memcpy(data, &rec.data, sizeof(SETTINGS));
-      data->asc = AUTO_KALIBRIERUNG;
-      settings_validate(data);
-      return SETTINGS_MIGRATED;
+      uint32_t crc;
+      memcpy(&crc, flash + RECORD_HEADER + size, sizeof(crc));
+      if(crc == crc32(flash, RECORD_HEADER + size))
+      {
+        settings_defaults(data);                       //Felder, die in kuerzeren Records fehlen
+        memcpy(data, flash + RECORD_HEADER, size);
+        default_padding_fields(data, version);
+        settings_validate(data);
+        return (version == SETTINGS_VERSION) ? SETTINGS_LOADED : SETTINGS_MIGRATED;
+      }
     }
   }
-
-  if(rec.magic != SETTINGS_MAGIC)
+  else
   {
+    // Pre-versioning firmware stored the raw v1 layout at the same address
     SETTINGS old;
-    memcpy(&old, (const void *)SETTINGS_FLASH_ADDR, sizeof(old));
+    settings_defaults(&old);
+    memcpy(&old, flash, SETTINGS_V1_SIZE);
     if(legacy_plausible(&old))
     {
       memcpy(data, &old, sizeof(SETTINGS));
-      data->asc = AUTO_KALIBRIERUNG; //padding in the old layout
+      default_padding_fields(data, 0);
       settings_validate(data);
       return SETTINGS_MIGRATED;
     }
