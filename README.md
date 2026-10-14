@@ -359,7 +359,7 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"version":"0.4.0","sensors":["SCD30","LPS22HB"]}` (sensors detected at boot) | every interval | yes |
+| `<base>/device` | `{"version":"0.5","sensors":["SCD30","LPS22HB"]}` (sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
