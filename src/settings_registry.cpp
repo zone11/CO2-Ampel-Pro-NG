@@ -3,6 +3,7 @@
 #include "app_globals.h"
 #include "json_parser.h"
 #include "led_control.h"
+#include "mqtt_service.h"
 #include "sensors.h"
 #include "serial_settings.h"
 #include "settings_storage.h"
@@ -14,6 +15,14 @@ static bool apply_asc(void *user, const cfg_item_t *item)
   (void)user;
   (void)item;
   co2_set_asc(settings.asc);
+  return true;
+}
+
+static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  mqtt_ha_update();
   return true;
 }
 
@@ -37,7 +46,7 @@ static const cfg_item_t settings_items[] =
   { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness },
   { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness },
   { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness },
-  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, NULL },
+  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, apply_led_disable },
   { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },
@@ -53,7 +62,7 @@ static const cfg_item_t settings_items[] =
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
   { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
 #if WITH_HA
-  { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, NULL, CFG_LOCAL },
+  { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, apply_mqtt_ha, CFG_LOCAL },
 #endif
 #if WITH_MQTT_CONFIG
   { "mqtt.config",      CFG_BOOL,  &settings.mqtt_config,    0, 0, 0, NULL, CFG_LOCAL },
@@ -290,10 +299,20 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   if(!ok) //alles oder nichts: vorherigen Zustand wiederherstellen
   {
     bool asc_changed = (settings.asc != before.asc);
+    bool led_changed = (settings.led_disable != before.led_disable);
+    bool ha_changed = (settings.mqtt_ha != before.mqtt_ha);
     settings = before;
     if(asc_changed)
     {
       co2_set_asc(settings.asc);
+    }
+    if(led_changed)
+    {
+      apply_led_disable(NULL, NULL);
+    }
+    if(ha_changed)
+    {
+      mqtt_ha_update();
     }
     apply_brightness(NULL, NULL);
   }

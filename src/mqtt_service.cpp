@@ -190,6 +190,8 @@ static const HA_ENTITY ha_entities[] =
   { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0 },
 };
 
+static bool ha_published = false; //Konfigurationen seit dem Start veroeffentlicht (fuer das Entfernen)
+
 static void mqtt_publish_discovery(void)
 {
   char device_id[16], topic[96], base[64], json[768];
@@ -231,6 +233,21 @@ static void mqtt_publish_discovery(void)
   }
 }
 #endif //WITH_HA
+
+void mqtt_ha_update(void)
+{
+#if WITH_HA
+  if(!mqttClient.connected())
+  {
+    return; //beim naechsten Verbindungsaufbau (nur wenn an)
+  }
+  if(settings.mqtt_ha || ha_published)
+  {
+    mqtt_publish_discovery(); //an: Konfigurationen, aus: einmal leere Nachrichten
+    ha_published = settings.mqtt_ha;
+  }
+#endif
+}
 
 void print_mqtt_status(void)
 {
@@ -364,7 +381,12 @@ void mqtt_connect(void)
   {
     mqttClient.publish(topic, "online", true, 1);
 #if WITH_HA
-    mqtt_publish_discovery();
+    ha_published = false;
+    if(settings.mqtt_ha) //aus: nichts senden (Entfernen nur beim Ausschalten, siehe mqtt_ha_update)
+    {
+      mqtt_publish_discovery();
+      ha_published = true;
+    }
 #endif
 #if WITH_MQTT_CONFIG
     if(settings.mqtt_config)

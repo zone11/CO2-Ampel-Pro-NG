@@ -12,6 +12,7 @@ void led_brightness_update(void);  // applies the current state (call after enab
 void led_set_dark(bool dark);      // light sensor result
 void led_button_step(void);        // short button press: halve, wrap back to the maximum
 bool apply_brightness(void *user, const cfg_item_t *item);
+bool apply_led_disable(void *user, const cfg_item_t *item); // led.disable takes effect immediately
 void print_led_status(void);
 void status_led(unsigned int on);
 void buzzer(unsigned int on);

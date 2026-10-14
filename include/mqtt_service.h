@@ -11,4 +11,8 @@ void mqtt_reconnect(void);
 void mqtt_publish_sensors(void);
 void mqtt_service(void);
 
+// Home Assistant discovery after a change of mqtt.ha (immediately, if connected): on = publish the
+// configs, off = remove the entities once (empty retained configs). Nothing is sent while it stays off.
+void mqtt_ha_update(void);
+
 #endif

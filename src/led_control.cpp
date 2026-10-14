@@ -39,18 +39,49 @@ void led_button_step(void)
   led_brightness_update();
 }
 
+bool apply_led_disable(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  if(settings.led_disable)
+  {
+    leds(FARBE_AUS); //sofort, auch bei "enable"
+    buzzer(0);
+  }
+  else if(remote_on)
+  {
+    leds(COLOR_MENU); //Anzeige "enable" wieder herstellen; sonst uebernimmt ampel() im naechsten Takt
+  }
+  return true;
+}
+
 void print_led_status(void)
 {
+  uint32_t shown = ws2812.getPixelColor(0); //tatsaechlich angezeigt (mit Helligkeit skaliert)
+
   Serial.print("LEDs: ");
   if(settings.led_disable)
   {
-    Serial.println("off (led.disable)");
-    return;
+    Serial.print("off (led.disable)");
   }
-  Serial.print("brightness ");
-  Serial.print(ws2812.getBrightness());
-  Serial.print(led_dark ? " (dark" : " (light");
-  Serial.println(settings.led_auto ? ", auto)" : ", fixed)");
+  else
+  {
+    Serial.print("brightness ");
+    Serial.print(ws2812.getBrightness());
+    Serial.print(led_dark ? " (dark" : " (light");
+    Serial.print(settings.led_auto ? ", auto)" : ", fixed)");
+  }
+  Serial.print(", showing ");
+  if(shown == 0)
+  {
+    Serial.println("nothing");
+  }
+  else
+  {
+    char hex[8];
+    snprintf(hex, sizeof(hex), "%06lX", (unsigned long)shown);
+    Serial.println(hex);
+  }
 }
 
 bool apply_brightness(void *user, const cfg_item_t *item)

@@ -89,8 +89,9 @@ Behavior:
 - Ambient light is checked 1 minute after boot and then every 10 minutes; in the dark (value < 20) the
   LEDs dim to `led.brightness_dark` and return to `led.brightness` when it is light again (`led.auto=0`:
   always `led.brightness`)
-- `led.disable=1` turns the LEDs, the status LED and the buzzer off (e.g. at night over MQTT); measuring
-  and MQTT continue. Without `save` it lasts until the next restart
+- `led.disable=1` turns the LEDs, the status LED and the buzzer off immediately (e.g. at night over MQTT;
+  also the violet `enable` indicator); measuring and MQTT continue. Without `save` it lasts until the next
+  restart
 - The red status LED blinks briefly with every new measurement (not in the dark)
 
 **Customize your thresholds and colors:**
@@ -143,10 +144,10 @@ press (or 10 s without pressing) starts it.
 Connect via USB serial at 9600 baud, 8N1:
 
 ```
-enable [pw]    Allow changes (set/save; LEDs violet and dimmed, traffic light and buzzer paused);
+enable [pw]    Allow changes (set/save; LEDs violet and dimmed unless led.disable, traffic light and buzzer paused);
                with sys.password set: enable <password>
 exit           Leave enable mode (traffic light resumes)
-status         Show measurements, CO2 sensor info, LED state and WiFi/MQTT status
+status         Show measurements, CO2 sensor info, LED state (incl. the color shown) and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
 winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (enable; restarts the device)
 reset          Reset device (after enable it answers OK and turns the LEDs off first)
@@ -199,7 +200,8 @@ mqtt.interval
 
 Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
 (`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
-Thresholds, colors, LED settings and buzzer apply immediately; WiFi and MQTT settings apply after `reset`.
+Thresholds, colors, LED settings, buzzer and `mqtt.ha` apply immediately; the other WiFi and MQTT settings
+apply after `reset`.
 
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
@@ -392,14 +394,13 @@ not an IP address). TLS 1.2 with RSA certificate chains.
 If the connection fails, the boot log shows `TLS: root CA stored in the WINC1500? Does mqtt.broker match
 the certificate?`.
 
-**Home Assistant discovery** (off by default): enable it with `enable`, `set mqtt.ha=1`, `save`, `reset`.
-On every connect the device then publishes
-retained discovery configs to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
+**Home Assistant discovery** (off by default): enable it with `enable`, `set mqtt.ha=1`, `save` (applies
+immediately). The device then publishes retained discovery configs (now and on every connect) to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
 the MQTT integration) creates a device "CO2-Ampel XXXX" with the entities CO2, Temperature, Humidity,
 Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and "WiFi signal" appear as
 diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and become unavailable when
-`<base>/status` is `offline`. With `set mqtt.ha=0`, `save`, `reset` the device removes its entities
-again (empty retained configs).
+`<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
+config each, only while MQTT is connected); with `mqtt.ha=0` nothing is sent to `homeassistant/`.
 
 **Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`,
 `reset`. The device then accepts **JSON objects** on `<base>/cmd` (max. 1 KB), exactly like `json import`,
