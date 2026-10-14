@@ -6,7 +6,7 @@ void leds(uint32_t color)
   ws2812.show();
 }
 
-static unsigned int led_level = 0; //aktuelle Stufe (Taster), 0 = led.brightness
+static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
 
 void led_brightness_update(void)
@@ -35,7 +35,7 @@ void led_button_step(void)
   unsigned int level = ((led_level > 0) ? led_level : settings.brightness) / 2;
   unsigned int min = settings.led_auto ? settings.brightness_dark : 1;
 
-  led_level = ((level < min) || (level < 1)) ? 0 : level; //unter dem Minimum: zurueck zum Maximum
+  led_level = ((level < min) || (level < 1)) ? 0 : level; //below the minimum: back to the maximum
   led_brightness_update();
 }
 
@@ -45,19 +45,19 @@ bool apply_led_disable(void *user, const cfg_item_t *item)
   (void)item;
   if(settings.led_disable)
   {
-    leds(COLOR_OFF); //sofort, auch bei "enable"
+    leds(COLOR_OFF); //immediately, also with "enable"
     buzzer(0);
   }
   else if(remote_on)
   {
-    leds(COLOR_MENU); //Anzeige "enable" wieder herstellen; sonst uebernimmt traffic_light() im naechsten Takt
+    leds(COLOR_MENU); //restore the "enable" indicator; otherwise traffic_light() takes over on the next tick
   }
   return true;
 }
 
 void print_led_status(void)
 {
-  uint32_t shown = ws2812.getPixelColor(0); //tatsaechlich angezeigt (mit Helligkeit skaliert)
+  uint32_t shown = ws2812.getPixelColor(0); //actually shown (scaled by the brightness)
 
   Serial.print("LEDs: ");
   if(settings.led_disable)
@@ -98,19 +98,19 @@ void status_led(unsigned int on)
 {
   if(on == 0)
   {
-    digitalWrite(PIN_LED, LOW); //Status-LED aus
+    digitalWrite(PIN_LED, LOW);
   }
   else if(on == 1)
   {
-    digitalWrite(PIN_LED, HIGH); //Status-LED an
+    digitalWrite(PIN_LED, HIGH);
   }
   else if(on < 2000)
   {
     on = on/2;
-    digitalWrite(PIN_LED, HIGH); //Status-LED an
-    delay(on); //ms warten
-    digitalWrite(PIN_LED, LOW); //Status-LED aus
-    delay(on); //ms warten
+    digitalWrite(PIN_LED, HIGH);
+    delay(on);
+    digitalWrite(PIN_LED, LOW);
+    delay(on);
   }
 
   return;
@@ -120,17 +120,17 @@ void buzzer(unsigned int on)
 {
   if(on == 0)
   {
-    analogWrite(PIN_BUZZER, 0); //Buzzer aus
+    analogWrite(PIN_BUZZER, 0);
   }
   else if(on == 1)
   {
-    analogWrite(PIN_BUZZER, 255/2); //Buzzer an
+    analogWrite(PIN_BUZZER, 255/2);
   }
   else if(on < 2000)
   {
-    analogWrite(PIN_BUZZER, 255/2); //Buzzer an
-    delay(on); //ms warten
-    analogWrite(PIN_BUZZER, 0); //Buzzer aus
+    analogWrite(PIN_BUZZER, 255/2);
+    delay(on);
+    analogWrite(PIN_BUZZER, 0);
   }
 
   return;
@@ -138,9 +138,9 @@ void buzzer(unsigned int on)
 
 void traffic_light(unsigned int co2)
 {
-  static unsigned int blinken=0;
+  static unsigned int blink_on=0;
 
-  if(settings.led_disable) //LEDs und Buzzer aus (z.B. nachts)
+  if(settings.led_disable) //LEDs and buzzer off (e.g. at night)
   {
     leds(COLOR_OFF);
     buzzer(0);
@@ -148,53 +148,53 @@ void traffic_light(unsigned int co2)
   }
 
   //LEDs
-  if(co2 < settings.range[0]) //blau (very fresh air)
+  if(co2 < settings.range[0]) //blue (very fresh air)
   {
-    blinken = 0;
+    blink_on = 0;
     leds(settings.color_t1);
   }
-  else if(co2 < settings.range[1]) //gruen (good)
+  else if(co2 < settings.range[1]) //green (good)
   {
-    blinken = 0;
+    blink_on = 0;
     leds(settings.color_t2);
   }
-  else if(co2 < settings.range[2]) //gelb (warning)
+  else if(co2 < settings.range[2]) //yellow (warning)
   {
-    blinken = 0;
+    blink_on = 0;
     leds(settings.color_t3);
   }
-  else if(co2 < settings.range[3]) //rot (alert)
+  else if(co2 < settings.range[3]) //red (alert)
   {
-    blinken = 0;
+    blink_on = 0;
     leds(settings.color_t4);
   }
-  else //rot blinken (critical - blinking)
+  else //blinking red (critical)
   {
-    if(blinken == 0)
+    if(blink_on == 0)
     {
-      leds(ws2812.Color(10,0,0)); //rot schwache Helligkeit
+      leds(ws2812.Color(10,0,0)); //dim red
     }
     else
     {
-      leds(settings.color_t4); //rot
+      leds(settings.color_t4); //red
     }
-    blinken = 1-blinken; //invertieren
+    blink_on = 1-blink_on;
   }
 
-  //Buzzer
+  //buzzer
   if(co2 < settings.range[4])
   {
-    buzzer(0); //Buzzer aus
+    buzzer(0);
   }
   else
   {
-    if((blinken == 0) && (buzzer_timer == 0) && settings.buzzer)
+    if((blink_on == 0) && (buzzer_timer == 0) && settings.buzzer)
     {
-      buzzer(1); //Buzzer an
+      buzzer(1);
     }
     else
     {
-      buzzer(0); //Buzzer aus
+      buzzer(0);
     }
   }
 

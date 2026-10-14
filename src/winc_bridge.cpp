@@ -16,12 +16,12 @@
 
 #define MAX_PAYLOAD     1024
 #define HEADER_SIZE     11
-#define WRITE_START     0x4000  //nur der Root-Zertifikatsspeicher darf geaendert werden
+#define WRITE_START     0x4000  //only the root certificate store may be changed
 #define WRITE_END       0x5000
-#define IDLE_TIMEOUT    60000UL //Neustart nach 60s ohne gueltigen Befehl
-#define RESYNC_GAP      50      //ms Pause, nach der ein fehlerhaftes Paket verworfen ist
+#define IDLE_TIMEOUT    60000UL //restart after 60s without a valid command
+#define RESYNC_GAP      50      //ms of silence after which a broken packet is dropped
 
-static unsigned long t_valid; //letzter gueltiger Befehl
+static unsigned long t_valid; //last valid command
 
 static void restart(void)
 {
@@ -110,7 +110,7 @@ void winc_bridge(void)
     uint32_t arg = be32(&hdr[5]);
     uint16_t len = ((uint16_t)hdr[9] << 8) | hdr[10];
 
-    if((len > MAX_PAYLOAD) || ((cmd != CMD_WRITE) && (len != 0))) //kein gueltiges Paket
+    if((len > MAX_PAYLOAD) || ((cmd != CMD_WRITE) && (len != 0))) //not a valid packet
     {
       resync();
       continue;

@@ -234,7 +234,7 @@ static bool parse_object(parser_t *ps, size_t key_len, int depth)
     {
       return false;
     }
-    ps->key[key_len] = 0; //Schluessel des umgebenden Objekts wiederherstellen
+    ps->key[key_len] = 0; //restore the key of the enclosing object
 
     skip_ws(ps);
     if(*ps->p == ',')

@@ -14,8 +14,8 @@ void reset_mcu(void)
 
   status_led(0);
   buzzer(0);
-  ws2812.setBrightness(BRIGHTNESS_DARK); //dunkel
-  leds(COLOR_WHITE); //LEDs weiss
+  ws2812.setBrightness(BRIGHTNESS_DARK); //dark
+  leds(COLOR_WHITE); //LEDs white
 
   if(features & FEATURE_WINC1500)
   {

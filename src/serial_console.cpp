@@ -12,14 +12,14 @@
 
 #include <ctype.h>
 
-#define LINE_IDLE_MS 500 //Zeile ohne CR/LF gilt nach 500ms Pause als fertig
-#define IMPORT_MAX   2048    //max. JSON bei "json import"
-#define IMPORT_IDLE  30000UL //Abbruch nach 30s ohne Eingabe
+#define LINE_IDLE_MS 500 //a line without CR/LF counts as complete after a 500ms pause
+#define IMPORT_MAX   2048    //max. JSON for "json import"
+#define IMPORT_IDLE  30000UL //abort after 30s without input
 
 // "json import": collects raw characters (no line limit) until the closing brace of the object
 static struct
 {
-  char *buf;          //nur waehrend des Imports belegt
+  char *buf;          //only allocated during the import
   size_t len;
   int depth;
   bool in_string, escape;
@@ -128,7 +128,7 @@ static bool read_line(char *buf, size_t size)
       return true;
     }
     buf[len++] = c;
-    if(len >= (size - 1)) //voll: Rest bleibt im Puffer (z.B. langes JSON nach "json import")
+    if(len >= (size - 1)) //full: the rest stays in the buffer (e.g. a long JSON after "json import")
     {
       buf[len] = 0;
       len = 0;
@@ -155,7 +155,7 @@ void serial_service(void)
     return;
   }
 
-  if(imp.buf != NULL) //"json import" sammelt das JSON-Objekt
+  if(imp.buf != NULL) //"json import" collects the JSON object
   {
     import_service();
     return;
@@ -180,12 +180,12 @@ void serial_service(void)
 
   if((strncasecmp(line, "enable", 6) == 0) && ((line[6] == 0) || (line[6] == ' ')))
   {
-    if(settings_enable(line + ((line[6] == ' ') ? 7 : 6), &Serial)) //antwortet OK / ERROR
+    if(settings_enable(line + ((line[6] == ' ') ? 7 : 6), &Serial)) //replies OK / ERROR
     {
       remote_on = 1;
       buzzer(0);
       led_brightness_update();
-      leds(settings.led_disable ? COLOR_OFF : COLOR_MENU); //led.disable gilt auch hier
+      leds(settings.led_disable ? COLOR_OFF : COLOR_MENU); //led.disable applies here too
     }
     return;
   }
@@ -210,14 +210,14 @@ void serial_service(void)
     print_mqtt_status();
     return;
   }
-  if(strcasecmp(line, "winc bridge") == 0) //WiFi-Modul-Flash fuer scripts/co2ampel_tool.py (nur lokal)
+  if(strcasecmp(line, "winc bridge") == 0) //WiFi module flash for scripts/co2ampel_tool.py (local only)
   {
     if(!remote_on)
     {
       Serial.println("ERROR: Not enabled (send 'enable' first)");
       return;
     }
-    winc_bridge(); //kehrt nicht zurueck (Neustart)
+    winc_bridge(); //does not return (restart)
   }
   if((strncasecmp(line, "json import", 11) == 0) && ((line[11] == 0) || isspace((unsigned char)line[11])))
   {
@@ -226,7 +226,7 @@ void serial_service(void)
       Serial.println("{\"result\":\"ERROR\",\"errors\":{\"enable\":\"Not enabled (send 'enable' first)\"}}");
       return;
     }
-    import_begin(line + 11); //JSON auf derselben Zeile oder in den folgenden
+    import_begin(line + 11); //JSON on the same line or on the following ones
     return;
   }
   if(strcasecmp(line, "i2c scan") == 0)

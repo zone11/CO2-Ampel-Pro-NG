@@ -6,24 +6,24 @@
 
 #include <SPI.h>
 
-void self_test(void) //Testprogramm
+void self_test(void) //self test
 {
-  //Buzzer-Test
-  buzzer(500); //500ms Buzzer an
+  //buzzer test
+  buzzer(500);
 
-  //LED-Test
-  leds(0xFF0000); //LEDs rot
-  delay(1000); //1s warten
-  leds(0x00FF00); //LEDs gruen
-  delay(1000); //1s warten
-  leds(0x0000FF); //LEDs blau
-  delay(1000); //1s warten
-  leds(COLOR_OFF); //LEDs aus
+  //LED test
+  leds(0xFF0000); //red
+  delay(1000);
+  leds(0x00FF00); //green
+  delay(1000);
+  leds(0x0000FF); //blue
+  delay(1000);
+  leds(COLOR_OFF);
 
-  //ATWINC1500-Test (nur wenn beim Start erkannt)
+  //ATWINC1500 test (only if detected at boot)
   if(features & FEATURE_WINC1500)
   {
-    if(WiFi.status() == WL_NO_SHIELD) //ATWINC1500 Fehler
+    if(WiFi.status() == WL_NO_SHIELD) //ATWINC1500 error
     {
       if(features & FEATURE_USB)
       {
@@ -31,20 +31,20 @@ void self_test(void) //Testprogramm
       }
       while(1)
       {
-        leds(COLOR_RED); //LEDs rot
-        delay(500); //500ms warten
-        leds(COLOR_YELLOW); //LEDs gelb
-        delay(500); //500ms warten
+        leds(COLOR_RED);
+        delay(500);
+        leds(COLOR_YELLOW);
+        delay(500);
       }
     }
     else
     {
-      leds(COLOR_WHITE); //LEDs weiss
-      buzzer(1000); //1s Buzzer an
+      leds(COLOR_WHITE);
+      buzzer(1000);
     }
   }
 
-  //RFM9X-Test (optional, bestueckt?)
+  //RFM9X test (optional, fitted?)
   SPI.begin();
   SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   digitalWrite(PIN_RFM9X_CS, LOW); //RFM9X CS low/active
@@ -54,8 +54,8 @@ void self_test(void) //Testprogramm
   SPI.endTransaction();
   if(rfm_version == 0x12) //check version
   {
-    leds(COLOR_WHITE); //LEDs weiss
-    buzzer(1000); //1s Buzzer an
+    leds(COLOR_WHITE);
+    buzzer(1000);
   }
   if(features & FEATURE_USB)
   {
@@ -63,26 +63,26 @@ void self_test(void) //Testprogramm
     Serial.println((rfm_version == 0x12) ? "found" : "not found");
   }
 
-  //Sensor-Test
+  //sensor test
   unsigned int co2, light;
   float temp, humi, pres;
   co2_value  = 0;
   temp_value = 0;
   humi_value = 0;
   pres_value = 0;
-  ws2812.fill(COLOR_OFF, 0, 4); //LEDs aus
+  ws2812.fill(COLOR_OFF, 0, 4);
   for(unsigned int okay=0; okay < 15;)
   {
-    if(digitalRead(PIN_SWITCH) == 0) //Taster gedrueckt?
+    if(digitalRead(PIN_SWITCH) == 0) //button pressed?
     {
-      break; //Abbruch
+      break; //abort
     }
-    status_led(200); //Status-LED
+    status_led(200);
 
-    digitalWrite(PIN_LSENSOR_PWR, HIGH); //Lichtsensor an
-    delay(50); //50ms warten
+    digitalWrite(PIN_LSENSOR_PWR, HIGH); //light sensor on
+    delay(50);
     light = analogRead(PIN_LSENSOR); //0...1024
-    digitalWrite(PIN_LSENSOR_PWR, LOW); //Lichtsensor aus
+    digitalWrite(PIN_LSENSOR_PWR, LOW); //light sensor off
     if((light >= 50) && (light <= 1000)) //50-1000
     {
       okay |= (1<<0);
@@ -142,26 +142,26 @@ void self_test(void) //Testprogramm
     ws2812.show();
   }
 
-  delay(2000); //2s warten
+  delay(2000);
 
   return;
 }
 
-void air_test(void) //Frischluft-Test
+void air_test(void) //fresh air test
 {
   unsigned int co2;
 
-  ws2812.fill(COLOR_WHITE, 0, 4); //LEDs weiss
+  ws2812.fill(COLOR_WHITE, 0, 4); //LEDs white
   ws2812.show();
 
   while(1)
   {
-    if(digitalRead(PIN_SWITCH) == 0) //Taster gedrueckt?
+    if(digitalRead(PIN_SWITCH) == 0) //button pressed?
     {
-      break; //Abbruch
+      break; //abort
     }
 
-    status_led(200); //Status-LED
+    status_led(200);
 
     if(check_sensors())
     {
@@ -169,23 +169,23 @@ void air_test(void) //Frischluft-Test
 
       if(co2 < 300)
       {
-        ws2812.fill(COLOR_RED, 0, NUM_LEDS); //rot
+        ws2812.fill(COLOR_RED, 0, NUM_LEDS);
       }
       else if(co2 < 350)
       {
-        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS); //gelb
+        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS);
       }
       else if(co2 <= 450)
       {
-        ws2812.fill(COLOR_BLUE, 0, NUM_LEDS); //blau
+        ws2812.fill(COLOR_BLUE, 0, NUM_LEDS);
       }
       else if(co2 <= 500)
       {
-        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS); //gelb
+        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS);
       }
       else //>500
       {
-        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS); //rot
+        ws2812.fill(COLOR_YELLOW, 0, NUM_LEDS);
       }
       ws2812.show();
 
@@ -193,9 +193,9 @@ void air_test(void) //Frischluft-Test
     }
   }
 
-  //Ende
-  leds(COLOR_OFF);//LEDs aus
-  buzzer(250); //250ms Buzzer an
+  //done
+  leds(COLOR_OFF);
+  buzzer(250);
 
   return;
 }

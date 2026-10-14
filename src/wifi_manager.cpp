@@ -84,7 +84,7 @@ unsigned int wifi_start_ap(void)
     Serial.println("WiFi AP start...");
   }
 
-  WiFi.macAddress(mac); //MAC-Adresse abfragen
+  WiFi.macAddress(mac);
   sprintf(ssid, "CO2AMPEL-%X-%X", mac[1], mac[0]);
 
   if(WiFi.status() != WL_IDLE_STATUS)
@@ -93,17 +93,17 @@ unsigned int wifi_start_ap(void)
     //reset_mcu();
   }
 
-  WiFi.hostname(ssid); //Hostname setzen
+  WiFi.hostname(ssid);
   if(WiFi.beginAP(ssid) != WL_AP_LISTENING)
   {
     WiFi.end();
     return 1;
   }
 
-  delay(5000); //5s warten
+  delay(5000);
 
 #if WITH_WEB
-  server.begin(); //starte Webserver
+  server.begin(); //start the web server
 #endif
 
   return 0;
@@ -114,7 +114,7 @@ unsigned int wifi_start(void)
   byte mac[6];
   char name[32];
 
-  if(settings.wifi_ssid[0] == 0) //keine Logindaten
+  if(settings.wifi_ssid[0] == 0) //no credentials
   {
     if(features & FEATURE_USB)
     {
@@ -128,7 +128,7 @@ unsigned int wifi_start(void)
     Serial.println("WiFi connect...");
   }
 
-  WiFi.macAddress(mac); //MAC-Adresse abfragen
+  WiFi.macAddress(mac);
   sprintf(name, "CO2AMPEL-%X-%X", mac[1], mac[0]);
 
   if(WiFi.status() != WL_IDLE_STATUS)
@@ -137,33 +137,33 @@ unsigned int wifi_start(void)
     //reset_mcu();
   }
 
-  WiFi.hostname(name); //Hostname setzen
-  if(strlen(settings.wifi_code) > 0) //Passwort
+  WiFi.hostname(name);
+  if(strlen(settings.wifi_code) > 0) //password
   {
-    WiFi.begin(settings.wifi_ssid, settings.wifi_code); //verbinde WiFi Netzwerk mit Passwort
+    WiFi.begin(settings.wifi_ssid, settings.wifi_code);
   }
   else
   {
-    WiFi.begin(settings.wifi_ssid); //verbinde WiFi Netzwerk ohne Passwort
+    WiFi.begin(settings.wifi_ssid); //open network
   }
 
-  //auf Verbindung warten
+  //wait for the connection
   for(unsigned int t=0; WiFi.status() == WL_IDLE_STATUS; t++)
   {
     if(t >= 6) //6s
     {
       break;
     }
-    status_led(1000); //Status-LED
+    status_led(1000);
   }
 
-  if(!(WiFi.status() == WL_CONNECTED)) //Verbindung fehlgeschlagen
+  if(!(WiFi.status() == WL_CONNECTED)) //connection failed
   {
     return 1;
   }
 
 #if WITH_WEB
-  server.begin(); //starte Webserver
+  server.begin(); //start the web server
 #endif
 
   return 0;

@@ -159,7 +159,7 @@ extern SERCOM sercom3;
 extern SERCOM sercom4;
 extern SERCOM sercom5;
 
-// SERCOM3 oder SERCOM5 Serial1 UART RXTX1
+// SERCOM3 or SERCOM5 Serial1 UART RXTX1
 extern Uart Serial1;
 #define PIN_SERIAL1_RX (19u)
 #define PIN_SERIAL1_TX (18u)

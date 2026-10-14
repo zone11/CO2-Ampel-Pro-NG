@@ -7,11 +7,11 @@
 
 #if WITH_WEB
 
-#define CONFIG_BODY_MAX 3072 //max. POST auf /config/... (Formular oder Passwort + JSON)
-#define CONFIG_JSON_MAX 2048 //aus dem Formular gebautes JSON
+#define CONFIG_BODY_MAX 3072 //max. POST to /config/... (form or password + JSON)
+#define CONFIG_JSON_MAX 2048 //JSON built from the form
 
 static void urldecode(char *src);
-static bool restart_pending = false; //Neustart nach dem Senden der Antwort
+static bool restart_pending = false; //restart after the reply has been sent
 
 // Writes text into a fixed buffer (for the JSON import reply on the page)
 class BufPrint : public Print
@@ -179,7 +179,7 @@ static void print_field(Print &out, const cfg_item_t *item)
     case CFG_STRING:
       out.print("<input id='"); out.print(item->key); out.print("' name='"); out.print(item->key);
       out.print("' maxlength="); out.print((unsigned int)item->max_len);
-      if(item->flags & CFG_SECRET) //nie anzeigen; leer = unveraendert
+      if(item->flags & CFG_SECRET) //never shown; empty = unchanged
       {
         out.print(" type=password placeholder='(unchanged)'>");
       }
@@ -188,7 +188,7 @@ static void print_field(Print &out, const cfg_item_t *item)
         out.print(" value='"); print_html(out, (const char *)item->ptr, true); out.print("'>");
       }
       break;
-    default: //Zahlen, IP
+    default: //numbers, IP
       cfg_print_value(&vb, item);
       out.print("<input id='"); out.print(item->key); out.print("' name='"); out.print(item->key); out.print("'");
       if((item->type != CFG_IP) && (item->min_val <= item->max_val))
@@ -231,7 +231,7 @@ static void config_page(WiFiClient &client, const char *result)
     out.print("<p><label for=pw>Passwort / password</label> <input id=pw type=password maxlength=32></p>\r\n");
   }
 
-  //Einstellungen, gruppiert nach Praefix (sys, co2, led, wifi, mqtt)
+  //settings, grouped by prefix (sys, co2, led, wifi, mqtt)
   out.print("<form method=post action=/config/save onsubmit='pw(this)'><input type=hidden name=_pw>\r\n");
   char group[8] = "";
   for(size_t i = 0; i < settings_item_count(); i++)
@@ -267,7 +267,7 @@ static void config_page(WiFiClient &client, const char *result)
             "<textarea id=j name=j rows=8 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
             "<input type=submit value='Import'> (alles oder nichts, wird gespeichert / all or nothing, saved)</form>\r\n");
 
-  //Neustart
+  //restart
   out.print("<h3>Neustart / restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
             "<input type=submit value='Neustart / restart'></form>\r\n"
             "<p><a href='/'>Zurueck / back</a></p>\r\n</body></html>\r\n");
@@ -339,18 +339,18 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
       BufPrint reply(result, size);
       if(settings_json_import(json + 2, &reply, true, true))
       {
-        settings_save(); //Web-Import wird immer gespeichert
+        settings_save(); //web import is always saved
       }
     }
     free(body);
     return false;
   }
 
-  //urlencoded Formulare
+  //urlencoded forms
   form_t form;
   form_parse(body, &form);
   const char *pw = form_value(&form, "_pw");
-  if(!password_ok(pw ? pw : "", res)) //ohne sys.password immer erlaubt
+  if(!password_ok(pw ? pw : "", res)) //always allowed without sys.password
   {
     free(body);
     return false;
@@ -377,7 +377,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
     return false;
   }
 
-  //save: Formularfelder -> JSON (alle Werte als Text) -> settings_json_import (alles oder nichts)
+  //save: form fields -> JSON (all values as strings) -> settings_json_import (all or nothing)
   char *json = (char *)malloc(CONFIG_JSON_MAX);
   if(json == NULL)
   {
@@ -392,7 +392,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
   {
     const cfg_item_t *item = settings_item(i);
     const char *v = form_value(&form, item->key);
-    if((v == NULL) || ((item->flags & CFG_SECRET) && (*v == 0))) //fehlt oder Passwort leer = unveraendert
+    if((v == NULL) || ((item->flags & CFG_SECRET) && (*v == 0))) //missing or empty password = unchanged
     {
       continue;
     }
@@ -423,7 +423,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
   return false;
 }
 
-static void urldecode(char *src) //URL Parameter dekodieren
+static void urldecode(char *src) //decode URL parameters
 {
   char a, b, *dst = src;
 
@@ -477,13 +477,13 @@ void webserver_service(void)
 
   status = WiFi.status();
 
-  if(status == WL_IDLE_STATUS) //Verbindungsaufbau
+  if(status == WL_IDLE_STATUS) //connecting
   {
     return;
   }
   else if((status == WL_CONNECT_FAILED) ||
           (status == WL_CONNECTION_LOST) || 
-          (status == WL_DISCONNECTED)) //Verbindungsabbruch
+          (status == WL_DISCONNECTED)) //connection lost
   {
     if((millis()-t_check) > (1*60000UL)) //1min
     {
@@ -493,10 +493,10 @@ void webserver_service(void)
     return;
   }
 
-  t_check = millis(); //Zeit speichern fuer Neuverbindung nach 1min
+  t_check = millis(); //for the reconnect after 1min
 
   WiFiClient client = server.available();
-  if(!client) //Client nicht verbunden
+  if(!client) //no client
   {
     return;
   }
@@ -507,24 +507,24 @@ void webserver_service(void)
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
   char buf[1024];
-  char req[3][3*64+1]; //HTTP request / POST-Werte SSID, Code, Passwort (URL-kodiert bis 3 Zeichen pro Byte)
+  char req[3][3*64+1]; //HTTP request / POST values SSID, code, password (URL-encoded, up to 3 chars per byte)
   const char *form_msg = "";
-  char f1[16], f2[16], f3[16], f4[16]; //Messwerte mit einer Nachkommastelle (fmt1)
-  char hline[24]; //aktuelle Headerzeile (nur fuer Content-Length)
+  char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
+  char hline[24]; //current header line (only for Content-Length)
   size_t hlen = 0, content_length = 0;
   req[0][0] = 0;
   while(client.connected())
   {
-    if((millis()-t_check) > (5*1000UL)) //Stop nach 5s
+    if((millis()-t_check) > (5*1000UL)) //stop after 5s
     {
       break;
     }
     if(client.available())
     {
       char c = client.read();
-      if(c == '\n' && currentLineIsBlank) //Header zu Ende
+      if(c == '\n' && currentLineIsBlank) //end of header
       {
-        if(strncmp(req[0], "GET ", 4) && strncmp(req[0], "POST ", 5)) //kein GET oder POST
+        if(strncmp(req[0], "GET ", 4) && strncmp(req[0], "POST ", 5)) //not GET or POST
         {
           sprintf(buf, 
               "HTTP/1.1 400 Bad Request\r\n" \
@@ -537,7 +537,7 @@ void webserver_service(void)
         }
         else if(strncmp(req[0], "GET /json", 9) == 0) //JSON
         {
-          //nur echte Messwerte (ohne CO2-Sensor fehlen c/t/h, ohne Drucksensor p/u)
+          //only real readings (no c/t/h without a CO2 sensor, no p/u without a pressure sensor)
           int n = sprintf(buf,
               "HTTP/1.1 200 OK\r\n" \
               "Content-Type: application/json\r\n" \
@@ -556,23 +556,23 @@ void webserver_service(void)
           sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk Agent
+        else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk agent
         {
-          //CO2-Ampeln koennen so direkt ins Monitoring von checkmk.com 
-          //aufgenommen werden. Plugins sind nicht zwingend erforderlich.
-          //Da HTTP als Uebertragungsweg genutzt wird, "Data Source" 
-          //verwenden: wget -O - http://ip_address/cmk-agent
-          //Siehe: https://docs.checkmk.com/latest/de/datasource_programs.html
+          //This way CO2-Ampel devices can be added directly to the monitoring of checkmk.com
+          //without any plugins.
+          //As HTTP is the transport, use a "data source":
+          //wget -O - http://ip_address/cmk-agent
+          //See: https://docs.checkmk.com/latest/en/datasource_programs.html
           int n = sprintf(buf,
               "HTTP/1.1 200 OK\r\n" \
               "Content-Type: text/plain\r\n" \
               "Connection: close\r\n" \
               "\r\n" \
-              //Plaintext im von Checkmk erwarteten Format
-              //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
+              //plain text in the format Checkmk expects
+              //See: https://docs.checkmk.com/latest/en/devel_check_plugins.html
               "<<<check_mk>>>\r\n" \
               "AgentOS: arduino\r\n" \
-              //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten
+              //needs a check plugin on the server to evaluate the metrics
               "<<<watterott_co2ampel_plugin>>>\r\n");
           if(co2_valid)
           {
@@ -583,9 +583,9 @@ void webserver_service(void)
           {
             n += sprintf(buf + n, "pressure %s\r\ntemp2 %s\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
-          //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
-          //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
-          //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
+          //ad-hoc check without a server plugin, uses the traffic light thresholds.
+          //Note: one line only - the Checkmk server rates the value itself based on
+          //the thresholds passed along, which we read from the device here:
           if(co2_valid)
           {
             sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
@@ -599,7 +599,7 @@ void webserver_service(void)
           }
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /config.json", 16) == 0) //Einstellungen, Passwoerter maskiert
+        else if(strncmp(req[0], "GET /config.json", 16) == 0) //settings, passwords masked
         {
           config_download(client, false);
         }
@@ -618,7 +618,7 @@ void webserver_service(void)
             config_page(client, result);
           }
         }
-        else if(strncmp(req[0], "GET /favicon", 12) == 0) //Favicon 
+        else if(strncmp(req[0], "GET /favicon", 12) == 0) //favicon
         {
           sprintf(buf, 
               "HTTP/1.1 404 Not Found\r\n" \
@@ -631,17 +631,17 @@ void webserver_service(void)
         }
         else
         {
-          //HTTP Post Daten verarbeiten
+          //HTTP POST data
           if((strncmp(req[0], "POST ", 5) == 0) && client.available())
           {
             bool too_long = false;
             req[0][0] = 0; //SSID
             req[1][0] = 0; //Code
-            req[2][0] = 0; //Passwort (sys.password)
+            req[2][0] = 0; //password (sys.password)
             for(unsigned int r=0, i=0, last_c=0; client.available();)
             {
               c = client.read();
-              if(c == '&') //Aufbau: 1=xxx&2=yyy
+              if(c == '&') //format: 1=xxx&2=yyy
               {
                 r = 0;
               }
@@ -650,7 +650,7 @@ void webserver_service(void)
                 r = last_c-'0';
                 i = 0;
               }
-              else if((r > 0) && (r < 4)) //1 bis 3
+              else if((r > 0) && (r < 4)) //1 to 3
               {
                 if(i < (sizeof(req[0]) - 1))
                 {
@@ -659,7 +659,7 @@ void webserver_service(void)
                 }
                 else
                 {
-                  too_long = true; //Wert zu lang, nicht speichern
+                  too_long = true; //value too long, not saved
                 }
               }
               last_c = c;
@@ -671,7 +671,7 @@ void webserver_service(void)
             {
               too_long = true;
             }
-            if(!settings_enable(req[2], NULL)) //mit sys.password: Passwort erforderlich
+            if(!settings_enable(req[2], NULL)) //with sys.password: password required
             {
               form_msg = "<b>Falsches Passwort / wrong password</b><br/>\r\n";
             }
@@ -679,12 +679,12 @@ void webserver_service(void)
             {
               if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
               {
-                settings_save(); //Einstellungen speichern
+                settings_save();
                 form_msg = "<b>Gespeichert / saved</b><br/>\r\n";
               }
             }
           }
-          //HTTP Header+Daten
+          //HTTP header + data
           sprintf(buf,
               "HTTP/1.1 200 OK\r\n" \
               "Content-Type: text/html\r\n" \
@@ -715,7 +715,7 @@ void webserver_service(void)
           );
           client.print(buf);
 
-          //ohne CO2-Sensor "--" statt Startwerten; Druckzeilen nur mit Drucksensor
+          //without a CO2 sensor "--" instead of start values; pressure lines only with a pressure sensor
           char co2_text[12];
           sprintf(co2_text, "%u", co2_value);
           int n = sprintf(buf,
@@ -796,10 +796,10 @@ void webserver_service(void)
     }
   }
 
-  delay(20); //20ms warten zum Senden
+  delay(20); //give the client time to receive
   client.stop();
 
-  if(restart_pending) //Neustart-Knopf auf /config: erst nach dem Senden der Seite
+  if(restart_pending) //restart button on /config: only after the page has been sent
   {
     delay(500);
     NVIC_SystemReset();

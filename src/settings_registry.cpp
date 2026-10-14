@@ -109,7 +109,7 @@ bool settings_enable(const char *password, Print *out)
     return false;
   }
 
-  //Vergleich ueber die volle Laenge (Laufzeit unabhaengig von der Position des ersten Unterschieds)
+  //compare the full length (run time independent of the position of the first difference)
   uint8_t diff = (strlen(password) >= sizeof(settings.password)) ? 1 : 0;
   for(size_t i = 0; i < sizeof(settings.password); i++)
   {
@@ -182,7 +182,7 @@ public:
   {
     if((len + strlen(key) + strlen(msg) + 8) >= sizeof(buf))
     {
-      return; //voll: weitere Meldungen weglassen
+      return; //full: drop further messages
     }
     if(len > 0)
     {
@@ -234,7 +234,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
 {
   import_ctx_t *ic = (import_ctx_t *)user;
 
-  if(strchr(key, '.') == NULL) //Befehlswoerter (Einstellungen enthalten immer einen Punkt)
+  if(strchr(key, '.') == NULL) //command words (settings always contain a dot)
   {
     bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
     if(ic->control_only && ((strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
@@ -250,7 +250,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
   if(item == NULL)
   {
-    ic->warnings.add(key, "Unknown key"); //z.B. Export einer neueren Firmware
+    ic->warnings.add(key, "Unknown key"); //e.g. an export of a newer firmware
     return true;
   }
   if(ic->control_only && !(item->flags & CFG_CONTROL))
@@ -260,7 +260,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   }
   if((item->flags & CFG_SECRET) && (strcmp(value, "***") == 0))
   {
-    return true; //maskierter Wert aus einem Export: unveraendert lassen
+    return true; //masked value from an export: leave unchanged
   }
   if((type == JSON_NULL) || ((type == JSON_BOOL) && (item->type != CFG_BOOL)))
   {
@@ -279,7 +279,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
     size_t off = (const uint8_t *)item->ptr - (const uint8_t *)&settings;
     if(memcmp(item->ptr, (const uint8_t *)ic->before + off, item_size(item)) != 0)
     {
-      ic->errors.add(key, "Only via serial or web"); //unveraendert ist erlaubt (Export zurueckspielen)
+      ic->errors.add(key, "Only via serial or web"); //unchanged is allowed (restoring an export)
     }
   }
   return true;
@@ -307,7 +307,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   }
 
   bool ok = ic.errors.empty();
-  if(!ok) //alles oder nichts: vorherigen Zustand wiederherstellen
+  if(!ok) //all or nothing: restore the previous state
   {
     bool asc_changed = (settings.asc != before.asc);
     bool led_changed = (settings.led_disable != before.led_disable);

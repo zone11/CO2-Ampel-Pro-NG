@@ -75,7 +75,7 @@ void settings_defaults(SETTINGS *data)
   copy_str(data->wifi_ssid, sizeof(data->wifi_ssid), WIFI_SSID);
   copy_str(data->wifi_code, sizeof(data->wifi_code), WIFI_CODE);
 
-  //MQTT Standardeinstellungen
+  //MQTT defaults
   data->mqtt_enabled  = MQTT_ENABLED;
   copy_str(data->mqtt_broker, sizeof(data->mqtt_broker), MQTT_BROKER);
   data->mqtt_port     = MQTT_PORT;
@@ -85,7 +85,7 @@ void settings_defaults(SETTINGS *data)
   copy_str(data->mqtt_topic_prefix, sizeof(data->mqtt_topic_prefix), MQTT_TOPIC_PREFIX);
   data->mqtt_interval = MQTT_INTERVAL;
 
-  //LED Color Defaults
+  //LED color defaults
   data->color_t1      = DEFAULT_COLOR_T1;
   data->color_t2      = DEFAULT_COLOR_T2;
   data->color_t3      = DEFAULT_COLOR_T3;
@@ -196,7 +196,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
 
   if(magic == SETTINGS_MAGIC)
   {
-    if(version > SETTINGS_VERSION) //nach Downgrade: nicht ueberschreiben, damit neuere Firmware sie wieder findet
+    if(version > SETTINGS_VERSION) //after a downgrade: don't overwrite, so the newer firmware finds them again
     {
       settings_defaults(data);
       return SETTINGS_NEWER;
@@ -207,7 +207,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       memcpy(&crc, flash + RECORD_HEADER + size, sizeof(crc));
       if(crc == crc32(flash, RECORD_HEADER + size))
       {
-        settings_defaults(data);                       //Felder, die in kuerzeren Records fehlen
+        settings_defaults(data);                       //fields missing in shorter records
         memcpy(data, flash + RECORD_HEADER, size);
         default_padding_fields(data, version);
         settings_validate(data);
@@ -234,11 +234,11 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
   return SETTINGS_DEFAULTS;
 }
 
-// Schreibt Einstellungen in Flash
+// Writes the settings to flash
 void settings_write(const SETTINGS *data)
 {
-  // SAMD21 Flash-Programmierung
-  // Page-Groesse: 64 Bytes (Row = 256 Bytes = 4 Pages)
+  // SAMD21 flash programming
+  // page size: 64 bytes (row = 256 bytes = 4 pages)
   uint32_t buf[RECORD_BYTES / 4];
   SETTINGS_RECORD *rec = (SETTINGS_RECORD *)buf;
 

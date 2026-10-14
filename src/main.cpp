@@ -41,12 +41,12 @@ Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
 #if WITH_WEB
-WiFiServer server(80); //Webserver Port 80
+WiFiServer server(80); //web server port 80
 #endif
 WiFiClient mqttWifiClient;
-VerifiedSSLClient mqttSslClient; //TLS im WINC1500 inkl. Hostname-Pruefung (Root-Zertifikat muss im WINC gespeichert sein)
+VerifiedSSLClient mqttSslClient; //TLS in the WINC1500 incl. hostname check (root certificate must be in the WINC store)
 #if WITH_MQTT_CONFIG
-MQTTClient mqttClient(1200, 1536); //Lesen: JSON-Befehle bis 1 KB, Schreiben: Antworten bis ~1.4 KB
+MQTTClient mqttClient(1200, 1536); //read: JSON commands up to 1 KB, write: replies up to ~1.4 KB
 #else
 MQTTClient mqttClient(256, 1536);
 #endif
@@ -54,34 +54,34 @@ MQTTClient mqttClient(256, 1536);
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
 unsigned int co2_value=CO2_START, co2_average=CO2_START, light_value=1024;
 float temp_value=20, temp_offset=TEMP_OFFSET, humi_value=50, pres_value=1013, pres_last=1013, temp2_value=20;
-bool co2_valid=false, pres_valid=false; //Startwerte oben sind keine Messwerte (nicht veroeffentlichen)
+bool co2_valid=false, pres_valid=false; //start values above are no readings (not published)
 
 
 void setup()
 {
   int run_menu=0;
 
-  //setze Pins
+  //pins
   pinMode(6, INPUT_PULLUP); //PA08 SDA1
   pinMode(7, INPUT_PULLUP); //PA09 SCL1
   pinMode(8, INPUT_PULLUP); //PA12 SDA2
   pinMode(9, INPUT_PULLUP); //PA13 SCL2
   pinMode(PIN_LED, OUTPUT);
-  digitalWrite(PIN_LED, LOW); //LED aus
+  digitalWrite(PIN_LED, LOW);
   pinMode(PIN_BUZZER, OUTPUT);
   digitalWrite(PIN_BUZZER, LOW);
   pinMode(PIN_WS2812, OUTPUT);
   digitalWrite(PIN_WS2812, LOW);
   pinMode(PIN_LSENSOR_PWR, OUTPUT);
-  digitalWrite(PIN_LSENSOR_PWR, LOW); //Lichtsensor aus
+  digitalWrite(PIN_LSENSOR_PWR, LOW); //light sensor off
   pinMode(PIN_LSENSOR, INPUT);
   pinMode(PIN_SWITCH, INPUT_PULLUP);
-  pinMode(14, OUTPUT); //PA18 WINC1500 CS-Pin
+  pinMode(14, OUTPUT); //PA18 WINC1500 CS pin
   digitalWrite(14, HIGH); //WINC1500 CS high
-  pinMode(PIN_RFM9X_CS, OUTPUT); //PA21 RFM9X CS-Pin
+  pinMode(PIN_RFM9X_CS, OUTPUT); //PA21 RFM9X CS pin
   digitalWrite(PIN_RFM9X_CS, HIGH); //RFM9X CS high
 
-  if(digitalRead(PIN_SWITCH) == LOW) //Taster gedrueckt
+  if(digitalRead(PIN_SWITCH) == LOW) //button pressed
   {
     run_menu = 1;
   }
@@ -89,31 +89,31 @@ void setup()
   //WS2812
   ws2812.begin();
   ws2812.setBrightness(BRIGHTNESS); //0...255
-  ws2812.fill(COLOR_OFF, 0, NUM_LEDS); //LEDs aus
-  ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs weiss
+  ws2812.fill(COLOR_OFF, 0, NUM_LEDS);
+  ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs white
   ws2812.show();
 
-  //Wire/I2C: haengende Busse freigeben (z.B. Neustart waehrend der SCD30 sendet), dann starten
+  //Wire/I2C: release hung buses (e.g. restart while the SCD30 sends), then start
   bool bus0_stuck = i2c_bus_recover(PIN_WIRE_SDA, PIN_WIRE_SCL);
   bool bus1_stuck = i2c_bus_recover(PIN_WIRE1_SDA, PIN_WIRE1_SCL);
   Wire.begin();
-  Wire.setClock(50000); //50kHz, empfohlen fuer SCD30
+  Wire.setClock(50000); //50kHz, recommended for the SCD30
   Wire1.begin();
   Wire1.setClock(100000); //100kHz ATECC+LPS22HB+BMP280
 
-  //serielle Schnittstelle (USB)
-  Serial.begin(BAUDRATE); //seriellen Port starten
-  //while(!Serial); //warten auf USB-Verbindung
+  //serial port (USB)
+  Serial.begin(BAUDRATE);
+  //while(!Serial); //wait for USB
 
-  delay(250); //250ms warten
+  delay(250);
 
-  if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 gefunden
+  if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 found
   {
     features |= FEATURE_WINC1500;
   }
 
   //LPS22HB
-  if(check_i2c(SERCOM2, ADDR_LPS22HB)) //LPS22HB gefunden
+  if(check_i2c(SERCOM2, ADDR_LPS22HB)) //LPS22HB found
   {
     if(lps22.begin())
     {
@@ -122,14 +122,14 @@ void setup()
   }
 
   //BMP280
-  if(check_i2c(SERCOM2, ADDR_BMP280)) //BMP280 gefunden
+  if(check_i2c(SERCOM2, ADDR_BMP280)) //BMP280 found
   {
     if(bmp280.begin(ADDR_BMP280))
     {
       features |= FEATURE_BMP280;
     }
   }
-  else if(check_i2c(SERCOM2, ADDR_BMP280+1)) //BMP280 gefunden
+  else if(check_i2c(SERCOM2, ADDR_BMP280+1)) //BMP280 found
   {
     if(bmp280.begin(ADDR_BMP280+1))
     {
@@ -138,23 +138,23 @@ void setup()
   }
 
   //SCD30+SCD4X
-  if(check_i2c(SERCOM0, ADDR_SCD30)) //SCD30 gefunden
+  if(check_i2c(SERCOM0, ADDR_SCD30)) //SCD30 found
   {
     for(int t=5; t!=0; t--) //try 5 times
     {
       Wire.begin();
       scd30.begin(Wire, ADDR_SCD30);
-      if(scd30.startPeriodicMeasurement(0) == 0) //0 = keine Druckkompensation
+      if(scd30.startPeriodicMeasurement(0) == 0) //0 = no pressure compensation
       {
         features |= FEATURE_SCD30;
         break;
       }
-      status_led(1000); //Status-LED
+      status_led(1000);
     }
-    scd30.setMeasurementInterval(MEASURE_INTERVAL); //setze Messintervall
-    //scd30.startPeriodicMeasurement(1000); //0 oder 700-1400, Luftdruck in hPa
+    scd30.setMeasurementInterval(MEASURE_INTERVAL);
+    //scd30.startPeriodicMeasurement(1000); //0 or 700-1400, pressure in hPa
   }
-  if(check_i2c(SERCOM0, ADDR_SCD4X)) //SCD4X gefunden
+  if(check_i2c(SERCOM0, ADDR_SCD4X)) //SCD4X found
   {
     for(int t=5; t!=0; t--) //try 5 times
     {
@@ -167,11 +167,11 @@ void setup()
         features |= FEATURE_SCD4X;
         break;
       }
-      status_led(1000); //Status-LED
+      status_led(1000);
     }
   }
 
-  //Temperaturoffset
+  //temperature offset
   if(features & FEATURE_SCD30)
   {
     uint16_t offset;
@@ -197,15 +197,15 @@ void setup()
     temp_offset = TEMP_OFFSET;
   }
 
-  //Einstellungen
-  SETTINGS_LOAD load = settings_read(&settings); //Einstellungen lesen
+  //settings
+  SETTINGS_LOAD load = settings_read(&settings);
   if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
   {
-    settings_write(&settings); //Defaults bzw. migrierte Einstellungen speichern
+    settings_write(&settings); //save defaults or migrated settings
   }
   if(load == SETTINGS_DEFAULTS)
   {
-    //Standard Temperaturoffset (always Pro with WiFi and pressure sensor)
+    //default temperature offset (always Pro with WiFi and pressure sensor)
     temp_offset = TEMP_OFFSET;
     if(features & FEATURE_SCD30)
     {
@@ -213,7 +213,7 @@ void setup()
       scd30.getTemperatureOffset(offset); //degC*100
       if((offset == 0) || (offset > 1200))
       {
-        scd30.setTemperatureOffset(temp_offset * 100); //Temperaturoffset
+        scd30.setTemperatureOffset(temp_offset * 100);
       }
     }
     else if(features & FEATURE_SCD4X)
@@ -222,18 +222,18 @@ void setup()
       scd4x.getTemperatureOffset(offset);
       if((offset == 0) || (offset > 12))
       {
-        scd4x.setTemperatureOffset(temp_offset); //Temperaturoffset
+        scd4x.setTemperatureOffset(temp_offset);
       }
     }
   }
-  co2_set_asc(settings.asc); //ASC laut Einstellungen
+  co2_set_asc(settings.asc); //ASC from the settings
   led_brightness_update();
 
-  //USB-Verbindung
-  if(USBDevice.connected()) //(Serial) nutzt Flow-Control zur Erkennung
+  //USB connection
+  if(USBDevice.connected()) //(Serial) uses flow control for detection
   {
     features |= FEATURE_USB;
-    delay(1500); //1500ms warten
+    delay(1500);
     Serial.println("\nCO2 Ampel Pro NG v" VERSION);
     Serial.print("Features:");
     if(features & FEATURE_SCD30)    { Serial.print(" SCD30"); }
@@ -257,25 +257,25 @@ void setup()
     Serial.println();
   }
 
-  //Service-Menue
+  //service menu
   if(run_menu)
   {
-    menu(); //Menue aufrufen
+    menu();
   }
 
-  //Plus-Version
+  //Plus version
   if(features & FEATURE_WINC1500)
   {
-    if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 gefunden
+    if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 found
     {
-      if(wifi_start() != 0) //verbinde WiFi Netzwerk
+      if(wifi_start() != 0) //connect to WiFi
       {
-        if(wifi_start_ap() != 0) //starte AP
+        if(wifi_start_ap() != 0) //start AP
         {
           features &= ~FEATURE_WINC1500;
         }
       }
-      delay(2000); //2s warten
+      delay(2000);
       if(features & FEATURE_USB)
       {
         String fv = WiFi.firmwareVersion();
@@ -295,10 +295,10 @@ void setup()
         Serial.print("GW: "); print_ip_address_line(ip);
         Serial.println("");
       }
-      //MQTT verbinden
+      //connect MQTT
       if(settings.mqtt_enabled)
       {
-        delay(1000); //1s warten
+        delay(1000);
         mqtt_connect();
       }
     }
@@ -309,16 +309,16 @@ void setup()
     }
   }
 
-  //Messung starten
+  //start measurement
   co2_value = co2_average = CO2_START;
   if(features & FEATURE_SCD30)
   {
-    scd30.setMeasurementInterval(MEASURE_INTERVAL); //setze Messintervall
-    delay(MEASURE_INTERVAL*1000UL); //Intervallsekunden warten
+    scd30.setMeasurementInterval(MEASURE_INTERVAL);
+    delay(MEASURE_INTERVAL*1000UL); //wait one interval
   }
   else if(features & FEATURE_SCD4X)
   {
-    //Intervall 5s
+    //interval 5s
   }
   else
   {
@@ -327,9 +327,9 @@ void setup()
       Serial.println("Error: CO2 sensor not found");
     }
     leds(COLOR_RED);
-    status_led(1000); //Status-LED
+    status_led(1000);
     leds(COLOR_OFF);
-    co2_value = co2_average = settings.range[2]; // Set to red threshold
+    co2_value = co2_average = settings.range[2]; //set to red threshold
   }
 
   return;
@@ -339,19 +339,19 @@ void setup()
 void loop()
 {
   static unsigned int dark=0, sw=0;
-  static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //Lichtsensor nach 60s pruefen
+  static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
   static unsigned long t_wifi=0;
   unsigned int overwrite=0;
 
-  //serielle Befehle verarbeiten
+  //serial commands
   serial_service();
 
 #if WITH_WEB
-  //WiFi-Daten verarbeiten
+  //WiFi data
   webserver_service();
 #endif
 
-  //MQTT-Daten verarbeiten
+  //MQTT data
   mqtt_service();
 
   if(features & FEATURE_WINC1500)
@@ -373,46 +373,46 @@ void loop()
     }
   }
 
-  //Taster pruefen
-  if(digitalRead(PIN_SWITCH) == LOW) //Taster gedrueckt
+  //button
+  if(digitalRead(PIN_SWITCH) == LOW) //pressed
   {
     if(sw == 0)
     {
       sw = 1;
-      t_switch = millis(); //Zeit speichern
+      t_switch = millis();
     }
   }
-  else if(sw != 0) //Taster losgelassen
+  else if(sw != 0) //released
   {
     sw = 0;
-    buzzer(0); //Buzzer aus
-    buzzer_timer = BUZZER_DELAY; //Buzzer Startverzögerung
-    if((millis()-t_switch) > 3000) //3s Tastendruck
+    buzzer(0);
+    buzzer_timer = BUZZER_DELAY; //buzzer start delay
+    if((millis()-t_switch) > 3000) //3s press
     {
       if(features & FEATURE_WINC1500)
       {
-        leds(COLOR_MENU); //LEDs violett
+        leds(COLOR_MENU);
         wifi_start_ap();
       }
     }
-    else if((millis()-t_switch) > 100) //100ms Tastendruck
+    else if((millis()-t_switch) > 100) //100ms press
     {
-      led_button_step(); //Helligkeit halbieren (nicht gespeichert)
+      led_button_step(); //halve the brightness (not saved)
       overwrite = 1;
     }
   }
 
-  if((millis()-t_traffic) > 1000) //Ampelfunktion nur jede Sekunde ausfuehren
+  if((millis()-t_traffic) > 1000) //traffic light once per second
   {
-    t_traffic = millis(); //Zeit speichern
+    t_traffic = millis();
 
     if(buzzer_timer > 0)
     {
       buzzer_timer--;
     }
 
-    //USB-Verbindung
-    if(USBDevice.connected()) //(Serial) nutzt Flow-Control zur Erkennung
+    //USB connection
+    if(USBDevice.connected()) //(Serial) uses flow control for detection
     {
       features |= FEATURE_USB;
     }
@@ -421,24 +421,24 @@ void loop()
     //  features &= ~FEATURE_USB;
     //}
 
-    //Sensordaten auslesen
+    //read sensor data
     if(check_sensors())
     {
       show_data();
       if((dark == 0) && !settings.led_disable)
       {
-        status_led(2); //Status-LED
+        status_led(2);
       }
     }
 
-    co2_average = (co2_average + co2_sensor()) / 2; //Berechnung jede Sekunde
+    co2_average = (co2_average + co2_sensor()) / 2; //average, once per second
   }
   else if(overwrite == 0)
   {
     return;
   }
 
-  //Ampel
+  //traffic light
   if(remote_on == 0)
   {
     #if USE_CO2_AVERAGE > 0
@@ -448,12 +448,12 @@ void loop()
     #endif
   }
 
-  //Lichtsensor
+  //light sensor
   if(remote_on == 0)
   {
     if((millis()-t_light) > (LIGHT_INTERVAL*1000UL*60UL))
     {
-      t_light = millis(); //Zeit speichern
+      t_light = millis();
 
       light_value = light_sensor();
       if(light_value < LIGHT_DARK)
@@ -461,7 +461,7 @@ void loop()
         if(dark == 0)
         {
           dark = 1;
-          led_set_dark(true); //dunkel (nur mit led.auto)
+          led_set_dark(true); //dark (only with led.auto)
         }
       }
       else
@@ -469,7 +469,7 @@ void loop()
         if(dark == 1)
         {
           dark = 0;
-          led_set_dark(false); //hell
+          led_set_dark(false); //bright
         }
       }
     }

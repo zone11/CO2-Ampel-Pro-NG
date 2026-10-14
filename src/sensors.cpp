@@ -17,28 +17,28 @@ const char *fmt1(char *buf, float value)
 
 void print_measurements(void)
 {
-  if(co2_valid) //nur echte Messwerte (ohne CO2-Sensor oder vor der ersten Messung keine)
+  if(co2_valid) //only real readings (none without a CO2 sensor or before the first reading)
   {
     Serial.print("c: ");           //CO2
-    Serial.println(co2_value);     //Wert in ppm
-    Serial.print("t: ");           //Temperatur
-    Serial.println(temp_value, 1); //Wert in °C
-    Serial.print("h: ");           //Humidity/Luftfeuchte
-    Serial.println(humi_value, 1); //Wert in %
+    Serial.println(co2_value);     //ppm
+    Serial.print("t: ");           //temperature
+    Serial.println(temp_value, 1); //°C
+    Serial.print("h: ");           //humidity
+    Serial.println(humi_value, 1); //%
   }
-  Serial.print("l: ");           //Licht
+  Serial.print("l: ");           //light
   Serial.println(light_value);
   if(pres_valid)
   {
-    Serial.print("p: ");         //Druck
-    Serial.println(pres_value);  //Wert in hPa
-    Serial.print("u: ");         //Temperatur
-    Serial.println(temp2_value); //Wert in °C
+    Serial.print("p: ");         //pressure
+    Serial.println(pres_value);  //hPa
+    Serial.print("u: ");         //temperature
+    Serial.println(temp2_value); //°C
   }
   Serial.println();
 }
 
-void print_sensor_info(void) //Sensor-Konfiguration ausgeben
+void print_sensor_info(void) //print the sensor configuration
 {
   Serial.print("CO2 Sensor: ");
   if(features & FEATURE_SCD30)
@@ -75,7 +75,7 @@ void print_sensor_info(void) //Sensor-Konfiguration ausgeben
   Serial.println(temp_offset, 2);
 }
 
-void show_data(void) //Daten anzeigen
+void show_data(void) //show the data
 {
   if((features & FEATURE_USB) && settings.serial_output)
   {
@@ -96,10 +96,10 @@ static unsigned int light_read(unsigned int dark_ms)
 
   memcpy(saved, ws2812.getPixels(), sizeof(saved));
 
-  digitalWrite(PIN_LSENSOR_PWR, HIGH); //Lichtsensor an
-  delay(40); //40ms warten
+  digitalWrite(PIN_LSENSOR_PWR, HIGH); //light sensor on
+  delay(40);
 
-  ws2812.clear(); //alle LEDs aus
+  ws2812.clear(); //all LEDs off
   ws2812.show();
   delay(dark_ms);
   i = analogRead(PIN_LSENSOR); //0...1024
@@ -109,12 +109,12 @@ static unsigned int light_read(unsigned int dark_ms)
   memcpy(ws2812.getPixels(), saved, sizeof(saved));
   ws2812.show();
 
-  digitalWrite(PIN_LSENSOR_PWR, LOW); //Lichtsensor aus
+  digitalWrite(PIN_LSENSOR_PWR, LOW); //light sensor off
 
   return i;
 }
 
-unsigned int light_sensor(void) //Auslesen des Lichtsensors
+unsigned int light_sensor(void) //read the light sensor
 {
   return light_read(LIGHT_LEDS_OFF_MS);
 }
@@ -139,7 +139,7 @@ float pres_sensor(void)
   return pres_value;
 }
 
-// Automatische Selbstkalibrierung (ASC) setzen, nur wenn abweichend
+// Set automatic self calibration (ASC), only if it differs
 void co2_set_asc(bool on)
 {
   uint16_t asc = 0;
@@ -153,7 +153,7 @@ void co2_set_asc(bool on)
   }
   else if(features & FEATURE_SCD4X)
   {
-    scd4x.stopPeriodicMeasurement(); //Einstellungen nur im Idle-Modus
+    scd4x.stopPeriodicMeasurement(); //settings only in idle mode
     delay(500);
     if((scd4x.getAutomaticSelfCalibrationEnabled(asc) != 0) || ((asc != 0) != on))
     {
@@ -179,7 +179,7 @@ static void read_pressure(void)
   }
 }
 
-unsigned int check_sensors(void) //Sensoren auslesen
+unsigned int check_sensors(void) //read the sensors
 {
   static unsigned long t_pres = 0;
   if(features & FEATURE_SCD30)
@@ -196,9 +196,9 @@ unsigned int check_sensors(void) //Sensoren auslesen
       if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
       {
         pres_last = pres_value;
-        if((pres_value >= 700) && (pres_value <= 1400)) //gueltiger Bereich
+        if((pres_value >= 700) && (pres_value <= 1400)) //valid range
         {
-          scd30.startPeriodicMeasurement(pres_value); //Druckkompensation, hPa=mBar
+          scd30.startPeriodicMeasurement(pres_value); //pressure compensation, hPa=mbar
         }
       }
       if(humi_value < 0)
@@ -245,7 +245,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       return 1;
     }
   }
-  else if((millis() - t_pres) > (MEASURE_INTERVAL*1000UL)) //ohne CO2-Sensor: Druck trotzdem messen
+  else if((millis() - t_pres) > (MEASURE_INTERVAL*1000UL)) //without a CO2 sensor: still read the pressure
   {
     t_pres = millis();
     read_pressure();

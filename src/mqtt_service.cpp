@@ -3,8 +3,8 @@
 #include "settings_registry.h"
 
 #if WITH_MQTT_CONFIG
-#define MQTT_CMD_MAX   1024 //max. JSON auf <base>/cmd (Lesepuffer MQTT_READ_BUF in main.cpp)
-#define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
+#define MQTT_CMD_MAX   1024 //max. JSON on <base>/cmd (read buffer in main.cpp)
+#define MQTT_REPLY_MAX 1400 //max. reply on <base>/resp (write buffer 1536)
 
 typedef enum { CMD_NONE, CMD_READY, CMD_TOO_LONG } CMD_STATE;
 
@@ -32,7 +32,7 @@ public:
     else if(!overflow)
     {
       overflow = true;
-      memcpy(&buf[len], truncated, sizeof(truncated)); //inkl. Nullterminator
+      memcpy(&buf[len], truncated, sizeof(truncated)); //incl. terminator
     }
     return 1;
   }
@@ -45,7 +45,7 @@ private:
 static ReplyBuffer reply;
 #endif //WITH_MQTT_CONFIG
 
-// Holt die eindeutige Chip-ID des SAMD21
+// Unique chip ID of the SAMD21
 void get_chip_id(char *buffer, size_t buffer_size)
 {
   // SAMD21G18A Unique Identifier (128-bit = 4x 32-bit words)
@@ -59,7 +59,7 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
-// Generiert Device-ID aus MAC-Adresse (volle MAC-Adresse)
+// Device ID from the MAC address (full MAC)
 void get_device_id(char *buffer, size_t buffer_size)
 {
   byte mac[6];
@@ -101,13 +101,13 @@ static void json_escape(char *dst, size_t size, const char *src)
 static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int length)
 {
   (void)client;
-  (void)topic; //nur <base>/cmd ist abonniert
+  (void)topic; //only <base>/cmd is subscribed
 
-  if(length <= 0) //leer = eigenes Loeschen eines retained Befehls
+  if(length <= 0) //empty = our own clearing of a retained command
   {
     return;
   }
-  if(cmd_state != CMD_NONE) //vorheriger Befehl noch nicht bearbeitet
+  if(cmd_state != CMD_NONE) //previous command not handled yet
   {
     return;
   }
@@ -121,18 +121,18 @@ static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int len
   cmd_state = CMD_READY;
 }
 
-// Runs every line of the pending command through the settings API (as a remote caller:
+// Runs the pending JSON command through settings_json_import() (as a remote caller:
 // secrets masked, CFG_LOCAL keys refused) and publishes the reply on <base>/resp.
 static void mqtt_handle_command(void)
 {
   char topic[96];
 
-  //retained Befehl loeschen, damit er nicht bei jeder Verbindung erneut ausgefuehrt wird
+  //clear the retained command so it doesn't run again on every connect
   mqtt_topic(topic, sizeof(topic), "cmd");
   mqttClient.publish(topic, "", true, 0);
 
-  //nur JSON (wie "json import"): Einstellungen ohne Passwort, Schutz ueber die Broker-ACLs;
-  //Verbindungsdaten (CFG_LOCAL) bleiben gesperrt
+  //JSON only (like "json import"): settings without a password, protected by the broker ACLs;
+  //connection settings (CFG_LOCAL) stay locked
   reply.clear();
   const char *json = cmd_pending + strspn(cmd_pending, " \t\r\n");
   if(cmd_state == CMD_TOO_LONG)
@@ -147,7 +147,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
-    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //aus: nur Steuerung (led.disable)
+    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (led.disable)
   }
   cmd_state = CMD_NONE;
 
@@ -190,7 +190,7 @@ static const HA_ENTITY ha_entities[] =
   { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0 },
 };
 
-static bool ha_published = false; //Konfigurationen seit dem Start veroeffentlicht (fuer das Entfernen)
+static bool ha_published = false; //configs published since boot (for the removal)
 
 static void mqtt_publish_discovery(void)
 {
@@ -204,7 +204,7 @@ static void mqtt_publish_discovery(void)
   {
     snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/sensor/%s/%s/config", device_id, e.key);
 
-    //aus oder Sensor fehlt: leere retained Nachricht entfernt die Entitaet in Home Assistant
+    //off or sensor missing: an empty retained message removes the entity in Home Assistant
     if(!settings.mqtt_ha || (e.needs && !(features & e.needs)))
     {
       mqttClient.publish(topic, "", true, 0);
@@ -227,7 +227,7 @@ static void mqtt_publish_discovery(void)
 
     if(n >= sizeof(json))
     {
-      continue; //zu lang (sollte nicht vorkommen)
+      continue; //too long (should not happen)
     }
     mqttClient.publish(topic, json, true, 0);
   }
@@ -239,11 +239,11 @@ void mqtt_ha_update(void)
 #if WITH_HA
   if(!mqttClient.connected())
   {
-    return; //beim naechsten Verbindungsaufbau (nur wenn an)
+    return; //on the next connect (only if on)
   }
   if(settings.mqtt_ha || ha_published)
   {
-    mqtt_publish_discovery(); //an: Konfigurationen, aus: einmal leere Nachrichten
+    mqtt_publish_discovery(); //on: configs, off: empty messages once
     ha_published = settings.mqtt_ha;
   }
 #endif
@@ -315,7 +315,7 @@ void mqtt_connect(void)
     {
       Serial.println("MQTT: WiFi hardware not available");
     }
-    return; //keine WiFi-Hardware
+    return; //no WiFi hardware
   }
 
   if(WiFi.status() != WL_CONNECTED)
@@ -324,10 +324,10 @@ void mqtt_connect(void)
     {
       Serial.println("MQTT: WiFi not connected");
     }
-    return; //keine WiFi-Verbindung
+    return; //no WiFi connection
   }
 
-  //MQTT Client ID generieren wenn leer
+  //generate the MQTT client ID if empty
   if(strlen(settings.mqtt_client_id) == 0)
   {
     get_device_id(client_id, sizeof(client_id));
@@ -357,23 +357,23 @@ void mqtt_connect(void)
     Serial.println();
   }
 
-  //MQTT Client initialisieren
+  //set up the MQTT client
   char topic[96];
   Client &net = settings.mqtt_tls ? (Client &)mqttSslClient : (Client &)mqttWifiClient;
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
-  mqttClient.setWill(topic, "offline", true, 1); //Broker meldet "offline" bei Verbindungsabbruch
+  mqttClient.setWill(topic, "offline", true, 1); //broker reports "offline" when the connection drops
 
-  //Verbinden
+  //connect
   boolean connected = false;
   if(strlen(settings.mqtt_user) > 0)
   {
-    //Mit Authentifizierung
+    //with authentication
     connected = mqttClient.connect(client_id, settings.mqtt_user, settings.mqtt_pass);
   }
   else
   {
-    //Ohne Authentifizierung
+    //without authentication
     connected = mqttClient.connect(client_id);
   }
 
@@ -382,14 +382,14 @@ void mqtt_connect(void)
     mqttClient.publish(topic, "online", true, 1);
 #if WITH_HA
     ha_published = false;
-    if(settings.mqtt_ha) //aus: nichts senden (Entfernen nur beim Ausschalten, siehe mqtt_ha_update)
+    if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
     {
       mqtt_publish_discovery();
       ha_published = true;
     }
 #endif
 #if WITH_MQTT_CONFIG
-    //immer abonniert: Steuerung (led.disable) geht auch mit mqtt.config=0, Konfiguration nur mit 1
+    //always subscribed: control (led.disable) also works with mqtt.config=0, configuration only with 1
     mqttClient.onMessageAdvanced(mqtt_message);
     mqtt_topic(topic, sizeof(topic), "cmd");
     mqttClient.subscribe(topic, 0);
@@ -405,7 +405,7 @@ void mqtt_connect(void)
     {
       Serial.print("MQTT connection failed - ");
 
-      //Detaillierte Fehlerausgabe
+      //detailed error output
       lwmqtt_err_t err = mqttClient.lastError();
       lwmqtt_return_code_t rc = mqttClient.returnCode();
 
@@ -455,7 +455,7 @@ void mqtt_reconnect(void)
     return;
   }
 
-  //Nur alle 30 Sekunden neu versuchen
+  //retry every 30 seconds only
   if((millis() - last_attempt) < 30000UL)
   {
     return;
@@ -481,8 +481,8 @@ void mqtt_publish_sensors(void)
     return;
   }
 
-  //Messwerte als ein JSON (ein konsistenter Datensatz pro Intervall)
-  //nur echte Messwerte: ohne CO2-Sensor (oder vor der ersten Messung) fehlen co2/temperature/humidity
+  //readings as one JSON (one consistent record per interval)
+  //only real readings: without a CO2 sensor (or before the first reading) co2/temperature/humidity are missing
   char f1[16], f2[16];
   n = snprintf(json, sizeof(json), "{\"light\":%u", light_value);
   if(co2_valid)
@@ -498,7 +498,7 @@ void mqtt_publish_sensors(void)
   mqtt_topic(topic, sizeof(topic), "sensors");
   mqttClient.publish(topic, json, false, 0);
 
-  //Geraet: Firmware-Version und erkannte Sensoren (retained, damit immer abrufbar)
+  //device: firmware version and detected sensors (retained, so always available)
   n = snprintf(json, sizeof(json), "{\"version\":\"%s\",\"sensors\":[", VERSION);
   const struct { unsigned int feature; const char *name; } sensor_names[] =
   {
@@ -552,7 +552,7 @@ void mqtt_service(void)
   mqttClient.loop();
 
 #if WITH_MQTT_CONFIG
-  //Befehl aus <base>/cmd bearbeiten (ausserhalb des Callbacks)
+  //handle the command from <base>/cmd (outside the callback)
   if(cmd_state != CMD_NONE)
   {
     if(mqttClient.connected())
@@ -566,14 +566,14 @@ void mqtt_service(void)
   }
 #endif
 
-  //Verbindung pruefen
+  //check the connection
   if(!mqttClient.connected())
   {
     mqtt_reconnect();
     return;
   }
 
-  //Periodisches Publishing
+  //periodic publishing
   if((millis() - last_publish) > (settings.mqtt_interval * 1000UL))
   {
     last_publish = millis();
