@@ -1,6 +1,20 @@
 #include "sensors.h"
 #include "led_control.h"
 
+// Formats like "%.1f" without printf float support (not linked: saves the libc float/dtoa code)
+const char *fmt1(char *buf, float value)
+{
+  if(value != value) //NaN
+  {
+    strcpy(buf, "nan");
+    return buf;
+  }
+  long t = (long)(value * 10.0f + ((value < 0) ? -0.5f : 0.5f));
+  unsigned long a = (t < 0) ? -t : t;
+  sprintf(buf, "%s%lu.%lu", (t < 0) ? "-" : "", a / 10, a % 10);
+  return buf;
+}
+
 void print_measurements(void)
 {
   Serial.print("c: ");           //CO2

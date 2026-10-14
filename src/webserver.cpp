@@ -1,4 +1,5 @@
 #include "webserver.h"
+#include "sensors.h"
 #include "settings_registry.h"
 #include "wifi_manager.h"
 
@@ -91,6 +92,7 @@ void webserver_service(void)
   unsigned int pos=0;
   char buf[1024];
   char req[2][3*64+1]; //HTTP request / POST-Werte (URL-kodiert bis 3 Zeichen pro Byte)
+  char f1[16], f2[16], f3[16], f4[16]; //Messwerte mit einer Nachkommastelle (fmt1)
   req[0][0] = 0;
   while(client.connected())
   {
@@ -125,13 +127,13 @@ void webserver_service(void)
                 "\r\n" \
                 "{\r\n" \
                 " \"c\": %i,\r\n" \
-                " \"t\": %.1f,\r\n" \
-                " \"h\": %.1f,\r\n" \
-                " \"p\": %.1f,\r\n" \
-                " \"u\": %.1f,\r\n" \
+                " \"t\": %s,\r\n" \
+                " \"h\": %s,\r\n" \
+                " \"p\": %s,\r\n" \
+                " \"u\": %s,\r\n" \
                 " \"l\": %i\r\n" \
                 "}\r\n",
-                co2_value, temp_value, humi_value, pres_value, temp2_value, light_value
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), fmt1(f3, pres_value), fmt1(f4, temp2_value), light_value
             );
           }
           else
@@ -143,11 +145,11 @@ void webserver_service(void)
                 "\r\n" \
                 "{\r\n" \
                 " \"c\": %i,\r\n" \
-                " \"t\": %.1f,\r\n" \
-                " \"h\": %.1f,\r\n" \
+                " \"t\": %s,\r\n" \
+                " \"h\": %s,\r\n" \
                 " \"l\": %i\r\n" \
                 "}\r\n",
-                co2_value, temp_value, humi_value, light_value
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value
             );
           }
           client.print(buf);
@@ -173,17 +175,17 @@ void webserver_service(void)
                 //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
                 "<<<watterott_co2ampel_plugin>>>\r\n" \
                 "co2 %i\r\n" \
-                "temp %.1f\r\n" \
-                "humidity %.1f\r\n" \
+                "temp %s\r\n" \
+                "humidity %s\r\n" \
                 "lighting %i\r\n" \
-                "pressure %.1f\r\n" \
-                "temp2 %.1f\r\n" \
+                "pressure %s\r\n" \
+                "temp2 %s\r\n" \
                 //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
                 //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
                 //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
                 "<<<local:sep(0)>>>\r\n" \
                 "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, temp_value, humi_value, light_value, pres_value, temp2_value,
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value, fmt1(f3, pres_value), fmt1(f4, temp2_value),
                 co2_value, settings.range[1], settings.range[2]
             );
           }
@@ -201,15 +203,15 @@ void webserver_service(void)
                 //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
                 "<<<watterott_co2ampel_plugin>>>\r\n" \
                 "co2 %i\r\n" \
-                "temp %.1f\r\n" \
-                "humidity %.1f\r\n" \
+                "temp %s\r\n" \
+                "humidity %s\r\n" \
                 "lighting %i\r\n" \
                 //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
                 //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
                 //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
                 "<<<local:sep(0)>>>\r\n" \
                 "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, temp_value, humi_value, light_value,
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value,
                 co2_value, settings.range[1], settings.range[2]
             );
           }
@@ -310,12 +312,12 @@ void webserver_service(void)
             sprintf(buf,
                 "<div id=data>\r\n" \
                 "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
-                "Druck (hPa): %.1f<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
+                "Temperatur (&deg;C): %s<br/>\r\n" \
+                "Luftfeuchte (%% rel): %s<br/>\r\n" \
+                "Druck (hPa): %s<br/>\r\n" \
+                "Temperatur (&deg;C): %s<br/>\r\n" \
                 "</div>\r\n",
-                co2_value, temp_value, humi_value, pres_value, temp2_value
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), fmt1(f3, pres_value), fmt1(f4, temp2_value)
             );
           }
           else
@@ -323,10 +325,10 @@ void webserver_service(void)
             sprintf(buf,
                 "<div id=data>\r\n" \
                 "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %.1f<br/>\r\n" \
-                "Luftfeuchte (%% rel): %.1f<br/>\r\n" \
+                "Temperatur (&deg;C): %s<br/>\r\n" \
+                "Luftfeuchte (%% rel): %s<br/>\r\n" \
                 "</div>\r\n",
-                co2_value, temp_value, humi_value
+                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value)
             );
           }
           client.print(buf);

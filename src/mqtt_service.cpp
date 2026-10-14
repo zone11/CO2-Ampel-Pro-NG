@@ -1,4 +1,5 @@
 #include "mqtt_service.h"
+#include "sensors.h"
 #include "settings_registry.h"
 
 #if WITH_MQTT_CONFIG
@@ -473,11 +474,12 @@ void mqtt_publish_sensors(void)
   }
 
   //Messwerte als ein JSON (ein konsistenter Datensatz pro Intervall)
-  n = snprintf(json, sizeof(json), "{\"co2\":%u,\"temperature\":%.1f,\"humidity\":%.1f,\"light\":%u",
-               co2_value, temp_value, humi_value, light_value);
+  char f1[16], f2[16];
+  n = snprintf(json, sizeof(json), "{\"co2\":%u,\"temperature\":%s,\"humidity\":%s,\"light\":%u",
+               co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value);
   if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
   {
-    n += snprintf(json + n, sizeof(json) - n, ",\"pressure\":%.1f,\"pressure_temp\":%.1f", pres_value, temp2_value);
+    n += snprintf(json + n, sizeof(json) - n, ",\"pressure\":%s,\"pressure_temp\":%s", fmt1(f1, pres_value), fmt1(f2, temp2_value));
   }
   snprintf(json + n, sizeof(json) - n, "}");
   mqtt_topic(topic, sizeof(topic), "sensors");
