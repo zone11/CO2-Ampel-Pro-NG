@@ -34,6 +34,7 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ MQTT support: measurements, device/WiFi info, online status, remote configuration
 - ✅ Home Assistant MQTT discovery
 - ✅ MQTTS (MQTT over TLS, certificate and hostname checked)
+- ✅ PC tool for provisioning (settings + TLS root certificate in one run, no extra flashing)
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 
@@ -56,11 +57,10 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 89 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 80 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_CERT_CMDS=0` | serial `cert` commands (the PC tool still works) | ~10 KB |
 | `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, WiFi form; AP mode then has no use) | ~5 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.8 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~1.5 KB |
@@ -140,9 +140,7 @@ remote on      Enable remote control (required for set/save; LEDs turn violet, t
 remote off     Disable remote control
 status         Show measurements, CO2 sensor info and WiFi/MQTT status
 i2c scan       List responding I2C devices on both buses (with chip IDs)
-cert list      List the TLS root certificates in the WiFi module (remote on; restarts the device)
-cert add       Add a root certificate: paste the PEM afterwards (remote on; restarts the device)
-cert remove <n> Remove root certificate n from the list (remote on; restarts the device)
+winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (remote on; restarts the device)
 reset          Reset device (with remote on it answers OK and turns the LEDs off first)
 version        Query firmware version
 get <key>      Read a single setting
@@ -193,6 +191,25 @@ Thresholds, colors, brightness and buzzer apply immediately; WiFi and MQTT setti
 WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) can only be
 changed via serial or the web form, and passwords are only shown to local (serial) callers; over MQTT they
 read as `***`.
+
+### Provisioning (before deployment)
+
+`scripts/co2ampel_tool.py provision --config site.txt` sets up a device in one run: it sends the
+`set key=value` lines of the file (same format as `dump`; `remote on`, `save`, `reset` and `#` comments
+are ignored), saves, installs the MQTT broker's root CA if `mqtt.tls` is on, restarts the device and reports
+whether MQTT connects. Values are never printed; if a value is rejected, nothing is saved.
+
+```
+# site.txt
+set wifi.ssid=MyNetwork
+set wifi.pass=secret
+set mqtt.enabled=1
+set mqtt.broker=mqtt.example.com
+set mqtt.port=8883
+set mqtt.tls=1
+set mqtt.user=co2ampel
+set mqtt.pass=secret
+```
 
 ### Settings Backup and Restore
 
@@ -297,27 +314,27 @@ against its stored root CAs and against the hostname in `mqtt.broker` (use the n
 not an IP address). TLS 1.2 with RSA certificate chains.
 
 1. Make sure the broker's root CA is in the WiFi module. The module ships with a few roots; Let's Encrypt
-   (ISRG Root X1) is not among them. Directly on the device, in any serial terminal:
-   ```
-   remote on
-   cert add
-   (paste the root certificate, from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----,
-    e.g. "ISRG Root X1" from https://letsencrypt.org/certificates/)
-   ```
-   The device shows the certificate name, writes it, verifies it and restarts. `cert list` shows the
-   stored roots (key size, validity, name hash), `cert remove <n>` removes one. Only RSA root certificates
-   are supported; if the store is full, expired roots are removed (the date comes from the network). WiFi
-   is stopped while the store is changed; a power loss in that moment leaves the store empty (WiFi itself
-   keeps working, the root has to be added again).
-
-   Alternatively from a PC with PlatformIO (also makes a backup of the whole store first):
+   (ISRG Root X1) is not among them. Install it from a PC with `scripts/co2ampel_tool.py` (PlatformIO's
+   Python has everything it needs; close the serial monitor first):
    ```bash
-   pio run -d tools/winc_updater -t upload                    # temporary flash tool, settings are kept
-   ~/.platformio/penv/bin/python scripts/winc_rootcert.py add --host mqtt.example.com:8883
-   pio run -e co2ampel_pro -t upload                          # firmware back
+   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py add --host mqtt.example.com:8883
    ```
-   `scripts/winc_rootcert.py list` shows the stored roots, `add --pem root.pem` adds a root from a file,
-   `restore <backup>.bin` restores a backup. If the store is full, expired roots are removed.
+   The tool fetches the broker's certificate chain, finds its root CA (certifi bundle), saves a backup of
+   the store, writes and verifies it. The firmware passes the module's flash through for that
+   (`winc bridge`, LEDs blue), no extra flashing is needed; the device restarts afterwards. Only RSA root
+   certificates are supported; if the store is full, expired roots are removed.
+
+   | Command | |
+   |---|---|
+   | `list` | stored roots (key size, expiry, name) |
+   | `add --host host:port` / `add --pem root.pem` | add the broker's root CA / a root from a file |
+   | `remove <n>` | remove root n |
+   | `backup [file]` / `restore <file>` | save / write back the whole store (4 KB) |
+   | `provision --config <file>` | settings and root CA in one run, see below |
+
+   The root CA is only needed once: renewed broker certificates (e.g. Let's Encrypt every few months)
+   need nothing on the device. Run the tool again when the broker moves to another CA, or after a
+   firmware update of the WiFi module itself (that resets the store to the factory roots).
 2. Switch MQTT to TLS: `remote on`, `set mqtt.tls=1`, `set mqtt.port=8883`, `save`, `reset`.
 
 If the connection fails, the boot log shows `TLS: root CA stored in the WINC1500? Does mqtt.broker match
