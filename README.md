@@ -60,12 +60,12 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 84 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 88 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, WiFi form; AP mode then has no use) | ~5 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.8 KB RAM |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, `/config`, WiFi form; AP mode then has no use) | ~7 KB |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~1.5 KB |
 
 ## Usage
