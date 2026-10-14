@@ -38,7 +38,8 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 - ✅ LED brightness: maximum, dark level, automatic dimming on/off, LEDs + buzzer off (`led.*`)
-- ✅ Optional enable password for serial, MQTT and the web form; settings as JSON (`dump json`)
+- ✅ Configuration as JSON: `json export` / `json import` on serial, JSON over MQTT, web import page
+- ✅ Optional enable password for serial and the web forms
 
 **Planned Features:**
 - [ ] LoRaWAN/TTN integration
@@ -155,7 +156,8 @@ get <prefix.*> Read a group of settings by prefix
 set <key>=<v>  Update a setting value
 save           Save settings to flash
 dump           Print all settings as set commands (backup, provisioning format)
-dump json      Print all settings as one JSON object
+json export    Print all settings as one JSON object
+json import    Apply settings from a JSON object (on the same line or pasted afterwards, max 2 KB)
 help           List all available keys
 ```
 
@@ -201,12 +203,28 @@ Thresholds, colors, LED settings and buzzer apply immediately; WiFi and MQTT set
 
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
-`status` shows the current LED state. `dump json` gives all settings in one line, e.g.
-`{"sys.serial_output":false,...,"led.color.t1":"007CB0",...}` (numbers, `true`/`false`, colors as hex).
+`status` shows the current LED state.
+
+**JSON configuration:** `json export` prints all settings in one line, e.g.
+`{"sys.serial_output":false,...,"co2.t1":600,...,"led.color.t1":"007CB0",...}` (numbers, `true`/`false`,
+colors as hex strings). `json import` (after `enable`) applies such an object; any subset of keys is
+fine, nested objects also work (`{"co2":{"t1":600}}` = `{"co2.t1":600}`):
+```
+json import {"co2.t1":650,"co2.t2":900,"led.brightness":80,"save":true}
+{"result":"OK","saved":true}
+```
+- All or nothing: if one value is invalid, nothing is changed
+  (`{"result":"ERROR","errors":{"co2.t2":"Out of range"}}`)
+- `"save":true` also writes the flash (otherwise the values last until the next restart);
+  `"export":true` adds the complete configuration to the reply (`"config":{...}`)
+- Unknown keys are reported as `warnings` and ignored (e.g. an export from a newer firmware); masked
+  passwords (`"***"`) are left unchanged, so an export can be imported back as is
+- The same import is used over MQTT, on the web page `/config` and by `scripts/co2ampel_tool.py`
 
 **Enable password** (`sys.password`, empty = none): once set (`enable`, `set sys.password=...`, `save`),
-`enable <password>` is required before `get`, `dump`, `set`, `save` and `winc bridge`; the web WiFi form
-asks for it as well and an MQTT command must start with the line `enable <password>`. A wrong password
+`enable <password>` is required before `get`, `dump`, `json export/import`, `set`, `save` and
+`winc bridge`; the web WiFi form and the web JSON import ask for it as well (without a password both are
+open to anyone on the network). MQTT needs no password: protect `<base>/cmd` with broker ACLs. A wrong password
 locks further attempts for 1, 2, 4 ... 30 s. A forgotten password can only be cleared with a factory reset,
 which erases all settings: `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`.
 
@@ -217,34 +235,38 @@ WiFi and MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/port/tls/user/
 
 ### Provisioning (before deployment)
 
-`scripts/co2ampel_tool.py provision --config site.txt` sets up a device in one run: it sends the
-`set key=value` lines of the file (same format as `dump`; `enable`, `exit`, `save`, `reset` and `#`
-comments are ignored), saves, installs the MQTT broker's root CA if `mqtt.tls` is on, restarts the device and reports
-whether MQTT connects. Values are never printed; if a value is rejected, nothing is saved. With an enable
-password set, export it first: `export CO2AMPEL_PASSWORD=...` (all tool commands use it).
+`scripts/co2ampel_tool.py provision --config site.json` sets up a device in one run: it imports the JSON
+file with `json import` and saves it (all or nothing), installs the MQTT broker's root CA if `mqtt.tls` is
+on, restarts the device and reports whether MQTT connects. Values are never printed. With an enable password
+set, export it first: `export CO2AMPEL_PASSWORD=...` (all tool commands use it).
 
+```json
+{
+  "wifi.ssid": "MyNetwork",
+  "wifi.pass": "secret",
+  "mqtt.enabled": true,
+  "mqtt.broker": "mqtt.example.com",
+  "mqtt.port": 8883,
+  "mqtt.tls": true,
+  "mqtt.user": "co2ampel",
+  "mqtt.pass": "secret"
+}
 ```
-# site.txt
-set wifi.ssid=MyNetwork
-set wifi.pass=secret
-set mqtt.enabled=1
-set mqtt.broker=mqtt.example.com
-set mqtt.port=8883
-set mqtt.tls=1
-set mqtt.user=co2ampel
-set mqtt.pass=secret
-```
+
+`co2ampel_tool.py export [file.json]` saves all settings of a device (file mode 600, contains the
+passwords), `co2ampel_tool.py import file.json` writes a file back without the certificate step.
 
 ### Settings Backup and Restore
 
 Settings are stored in flash (last 2 KB, with version and CRC). `pio run -t upload` keeps them: the upload script reads the settings area and writes it back with the new firmware. Flashing with another tool (e.g. plain bossac or the Arduino IDE) erases them, so keep a backup with `dump`. Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware runs
 with defaults until you `save`, and going back to the newer firmware finds the original settings again.
 
-**Backup Settings:** send `dump` (after `enable <password>` if a password is set) and keep the output. It
-contains the WiFi/MQTT passwords in clear text, so store it safely.
+**Backup Settings:** `co2ampel_tool.py export backup.json`, or send `json export` (or `dump` for
+readable `set` lines) after `enable` and keep the output. It contains the WiFi/MQTT passwords in clear text,
+so store it safely.
 
-**Restore Settings:** send `enable`, then the saved `set ...` lines, then `save` and `reset`, or use the file
-with `scripts/co2ampel_tool.py provision --config <file>`.
+**Restore Settings:** `co2ampel_tool.py import backup.json`, or send `enable` and `json import` with the
+exported line (`dump` output: paste the `set` lines, then `save`); then `reset`.
 
 **Factory reset:** `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload` flashes the firmware without
 the stored settings; the device starts with the defaults (also clears a forgotten `sys.password`).
@@ -312,6 +334,7 @@ Available endpoints:
   `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
 - `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
+- `/config` - JSON import (paste e.g. a `json export`; saved immediately, asks for `sys.password` if set)
 
 Example JSON response:
 ```json
@@ -358,7 +381,8 @@ not an IP address). TLS 1.2 with RSA certificate chains.
    | `add --host host:port` / `add --pem root.pem` | add the broker's root CA / a root from a file |
    | `remove <n>` | remove root n |
    | `backup [file]` / `restore <file>` | save / write back the whole store (4 KB) |
-   | `provision --config <file>` | settings and root CA in one run, see below |
+   | `export [file]` / `import <file>` | settings to / from a JSON file |
+   | `provision --config <file>` | settings and root CA in one run, see Provisioning |
 
    The root CA is only needed once: renewed broker certificates (e.g. Let's Encrypt every few months)
    need nothing on the device. Run the tool again when the broker moves to another CA, or after a
@@ -378,28 +402,32 @@ diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and becom
 again (empty retained configs).
 
 **Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`,
-`reset`. The device then accepts commands on `<base>/cmd`: one or more settings commands (`get`, `set`,
-`save`, `dump`, `dump json`, `help`), one per line, max. 400 bytes. The reply has the same text as on serial
-(`OK`, `ERROR: ...`, `key=value`), one line per result, on `<base>/resp`.
+`reset`. The device then accepts **JSON objects** on `<base>/cmd` (max. 1 KB), exactly like `json import`,
+and replies with JSON on `<base>/resp`:
 
 ```bash
 BASE=co2ampel/F8F0056E78A2
 mosquitto_sub -h broker -u user -P pass -t "$BASE/resp" &
-mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m 'get co2.*'
-mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'set co2.t1=650\nset led.color.t1=0000FF\nsave')"
-mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m "$(printf 'enable MyPassword\nset led.disable=1')"  # with sys.password
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"led.disable":true}'          # RAM only
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"co2.t1":650,"save":true}'     # saved
+mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"export":true}'                # read all
 ```
 
+Replies: `{"result":"OK"}`, `{"result":"OK","saved":true}`, `{"result":"OK","config":{...}}` or
+`{"result":"ERROR","errors":{"co2.t1":"Out of range"}}`.
+
 Rules and notes:
-- No `enable` is needed over MQTT, unless `sys.password` is set: then the first line must be
-  `enable <password>` (use TLS, the password travels in the message). Changes apply like on serial and are
-  kept only after `save`; e.g. `set led.disable=1` in the evening and `set led.disable=0` in the morning
-- Passwords read as `***`, and WiFi/MQTT connection settings (including `mqtt.config` itself) are refused
-  with `ERROR: Only via serial or web`, so a remote mistake can't cut the device off the network
+- No password over MQTT: anyone allowed to publish to `<base>/cmd` can change the settings, so restrict it
+  with broker ACLs (and use TLS)
+- Without `"save":true` changes last until the next restart, e.g. `{"led.disable":true}` in the evening
+  and `{"led.disable":false}` in the morning without wearing the flash
+- Passwords read as `***` in the export; WiFi/MQTT connection settings (`wifi.*`, `mqtt.enabled/broker/
+  port/tls/user/pass/ha/config`) and `sys.password` are refused (`Only via serial or web`) unless the value
+  is unchanged, so a remote mistake can't cut the device off the network and an export can be sent back
+- Text commands (`set ...`) are not accepted over MQTT (`JSON object expected`)
 - After handling a command the device clears `<base>/cmd` with an empty retained message, so a command
   published with retain is executed only once
 - Commands arriving while one is still being handled are ignored; send the next one after the reply
-- Anyone allowed to publish to `<base>/cmd` can change the settings: restrict it with broker ACLs
 - Each `save` writes the flash; avoid saving in automated loops (flash endurance)
 
 ## Calibration
@@ -423,9 +451,9 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 ### Adding New Features
 
 1. The code is split into modules under `src/`: `main` (setup/loop), `sensors`, `led_control` (traffic
-   light, brightness, buzzer), `settings_storage` (flash record), `settings_registry` (key table and enable
-   password, used by serial, web and MQTT), `serial_settings` (get/set/save/dump parser), `serial_console`
-   (serial commands), `wifi_manager`, `webserver`, `mqtt_service` (publish, HA discovery, commands),
+   light, brightness, buzzer), `settings_storage` (flash record), `settings_registry` (key table, enable
+   password and JSON import, used by serial, web and MQTT), `serial_settings` (get/set/save/dump and
+   JSON export), `json_parser` (JSON object parser), `serial_console` (serial commands), `wifi_manager`, `webserver`, `mqtt_service` (publish, HA discovery, commands),
    `tls_client` (TLS with hostname check), `winc_bridge` (WiFi module flash access), `ui_menu`/`diagnostics`
    (service menu, self test), `i2c_utils`, `system_control`. Compile-time defaults and feature switches live
    in `include/app_config.h`, pins in `variants/co2ampel/variant.h`. PC tools are in `scripts/`
