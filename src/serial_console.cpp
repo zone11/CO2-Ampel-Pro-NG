@@ -8,7 +8,7 @@
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
-#include "winc_certs.h"
+#include "winc_bridge.h"
 
 #include <ctype.h>
 
@@ -56,10 +56,6 @@ void serial_service(void)
     return;
   }
 
-#if WITH_CERT_CMDS
-  winc_cert_add_poll(Serial);
-#endif
-
   if(!read_line(line_buf, sizeof(line_buf)))
   {
     return;
@@ -76,13 +72,6 @@ void serial_service(void)
     return;
   }
 
-#if WITH_CERT_CMDS
-  if(winc_cert_add_active()) //"cert add": Zeilen sind das PEM-Zertifikat
-  {
-    winc_cert_add_line(Serial, line);
-    return;
-  }
-#endif
 
   if(strcasecmp(line, "remote on") == 0)
   {
@@ -113,32 +102,15 @@ void serial_service(void)
     print_mqtt_status();
     return;
   }
-#if WITH_CERT_CMDS
-  if(strncasecmp(line, "cert ", 5) == 0) //WINC1500 Root-Zertifikate (nur lokal, nicht ueber MQTT)
+  if(strcasecmp(line, "winc bridge") == 0) //WiFi-Modul-Flash fuer scripts/co2ampel_tool.py (nur lokal)
   {
     if(!remote_on)
     {
       Serial.println("ERROR: Remote control not enabled");
+      return;
     }
-    else if(strcasecmp(line + 5, "list") == 0)
-    {
-      winc_cert_list(Serial);
-    }
-    else if(strcasecmp(line + 5, "add") == 0)
-    {
-      winc_cert_add_begin(Serial);
-    }
-    else if((strncasecmp(line + 5, "remove ", 7) == 0) && isdigit((unsigned char)line[12]))
-    {
-      winc_cert_remove(Serial, (unsigned int)atoi(line + 12));
-    }
-    else
-    {
-      Serial.println("ERROR: use cert list | cert add | cert remove <n>");
-    }
-    return;
+    winc_bridge(); //kehrt nicht zurueck (Neustart)
   }
-#endif
   if(strcasecmp(line, "i2c scan") == 0)
   {
     i2c_scan(Wire, "Wire (SERCOM0)", Serial);

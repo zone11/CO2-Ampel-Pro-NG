@@ -17,9 +17,6 @@
 #ifndef WITH_MQTT_CONFIG
 #define WITH_MQTT_CONFIG   1 //Konfiguration ueber MQTT (mqtt.config)
 #endif
-#ifndef WITH_CERT_CMDS
-#define WITH_CERT_CMDS     1 //Serielle Befehle cert list/add/remove (WINC1500 Root-Zertifikate)
-#endif
 
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
 #define DEFAULT_T1              600 //>= 600ppm
