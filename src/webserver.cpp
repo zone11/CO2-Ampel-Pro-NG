@@ -7,7 +7,11 @@
 
 #if WITH_WEB
 
-#define CONFIG_BODY_MAX 2048 //max. POST auf /config (Passwort + JSON)
+#define CONFIG_BODY_MAX 3072 //max. POST auf /config/... (Formular oder Passwort + JSON)
+#define CONFIG_JSON_MAX 2048 //aus dem Formular gebautes JSON
+
+static void urldecode(char *src);
+static bool restart_pending = false; //Neustart nach dem Senden der Antwort
 
 // Writes text into a fixed buffer (for the JSON import reply on the page)
 class BufPrint : public Print
@@ -23,105 +27,400 @@ public:
     }
     return 1;
   }
+  size_t length(void) const { return len; }
 private:
   char *buf;
   size_t size;
   size_t len = 0;
 };
 
-static void print_html(WiFiClient &client, const char *text) //Antwort/Benutzertext HTML-sicher ausgeben
+// Collects output and sends it in larger blocks (each client.print() is its own TCP packet)
+class ChunkPrint : public Print
+{
+public:
+  ChunkPrint(WiFiClient &c) : client(c) {}
+  ~ChunkPrint() { flush(); }
+  size_t write(uint8_t c) override
+  {
+    buf[len++] = (char)c;
+    if(len == sizeof(buf))
+    {
+      flush();
+    }
+    return 1;
+  }
+  void flush(void) override
+  {
+    if(len > 0)
+    {
+      client.write((const uint8_t *)buf, len);
+      len = 0;
+    }
+  }
+private:
+  WiFiClient &client;
+  char buf[512];
+  size_t len = 0;
+};
+
+// HTML-safe output of user/device text; attr additionally escapes quotes (for value='...')
+static void print_html(Print &out, const char *text, bool attr = false)
 {
   for(; *text; text++)
   {
-    if(*text == '<')      { client.print("&lt;"); }
-    else if(*text == '>') { client.print("&gt;"); }
-    else if(*text == '&') { client.print("&amp;"); }
-    else                  { client.print(*text); }
+    if(*text == '<')                     { out.print("&lt;"); }
+    else if(*text == '>')                { out.print("&gt;"); }
+    else if(*text == '&')                { out.print("&amp;"); }
+    else if(attr && (*text == '\''))     { out.print("&#39;"); }
+    else if(attr && (*text == '"'))      { out.print("&quot;"); }
+    else                                 { out.print(*text); }
   }
 }
 
-// GET/POST /config: JSON import (as "json import" on serial, always saved). The form is sent as
-// text/plain ("p=<password>\r\nj=<json>"), so the JSON arrives unencoded.
-static void config_page(WiFiClient &client, bool post, size_t content_length)
+static char *read_body(WiFiClient &client, size_t content_length)
 {
-  char result[400];
-  result[0] = 0;
-
-  if(post)
+  if((content_length == 0) || (content_length >= CONFIG_BODY_MAX))
   {
-    char *body = (content_length < CONFIG_BODY_MAX) ? (char *)malloc(content_length + 1) : NULL;
-    if(body == NULL)
+    return NULL;
+  }
+  char *body = (char *)malloc(content_length + 1);
+  if(body == NULL)
+  {
+    return NULL;
+  }
+  size_t n = 0;
+  unsigned long t = millis();
+  while((n < content_length) && client.connected() && ((millis() - t) < 3000UL))
+  {
+    if(client.available())
     {
-      strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"too long (max 2 KB) or empty\"}}");
+      body[n++] = client.read();
     }
-    else
-    {
-      size_t n = 0;
-      unsigned long t = millis();
-      while((n < content_length) && client.connected() && ((millis() - t) < 3000UL))
-      {
-        if(client.available())
-        {
-          body[n++] = client.read();
-        }
-      }
-      body[n] = 0;
+  }
+  body[n] = 0;
+  return body;
+}
 
-      const char *pw = "";
-      char *json = body;
-      if(strncmp(body, "p=", 2) == 0) //Passwortfeld (nur vorhanden, wenn sys.password gesetzt ist)
+#define FORM_MAX_FIELDS 40
+
+typedef struct
+{
+  char *name[FORM_MAX_FIELDS];
+  char *value[FORM_MAX_FIELDS];
+  size_t count;
+} form_t;
+
+// Splits an urlencoded body (name=value&...) in place and decodes names and values
+static void form_parse(char *body, form_t *form)
+{
+  form->count = 0;
+  char *p = body;
+  while((p != NULL) && (*p != 0) && (form->count < FORM_MAX_FIELDS))
+  {
+    char *next = strchr(p, '&');
+    if(next != NULL)
+    {
+      *next++ = 0;
+    }
+    char *eq = strchr(p, '=');
+    if(eq != NULL)
+    {
+      *eq = 0;
+      urldecode(p);
+      urldecode(eq + 1);
+      form->name[form->count] = p;
+      form->value[form->count] = eq + 1;
+      form->count++;
+    }
+    p = next;
+  }
+}
+
+static const char *form_value(const form_t *form, const char *name)
+{
+  for(size_t i = 0; i < form->count; i++)
+  {
+    if(strcmp(form->name[i], name) == 0)
+    {
+      return form->value[i];
+    }
+  }
+  return NULL;
+}
+
+static void print_field(Print &out, const cfg_item_t *item)
+{
+  char val[72];
+  BufPrint vb(val, sizeof(val));
+
+  out.print("<label for='");
+  out.print(item->key);
+  out.print("'>");
+  out.print(item->key);
+  out.print("</label> ");
+  switch(item->type)
+  {
+    case CFG_BOOL:
+    {
+      bool on = *(bool *)item->ptr;
+      out.print("<select id='"); out.print(item->key); out.print("' name='"); out.print(item->key); out.print("'>");
+      out.print(on ? "<option value=0>0 off</option><option value=1 selected>1 on</option>"
+                   : "<option value=0 selected>0 off</option><option value=1>1 on</option>");
+      out.print("</select>");
+      break;
+    }
+    case CFG_COLOR:
+    {
+      snprintf(val, sizeof(val), "#%06lX", (unsigned long)*(uint32_t *)item->ptr);
+      out.print("<input id='"); out.print(item->key); out.print("' name='"); out.print(item->key);
+      out.print("' type=color value='"); out.print(val); out.print("'>");
+      break;
+    }
+    case CFG_STRING:
+      out.print("<input id='"); out.print(item->key); out.print("' name='"); out.print(item->key);
+      out.print("' maxlength="); out.print((unsigned int)item->max_len);
+      if(item->flags & CFG_SECRET) //nie anzeigen; leer = unveraendert
       {
-        pw = body + 2;
-        json = strstr(body, "\r\n");
-        if(json != NULL)
-        {
-          *json = 0;
-          json += 2;
-        }
-      }
-      if((json == NULL) || (strncmp(json, "j=", 2) != 0))
-      {
-        strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"no JSON\"}}");
+        out.print(" type=password placeholder='(unchanged)'>");
       }
       else
       {
-        BufPrint out(result, sizeof(result));
-        if(settings_enable(pw, &out)) //ohne sys.password immer erlaubt
-        {
-          BufPrint reply(result, sizeof(result));
-          if(settings_json_import(json + 2, &reply, true, true))
-          {
-            settings_save(); //Web-Import wird immer gespeichert
-          }
-        }
+        out.print(" value='"); print_html(out, (const char *)item->ptr, true); out.print("'>");
       }
-      free(body);
-    }
+      break;
+    default: //Zahlen, IP
+      cfg_print_value(&vb, item);
+      out.print("<input id='"); out.print(item->key); out.print("' name='"); out.print(item->key); out.print("'");
+      if((item->type != CFG_IP) && (item->min_val <= item->max_val))
+      {
+        out.print(" type=number min="); out.print(item->min_val); out.print(" max="); out.print(item->max_val);
+      }
+      out.print(" value='"); print_html(out, val, true); out.print("'>");
+      break;
+  }
+  out.print("<br/>\r\n");
+}
+
+// GET /config: all settings as a form (from the key table), JSON upload/download, restart
+static void config_page(WiFiClient &client, const char *result)
+{
+  ChunkPrint out(client);
+  bool pw = settings_password_set();
+
+  out.print("HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><meta name=viewport content='width=device-width'>\r\n"
+            "<title>CO2-Ampel Config</title>\r\n"
+            "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
+            "label{display:inline-block;width:12em}fieldset{margin-bottom:10px}"
+            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}</style>\r\n"
+            "<script>function pw(f){var p=document.getElementById('pw'),h=f.elements[0];if(p)h.value=p.value;}\r\n"
+            "function ld(i){var r=new FileReader();r.onload=function(){document.getElementById('j').value=r.result;};"
+            "r.readAsText(i.files[0]);}</script>\r\n"
+            "</head><body>\r\n<h2>CO2-Ampel Konfiguration / configuration</h2>\r\n");
+  if((result != NULL) && result[0])
+  {
+    out.print("<pre>");
+    print_html(out, result);
+    out.print("</pre>\r\n");
+  }
+  if(pw)
+  {
+    out.print("<p><label for=pw>Passwort / password</label> <input id=pw type=password maxlength=32></p>\r\n");
   }
 
-  client.print("HTTP/1.1 200 OK\r\n"
-               "Content-Type: text/html\r\n"
-               "Connection: close\r\n"
-               "\r\n"
-               "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><title>CO2-Ampel Config</title>\r\n"
-               "<style>body { font-family:Lato,sans-serif; padding:10px; } textarea { width:100%; max-width:40em; }</style>\r\n"
-               "</head><body>\r\n<h3>JSON import</h3>\r\n");
-  if(result[0])
+  //Einstellungen, gruppiert nach Praefix (sys, co2, led, wifi, mqtt)
+  out.print("<form method=post action=/config/save onsubmit='pw(this)'><input type=hidden name=_pw>\r\n");
+  char group[8] = "";
+  for(size_t i = 0; i < settings_item_count(); i++)
   {
-    client.print("<pre>");
-    print_html(client, result);
-    client.print("</pre>\r\n");
+    const cfg_item_t *item = settings_item(i);
+    size_t g = strcspn(item->key, ".");
+    if((g >= sizeof(group)) || (strncmp(group, item->key, g) != 0) || (group[g] != 0))
+    {
+      if(group[0])
+      {
+        out.print("</fieldset>\r\n");
+      }
+      memcpy(group, item->key, (g < sizeof(group)) ? g : sizeof(group) - 1);
+      group[(g < sizeof(group)) ? g : sizeof(group) - 1] = 0;
+      out.print("<fieldset><legend>");
+      out.print(group);
+      out.print("</legend>\r\n");
+    }
+    print_field(out, item);
   }
-  client.print("<form method=post enctype=text/plain>\r\n");
-  if(settings_password_set())
+  out.print("</fieldset>\r\n<input type=submit value='Speichern / save'> "
+            "(sofort gespeichert; WiFi/MQTT nach Neustart / saved now, WiFi/MQTT after a restart)</form>\r\n");
+
+  //JSON
+  out.print("<h3>JSON</h3>\r\n<a href='/config.json'>Download</a> (Passwoerter als *** / passwords masked)\r\n");
+  if(pw)
   {
-    client.print("Passwort <input name=p type=password size=30 maxlength=32><br/>\r\n");
+    out.print("<form method=post action=/config/export onsubmit='pw(this)'><input type=hidden name=_pw>"
+              "<input type=submit value='Download mit Passwoertern / with passwords'></form>\r\n");
   }
-  client.print("<textarea name=j rows=14 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
-               "<input type=submit value=Import> (wird gespeichert, saved; WiFi/MQTT nach Neustart, after reboot)\r\n"
-               "</form><br/>\r\n"
-               "Export: serial <code>json export</code> or MQTT <code>{\"export\":true}</code><br/><br/>\r\n"
-               "<a href='/'>Back</a>\r\n</body></html>\r\n");
+  out.print("<form method=post action=/config/import enctype=text/plain onsubmit='pw(this)'><input type=hidden name=p>\r\n"
+            "<p>Upload: <input type=file accept='.json,application/json' onchange='ld(this)'></p>\r\n"
+            "<textarea id=j name=j rows=8 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
+            "<input type=submit value='Import'> (alles oder nichts, wird gespeichert / all or nothing, saved)</form>\r\n");
+
+  //Neustart
+  out.print("<h3>Neustart / restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
+            "<input type=submit value='Neustart / restart'></form>\r\n"
+            "<p><a href='/'>Zurueck / back</a></p>\r\n</body></html>\r\n");
+}
+
+// GET /config.json (masked) or POST /config/export (with password: full backup)
+static void config_download(WiFiClient &client, bool full)
+{
+  ChunkPrint out(client);
+  byte mac[6];
+  char name[40];
+
+  WiFi.macAddress(mac);
+  snprintf(name, sizeof(name), "co2ampel-%02X%02X%02X%02X%02X%02X.json", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  out.print("HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Disposition: attachment; filename=");
+  out.print(name);
+  out.print("\r\nConnection: close\r\n\r\n");
+  settings_print_json(&out, !full);
+  out.print("\r\n");
+}
+
+// Password check (shared lockout); only the error text goes to the page, not the "OK"
+static bool password_ok(const char *pw, Print &res)
+{
+  char msg[80];
+  BufPrint m(msg, sizeof(msg));
+  if(settings_enable(pw, &m))
+  {
+    return true;
+  }
+  res.print(msg);
+  return false;
+}
+
+// POST /config/save|import|export, /restart: password check, then the action. Returns true if the
+// response was already sent (download), otherwise the config page shows result.
+static bool config_post(WiFiClient &client, const char *path, size_t content_length, char *result, size_t size)
+{
+  BufPrint res(result, size);
+  char *body = read_body(client, content_length);
+  if(body == NULL)
+  {
+    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"empty or too long (max 3 KB)\"}}");
+    return false;
+  }
+
+  if(strcmp(path, "import") == 0) //text/plain: "p=<password>\r\nj=<json>"
+  {
+    const char *pw = "";
+    char *json = body;
+    if(strncmp(body, "p=", 2) == 0)
+    {
+      pw = body + 2;
+      json = strstr(body, "\r\n");
+      if(json != NULL)
+      {
+        *json = 0;
+        json += 2;
+      }
+    }
+    if((json == NULL) || (strncmp(json, "j=", 2) != 0))
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"json\":\"no JSON\"}}");
+    }
+    else if(password_ok(pw, res))
+    {
+      BufPrint reply(result, size);
+      if(settings_json_import(json + 2, &reply, true, true))
+      {
+        settings_save(); //Web-Import wird immer gespeichert
+      }
+    }
+    free(body);
+    return false;
+  }
+
+  //urlencoded Formulare
+  form_t form;
+  form_parse(body, &form);
+  const char *pw = form_value(&form, "_pw");
+  if(!password_ok(pw ? pw : "", res)) //ohne sys.password immer erlaubt
+  {
+    free(body);
+    return false;
+  }
+
+  if(strcmp(path, "export") == 0)
+  {
+    free(body);
+    config_download(client, true);
+    return true;
+  }
+  if(strcmp(path, "restart") == 0)
+  {
+    free(body);
+    res.print("{\"result\":\"OK\",\"restart\":true}");
+    restart_pending = true;
+    return false;
+  }
+
+  if(strcmp(path, "save") != 0)
+  {
+    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"unknown action\"}}");
+    free(body);
+    return false;
+  }
+
+  //save: Formularfelder -> JSON (alle Werte als Text) -> settings_json_import (alles oder nichts)
+  char *json = (char *)malloc(CONFIG_JSON_MAX);
+  if(json == NULL)
+  {
+    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"out of memory\"}}");
+    free(body);
+    return false;
+  }
+  BufPrint jb(json, CONFIG_JSON_MAX);
+  jb.print('{');
+  bool first = true;
+  for(size_t i = 0; i < settings_item_count(); i++)
+  {
+    const cfg_item_t *item = settings_item(i);
+    const char *v = form_value(&form, item->key);
+    if((v == NULL) || ((item->flags & CFG_SECRET) && (*v == 0))) //fehlt oder Passwort leer = unveraendert
+    {
+      continue;
+    }
+    if(!first)
+    {
+      jb.print(',');
+    }
+    first = false;
+    print_json_string(&jb, item->key);
+    jb.print(':');
+    print_json_string(&jb, v);
+  }
+  jb.print('}');
+  if(jb.length() >= (CONFIG_JSON_MAX - 1))
+  {
+    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"too long\"}}");
+  }
+  else
+  {
+    BufPrint reply(result, size);
+    if(settings_json_import(json, &reply, true, true))
+    {
+      settings_save();
+    }
+  }
+  free(json);
+  free(body);
+  return false;
 }
 
 static void urldecode(char *src) //URL Parameter dekodieren
@@ -300,9 +599,24 @@ void webserver_service(void)
           }
           client.print(buf);
         }
-        else if((strncmp(req[0], "GET /config", 11) == 0) || (strncmp(req[0], "POST /config", 12) == 0))
+        else if(strncmp(req[0], "GET /config.json", 16) == 0) //Einstellungen, Passwoerter maskiert
         {
-          config_page(client, req[0][0] == 'P', content_length);
+          config_download(client, false);
+        }
+        else if(strncmp(req[0], "GET /config", 11) == 0)
+        {
+          config_page(client, NULL);
+        }
+        else if((strncmp(req[0], "POST /config/", 13) == 0) || (strncmp(req[0], "POST /restart", 13) == 0))
+        {
+          char result[400], path[8];
+          const char *p = (req[0][6] == 'r') ? "restart" : req[0] + 13; //save, import, export
+          size_t n = strcspn(p, " ?");
+          snprintf(path, sizeof(path), "%.*s", (int)((n < sizeof(path)) ? n : sizeof(path) - 1), p);
+          if(!config_post(client, path, content_length, result, sizeof(result)))
+          {
+            config_page(client, result);
+          }
         }
         else if(strncmp(req[0], "GET /favicon", 12) == 0) //Favicon 
         {
@@ -484,6 +798,12 @@ void webserver_service(void)
 
   delay(20); //20ms warten zum Senden
   client.stop();
+
+  if(restart_pending) //Neustart-Knopf auf /config: erst nach dem Senden der Seite
+  {
+    delay(500);
+    NVIC_SystemReset();
+  }
 
   return;
 }
