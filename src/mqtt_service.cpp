@@ -484,10 +484,15 @@ void mqtt_publish_sensors(void)
   }
 
   //Messwerte als ein JSON (ein konsistenter Datensatz pro Intervall)
+  //nur echte Messwerte: ohne CO2-Sensor (oder vor der ersten Messung) fehlen co2/temperature/humidity
   char f1[16], f2[16];
-  n = snprintf(json, sizeof(json), "{\"co2\":%u,\"temperature\":%s,\"humidity\":%s,\"light\":%u",
-               co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value);
-  if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+  n = snprintf(json, sizeof(json), "{\"light\":%u", light_value);
+  if(co2_valid)
+  {
+    n += snprintf(json + n, sizeof(json) - n, ",\"co2\":%u,\"temperature\":%s,\"humidity\":%s",
+                  co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
+  }
+  if(pres_valid)
   {
     n += snprintf(json + n, sizeof(json) - n, ",\"pressure\":%s,\"pressure_temp\":%s", fmt1(f1, pres_value), fmt1(f2, temp2_value));
   }

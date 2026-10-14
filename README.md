@@ -93,6 +93,10 @@ Behavior:
   also the violet `enable` indicator); measuring and MQTT continue. Without `save` it lasts until the next
   restart
 - The red status LED blinks briefly with every new measurement (not in the dark)
+- Without a CO2 sensor (not found at boot) the traffic light is red, the boot log shows `Error: CO2 sensor
+  not found` and no CO2/temperature/humidity values are published. At boot the firmware frees an I2C bus
+  that a sensor still holds after a restart in the middle of a transfer (`I2C bus recovered` in the boot
+  log); if the CO2 sensor is still missing, unplug the device briefly
 
 **Customize your thresholds and colors:**
 ```bash
@@ -343,7 +347,8 @@ Example JSON response:
 {"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}
 ```
 `c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
-`u` pressure sensor temperature (°C) only with a pressure sensor. The page `/` refreshes every 2 minutes.
+`u` pressure sensor temperature (°C) only with a pressure sensor, `c`/`t`/`h` only with a working CO2
+sensor (the same applies to `/cmk-agent`, and the page `/` shows `--`). The page `/` refreshes every 2 minutes.
 
 ### MQTT
 
@@ -354,13 +359,15 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"version":"0.4.0","sensors":["SCD30","LPS22HB"]}` (detected sensors) | every interval | yes |
+| `<base>/device` | `{"version":"0.4.0","sensors":["SCD30","LPS22HB"]}` (sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
 
 `sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023; 1024 until the first reading 1 minute after boot);
-`pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor.
+`pressure` and `pressure_temp` (the pressure sensor's own temperature) only with a pressure sensor;
+`co2`, `temperature` and `humidity` only once the CO2 sensor has delivered a measurement (missing if the
+CO2 sensor was not found at boot; the boot log then shows `Error: CO2 sensor not found`).
 
 **MQTTS (TLS)** (off by default): the WiFi module does the TLS itself and checks the broker certificate
 against its stored root CAs and against the hostname in `mqtt.broker` (use the name from the certificate,

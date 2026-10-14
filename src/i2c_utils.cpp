@@ -1,5 +1,41 @@
 #include "i2c_utils.h"
 
+static void line_low(uint8_t pin)
+{
+  digitalWrite(pin, LOW); //erst LOW (Pull-up aus), dann Ausgang: nie aktiv HIGH treiben
+  pinMode(pin, OUTPUT);
+}
+
+static void line_release(uint8_t pin)
+{
+  pinMode(pin, INPUT_PULLUP);
+}
+
+bool i2c_bus_recover(uint8_t sda, uint8_t scl)
+{
+  line_release(sda);
+  line_release(scl);
+  delayMicroseconds(20);
+  bool stuck = (digitalRead(sda) == LOW);
+
+  //Slave haelt SDA (unterbrochene Uebertragung): mit Takten das laufende Byte zu Ende schieben
+  for(int i = 0; (i < 9) && (digitalRead(sda) == LOW); i++)
+  {
+    line_low(scl);
+    delayMicroseconds(20); //ca. 25 kHz
+    line_release(scl);
+    delayMicroseconds(20);
+  }
+
+  //STOP: SDA steigt, waehrend SCL high ist
+  line_low(sda);
+  delayMicroseconds(20);
+  line_release(sda);
+  delayMicroseconds(20);
+
+  return stuck;
+}
+
 int check_i2c(Sercom *sercom, byte addr) //1=okay
 {
   int res = 0;

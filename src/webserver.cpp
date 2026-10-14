@@ -238,40 +238,23 @@ void webserver_service(void)
         }
         else if(strncmp(req[0], "GET /json", 9) == 0) //JSON
         {
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          //nur echte Messwerte (ohne CO2-Sensor fehlen c/t/h, ohne Drucksensor p/u)
+          int n = sprintf(buf,
+              "HTTP/1.1 200 OK\r\n" \
+              "Content-Type: application/json\r\n" \
+              "Connection: close\r\n" \
+              "\r\n" \
+              "{\r\n");
+          if(co2_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: application/json\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                "{\r\n" \
-                " \"c\": %i,\r\n" \
-                " \"t\": %s,\r\n" \
-                " \"h\": %s,\r\n" \
-                " \"p\": %s,\r\n" \
-                " \"u\": %s,\r\n" \
-                " \"l\": %i\r\n" \
-                "}\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), fmt1(f3, pres_value), fmt1(f4, temp2_value), light_value
-            );
+            n += sprintf(buf + n, " \"c\": %u,\r\n \"t\": %s,\r\n \"h\": %s,\r\n",
+                         co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
           }
-          else
+          if(pres_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: application/json\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                "{\r\n" \
-                " \"c\": %i,\r\n" \
-                " \"t\": %s,\r\n" \
-                " \"h\": %s,\r\n" \
-                " \"l\": %i\r\n" \
-                "}\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value
-            );
+            n += sprintf(buf + n, " \"p\": %s,\r\n \"u\": %s,\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
+          sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
           client.print(buf);
         }
         else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk Agent
@@ -281,59 +264,39 @@ void webserver_service(void)
           //Da HTTP als Uebertragungsweg genutzt wird, "Data Source" 
           //verwenden: wget -O - http://ip_address/cmk-agent
           //Siehe: https://docs.checkmk.com/latest/de/datasource_programs.html
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          int n = sprintf(buf,
+              "HTTP/1.1 200 OK\r\n" \
+              "Content-Type: text/plain\r\n" \
+              "Connection: close\r\n" \
+              "\r\n" \
+              //Plaintext im von Checkmk erwarteten Format
+              //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
+              "<<<check_mk>>>\r\n" \
+              "AgentOS: arduino\r\n" \
+              //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten
+              "<<<watterott_co2ampel_plugin>>>\r\n");
+          if(co2_valid)
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: text/plain\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                //Plaintext im von Checkmk erwarteten Format
-                //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
-                "<<<check_mk>>>\r\n" \
-                "AgentOS: arduino\r\n" \
-                //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
-                "<<<watterott_co2ampel_plugin>>>\r\n" \
-                "co2 %i\r\n" \
-                "temp %s\r\n" \
-                "humidity %s\r\n" \
-                "lighting %i\r\n" \
-                "pressure %s\r\n" \
-                "temp2 %s\r\n" \
-                //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
-                //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
-                //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
-                "<<<local:sep(0)>>>\r\n" \
-                "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value, fmt1(f3, pres_value), fmt1(f4, temp2_value),
-                co2_value, settings.range[1], settings.range[2]
-            );
+            n += sprintf(buf + n, "co2 %u\r\ntemp %s\r\nhumidity %s\r\n", co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
+          }
+          n += sprintf(buf + n, "lighting %u\r\n", light_value);
+          if(pres_valid)
+          {
+            n += sprintf(buf + n, "pressure %s\r\ntemp2 %s\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
+          }
+          //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
+          //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
+          //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
+          if(co2_valid)
+          {
+            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
+                "P \"CO2 level (ppm)\" co2ppm=%u;%u;%u CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
+                co2_value, settings.range[1], settings.range[2]);
           }
           else
           {
-            sprintf(buf,
-                "HTTP/1.1 200 OK\r\n" \
-                "Content-Type: text/plain\r\n" \
-                "Connection: close\r\n" \
-                "\r\n" \
-                //Plaintext im von Checkmk erwarteten Format
-                //Siehe: https://docs.checkmk.com/latest/en/devel_check_plugins.html
-                "<<<check_mk>>>\r\n" \
-                "AgentOS: arduino\r\n" \
-                //Check-Plugin fuer den Server erforderlich, um die Metriken auszuwerten 
-                "<<<watterott_co2ampel_plugin>>>\r\n" \
-                "co2 %i\r\n" \
-                "temp %s\r\n" \
-                "humidity %s\r\n" \
-                "lighting %i\r\n" \
-                //Ad-hoc Check, der kein Server-Plugin benoetigt, nutzt Schwellwerte der Ampel.
-                //Achtung: Nur eine Zeile - der Checkmk-Server nimmt die Bewertung selbst an
-                //Hand der uebergebenen Schwellwerte vor. Die lesen wir hier aus der Ampel aus:
-                "<<<local:sep(0)>>>\r\n" \
-                "P \"CO2 level (ppm)\" co2ppm=%i;%i;%i CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), light_value,
-                co2_value, settings.range[1], settings.range[2]
-            );
+            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
+                "3 \"CO2 level (ppm)\" - CO2 sensor not found\r\n");
           }
           client.print(buf);
         }
@@ -438,30 +401,23 @@ void webserver_service(void)
           );
           client.print(buf);
 
-          if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+          //ohne CO2-Sensor "--" statt Startwerten; Druckzeilen nur mit Drucksensor
+          char co2_text[12];
+          sprintf(co2_text, "%u", co2_value);
+          int n = sprintf(buf,
+              "<div id=data>\r\n" \
+              "CO2 (ppm): %s<br/>\r\n" \
+              "Temperatur (&deg;C): %s<br/>\r\n" \
+              "Luftfeuchte (%% rel): %s<br/>\r\n",
+              co2_valid ? co2_text : "--", co2_valid ? fmt1(f1, temp_value) : "--", co2_valid ? fmt1(f2, humi_value) : "--");
+          if(pres_valid)
           {
-            sprintf(buf,
-                "<div id=data>\r\n" \
-                "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %s<br/>\r\n" \
-                "Luftfeuchte (%% rel): %s<br/>\r\n" \
+            n += sprintf(buf + n,
                 "Druck (hPa): %s<br/>\r\n" \
-                "Temperatur (&deg;C): %s<br/>\r\n" \
-                "</div>\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value), fmt1(f3, pres_value), fmt1(f4, temp2_value)
-            );
+                "Temperatur (&deg;C): %s<br/>\r\n",
+                fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
-          else
-          {
-            sprintf(buf,
-                "<div id=data>\r\n" \
-                "CO2 (ppm): %i<br/>\r\n" \
-                "Temperatur (&deg;C): %s<br/>\r\n" \
-                "Luftfeuchte (%% rel): %s<br/>\r\n" \
-                "</div>\r\n",
-                co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value)
-            );
-          }
+          sprintf(buf + n, "</div>\r\n");
           client.print(buf);
 
           String fv = WiFi.firmwareVersion();

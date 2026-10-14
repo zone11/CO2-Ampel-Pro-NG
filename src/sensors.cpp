@@ -17,15 +17,18 @@ const char *fmt1(char *buf, float value)
 
 void print_measurements(void)
 {
-  Serial.print("c: ");           //CO2
-  Serial.println(co2_value);     //Wert in ppm
-  Serial.print("t: ");           //Temperatur
-  Serial.println(temp_value, 1); //Wert in °C
-  Serial.print("h: ");           //Humidity/Luftfeuchte
-  Serial.println(humi_value, 1); //Wert in %
+  if(co2_valid) //nur echte Messwerte (ohne CO2-Sensor oder vor der ersten Messung keine)
+  {
+    Serial.print("c: ");           //CO2
+    Serial.println(co2_value);     //Wert in ppm
+    Serial.print("t: ");           //Temperatur
+    Serial.println(temp_value, 1); //Wert in °C
+    Serial.print("h: ");           //Humidity/Luftfeuchte
+    Serial.println(humi_value, 1); //Wert in %
+  }
   Serial.print("l: ");           //Licht
   Serial.println(light_value);
-  if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+  if(pres_valid)
   {
     Serial.print("p: ");         //Druck
     Serial.println(pres_value);  //Wert in hPa
@@ -160,8 +163,25 @@ void co2_set_asc(bool on)
   }
 }
 
+static void read_pressure(void)
+{
+  if(features & FEATURE_LPS22HB)
+  {
+    pres_value  = lps22.readPressure()*10; //kPa -> hPa
+    temp2_value = lps22.readTemperature()-temp_offset;
+    pres_valid  = true;
+  }
+  if(features & FEATURE_BMP280)
+  {
+    pres_value  = bmp280.readPressure()/100; //Pa -> hPa
+    temp2_value = bmp280.readTemperature()-temp_offset;
+    pres_valid  = true;
+  }
+}
+
 unsigned int check_sensors(void) //Sensoren auslesen
 {
+  static unsigned long t_pres = 0;
   if(features & FEATURE_SCD30)
   {
     uint16_t ready = 0;
@@ -172,16 +192,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       co2_value  = (unsigned int)(v_co2 + 0.5f);
       temp_value = v_temp;
       humi_value = v_humi;
-      if(features & FEATURE_LPS22HB)
-      {
-        pres_value  = lps22.readPressure()*10; //kPa -> hPa
-        temp2_value = lps22.readTemperature()-temp_offset;
-      }
-      if(features & FEATURE_BMP280)
-      {
-        pres_value  = bmp280.readPressure()/100; //Pa -> hPa
-        temp2_value = bmp280.readTemperature()-temp_offset;
-      }
+      read_pressure();
       if((pres_value < (pres_last-DRUCK_DIFF)) || (pres_value > (pres_last+DRUCK_DIFF)))
       {
         pres_last = pres_value;
@@ -198,6 +209,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       {
         humi_value = 100;
       }
+      co2_valid = true;
       return 1;
     }
   }
@@ -211,16 +223,7 @@ unsigned int check_sensors(void) //Sensoren auslesen
       co2_value  = v_co2;
       temp_value = v_temp;
       humi_value = v_humi;
-      if(features & FEATURE_LPS22HB)
-      {
-        pres_value  = lps22.readPressure()*10; //kPa -> hPa
-        temp2_value = lps22.readTemperature()-temp_offset;
-      }
-      if(features & FEATURE_BMP280)
-      {
-        pres_value  = bmp280.readPressure()/100; //Pa -> hPa
-        temp2_value = bmp280.readTemperature()-temp_offset;
-      }
+      read_pressure();
       if((pres_value < (pres_last-DRUCK_DIFF)) || (pres_value > (pres_last+DRUCK_DIFF)))
       {
         pres_last = pres_value;
@@ -238,8 +241,14 @@ unsigned int check_sensors(void) //Sensoren auslesen
       {
         humi_value = 100;
       }
+      co2_valid = true;
       return 1;
     }
+  }
+  else if((millis() - t_pres) > (INTERVALL*1000UL)) //ohne CO2-Sensor: Druck trotzdem messen
+  {
+    t_pres = millis();
+    read_pressure();
   }
 
   return 0;

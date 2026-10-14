@@ -38,5 +38,7 @@ extern float humi_value;
 extern float pres_value;
 extern float pres_last;
 extern float temp2_value;
+extern bool co2_valid;  // co2/temp/humi hold a real measurement (not the start values)
+extern bool pres_valid; // pres/temp2 hold a real measurement
 
 #endif
