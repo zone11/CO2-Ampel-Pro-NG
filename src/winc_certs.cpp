@@ -2,6 +2,8 @@
 
 #include "app_globals.h"
 
+#if WITH_CERT_CMDS
+
 #include <spi_flash/include/spi_flash.h>
 #include <string.h>
 
@@ -777,3 +779,5 @@ void winc_cert_add_poll(Print &out)
     pem_end();
   }
 }
+
+#endif //WITH_CERT_CMDS

@@ -47,8 +47,12 @@ static const cfg_item_t settings_items[] =
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
   { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
+#if WITH_HA
   { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, NULL, CFG_LOCAL },
+#endif
+#if WITH_MQTT_CONFIG
   { "mqtt.config",      CFG_BOOL,  &settings.mqtt_config,    0, 0, 0, NULL, CFG_LOCAL },
+#endif
   { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL },
 };
 static const size_t settings_items_count = sizeof(settings_items) / sizeof(settings_items[0]);

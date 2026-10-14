@@ -56,7 +56,9 @@ void serial_service(void)
     return;
   }
 
+#if WITH_CERT_CMDS
   winc_cert_add_poll(Serial);
+#endif
 
   if(!read_line(line_buf, sizeof(line_buf)))
   {
@@ -74,11 +76,13 @@ void serial_service(void)
     return;
   }
 
+#if WITH_CERT_CMDS
   if(winc_cert_add_active()) //"cert add": Zeilen sind das PEM-Zertifikat
   {
     winc_cert_add_line(Serial, line);
     return;
   }
+#endif
 
   if(strcasecmp(line, "remote on") == 0)
   {
@@ -109,6 +113,7 @@ void serial_service(void)
     print_mqtt_status();
     return;
   }
+#if WITH_CERT_CMDS
   if(strncasecmp(line, "cert ", 5) == 0) //WINC1500 Root-Zertifikate (nur lokal, nicht ueber MQTT)
   {
     if(!remote_on)
@@ -133,6 +138,7 @@ void serial_service(void)
     }
     return;
   }
+#endif
   if(strcasecmp(line, "i2c scan") == 0)
   {
     i2c_scan(Wire, "Wire (SERCOM0)", Serial);

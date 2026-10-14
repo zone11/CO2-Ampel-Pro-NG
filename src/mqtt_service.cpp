@@ -1,6 +1,7 @@
 #include "mqtt_service.h"
 #include "settings_registry.h"
 
+#if WITH_MQTT_CONFIG
 #define MQTT_CMD_MAX   400  //max. Laenge eines Befehls auf <base>/cmd (Lesepuffer 512)
 #define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
 
@@ -41,6 +42,7 @@ private:
 };
 
 static ReplyBuffer reply;
+#endif //WITH_MQTT_CONFIG
 
 // Holt die eindeutige Chip-ID des SAMD21
 void get_chip_id(char *buffer, size_t buffer_size)
@@ -92,6 +94,7 @@ static void json_escape(char *dst, size_t size, const char *src)
   dst[n] = 0;
 }
 
+#if WITH_MQTT_CONFIG
 // Called from mqttClient.loop(). The library must not publish from here, so the command is only
 // stored and handled by mqtt_handle_command() after loop() returns.
 static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int length)
@@ -171,7 +174,9 @@ static void mqtt_handle_command(void)
     Serial.println(first[0] ? first : "(too long)");
   }
 }
+#endif //WITH_MQTT_CONFIG
 
+#if WITH_HA
 // Home Assistant MQTT discovery: one retained config per entity under
 // <discovery prefix>/sensor/<device id>/<key>/config, reading from the existing JSON topics.
 typedef struct
@@ -236,6 +241,7 @@ static void mqtt_publish_discovery(void)
     mqttClient.publish(topic, json, true, 0);
   }
 }
+#endif //WITH_HA
 
 void print_mqtt_status(void)
 {
@@ -271,10 +277,14 @@ void print_mqtt_status(void)
   Serial.print("Interval: ");
   Serial.print(settings.mqtt_interval);
   Serial.println("s");
+#if WITH_HA
   Serial.print("HA discovery: ");
   Serial.println(settings.mqtt_ha ? "on (" MQTT_DISCOVERY_PREFIX ")" : "off");
+#endif
+#if WITH_MQTT_CONFIG
   Serial.print("Remote config: ");
   Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off");
+#endif
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
   {
     Serial.print("WiFi: ");
@@ -364,13 +374,17 @@ void mqtt_connect(void)
   if(connected)
   {
     mqttClient.publish(topic, "online", true, 1);
+#if WITH_HA
     mqtt_publish_discovery();
+#endif
+#if WITH_MQTT_CONFIG
     if(settings.mqtt_config)
     {
       mqttClient.onMessageAdvanced(mqtt_message);
       mqtt_topic(topic, sizeof(topic), "cmd");
       mqttClient.subscribe(topic, 0);
     }
+#endif
     if(features & FEATURE_USB)
     {
       Serial.println("MQTT connected successfully");
@@ -522,6 +536,7 @@ void mqtt_service(void)
   //MQTT Loop (non-blocking)
   mqttClient.loop();
 
+#if WITH_MQTT_CONFIG
   //Befehl aus <base>/cmd bearbeiten (ausserhalb des Callbacks)
   if(cmd_state != CMD_NONE)
   {
@@ -534,6 +549,7 @@ void mqtt_service(void)
       cmd_state = CMD_NONE;
     }
   }
+#endif
 
   //Verbindung pruefen
   if(!mqttClient.connected())

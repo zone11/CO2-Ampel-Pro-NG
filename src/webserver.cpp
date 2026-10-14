@@ -4,6 +4,8 @@
 
 #include <ctype.h>
 
+#if WITH_WEB
+
 static void urldecode(char *src) //URL Parameter dekodieren
 {
   char a, b, *dst = src;
@@ -381,3 +383,5 @@ void webserver_service(void)
 
   return;
 }
+
+#endif //WITH_WEB

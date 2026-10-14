@@ -40,7 +40,9 @@ SensirionI2cScd4x scd4x;
 Adafruit_BMP280 bmp280(&Wire1);
 LPS22HBClass lps22(Wire1);
 Adafruit_NeoPixel ws2812 = Adafruit_NeoPixel(NUM_LEDS, PIN_WS2812, NEO_GRB + NEO_KHZ800);
+#if WITH_WEB
 WiFiServer server(80); //Webserver Port 80
+#endif
 WiFiClient mqttWifiClient;
 VerifiedSSLClient mqttSslClient; //TLS im WINC1500 inkl. Hostname-Pruefung (Root-Zertifikat muss im WINC gespeichert sein)
 MQTTClient mqttClient(512, 1536); //Lesen 512 Byte (Befehle), Schreiben 1536 Byte (Antworten bis ~1.4 KB)
@@ -328,8 +330,10 @@ void loop()
   //serielle Befehle verarbeiten
   serial_service();
 
+#if WITH_WEB
   //WiFi-Daten verarbeiten
   webserver_service();
+#endif
 
   //MQTT-Daten verarbeiten
   mqtt_service();

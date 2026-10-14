@@ -6,6 +6,21 @@
 #define VERSION "SET VERSION!"
 #endif
 
+// Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).
+// Runtime settings of a disabled feature stay in the settings record but are not offered.
+#ifndef WITH_WEB
+#define WITH_WEB           1 //Webserver: Messwerte, /json, /cmk-agent, WiFi-Formular
+#endif
+#ifndef WITH_HA
+#define WITH_HA            1 //Home Assistant MQTT Discovery (mqtt.ha)
+#endif
+#ifndef WITH_MQTT_CONFIG
+#define WITH_MQTT_CONFIG   1 //Konfiguration ueber MQTT (mqtt.config)
+#endif
+#ifndef WITH_CERT_CMDS
+#define WITH_CERT_CMDS     1 //Serielle Befehle cert list/add/remove (WINC1500 Root-Zertifikate)
+#endif
+
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
 #define DEFAULT_T1              600 //>= 600ppm
 #define DEFAULT_T2              1000 //>=1000ppm

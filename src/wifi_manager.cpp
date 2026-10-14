@@ -102,7 +102,9 @@ unsigned int wifi_start_ap(void)
 
   delay(5000); //5s warten
 
+#if WITH_WEB
   server.begin(); //starte Webserver
+#endif
 
   return 0;
 }
@@ -160,7 +162,9 @@ unsigned int wifi_start(void)
     return 1;
   }
 
+#if WITH_WEB
   server.begin(); //starte Webserver
+#endif
 
   return 0;
 }

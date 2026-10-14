@@ -22,7 +22,9 @@ extern Adafruit_NeoPixel ws2812;
 extern WiFiClient mqttWifiClient;
 extern VerifiedSSLClient mqttSslClient;
 extern MQTTClient mqttClient;
+#if WITH_WEB
 extern WiFiServer server;
+#endif
 
 extern unsigned int features;
 extern unsigned int remote_on;
