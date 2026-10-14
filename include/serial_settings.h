@@ -17,6 +17,7 @@ typedef enum
 // Item flags
 #define CFG_SECRET  (1<<0) // value masked unless the caller is local (serial dump keeps it for backups)
 #define CFG_LOCAL   (1<<1) // may only be changed locally (serial, web), e.g. connection credentials
+#define CFG_CONTROL (1<<2) // runtime control (e.g. led.disable): also over MQTT with mqtt.config=0, RAM only
 
 typedef struct cfg_item cfg_item_t;
 typedef bool (*cfg_apply_fn)(void *user, const cfg_item_t *item);

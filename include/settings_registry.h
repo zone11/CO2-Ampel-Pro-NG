@@ -19,7 +19,8 @@ bool settings_enable(const char *password, Print *out);
 // value nothing changes. Command words without a dot: "save":true writes the flash, "export":true
 // adds the full configuration to the reply. Unknown keys are warnings, "***" for secrets and
 // unchanged CFG_LOCAL values from remote callers are skipped. Prints one JSON line as reply.
-bool settings_json_import(const char *json, Print *out, bool local, bool enabled);
+// control_only: only CFG_CONTROL keys (MQTT with mqtt.config=0), no save/export.
+bool settings_json_import(const char *json, Print *out, bool local, bool enabled, bool control_only = false);
 
 // Sets one item by key from text, with the same parsing/validation as "set". Local, no output.
 bool settings_set(const char *key, const char *value);

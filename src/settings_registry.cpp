@@ -46,7 +46,7 @@ static const cfg_item_t settings_items[] =
   { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness },
   { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness },
   { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness },
-  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, apply_led_disable },
+  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, apply_led_disable, CFG_CONTROL },
   { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },
@@ -209,6 +209,7 @@ private:
 typedef struct
 {
   bool local;
+  bool control_only;
   bool save;
   bool do_export;
   const SETTINGS *before;
@@ -236,7 +237,11 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   if(strchr(key, '.') == NULL) //Befehlswoerter (Einstellungen enthalten immer einen Punkt)
   {
     bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
-    if(strcmp(key, "save") == 0)        { ic->save = on; }
+    if(ic->control_only && ((strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
+    {
+      ic->errors.add(key, "Configuration over MQTT is off (mqtt.config)");
+    }
+    else if(strcmp(key, "save") == 0)   { ic->save = on; }
     else if(strcmp(key, "export") == 0) { ic->do_export = on; }
     else                                { ic->warnings.add(key, "Unknown key"); }
     return true;
@@ -246,6 +251,11 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   if(item == NULL)
   {
     ic->warnings.add(key, "Unknown key"); //z.B. Export einer neueren Firmware
+    return true;
+  }
+  if(ic->control_only && !(item->flags & CFG_CONTROL))
+  {
+    ic->errors.add(key, "Configuration over MQTT is off (mqtt.config)");
     return true;
   }
   if((item->flags & CFG_SECRET) && (strcmp(value, "***") == 0))
@@ -275,13 +285,14 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   return true;
 }
 
-bool settings_json_import(const char *json, Print *out, bool local, bool enabled)
+bool settings_json_import(const char *json, Print *out, bool local, bool enabled, bool control_only)
 {
   SETTINGS before = settings;
   import_ctx_t ic;
   char err[64];
 
   ic.local = local;
+  ic.control_only = control_only;
   ic.save = false;
   ic.do_export = false;
   ic.before = &before;

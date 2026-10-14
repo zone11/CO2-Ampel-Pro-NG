@@ -147,7 +147,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
-    settings_json_import(json, &reply, false, true);
+    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //aus: nur Steuerung (led.disable)
   }
   cmd_state = CMD_NONE;
 
@@ -289,7 +289,7 @@ void print_mqtt_status(void)
 #endif
 #if WITH_MQTT_CONFIG
   Serial.print("Remote config: ");
-  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off");
+  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off (<prefix>/<id>/cmd: led.disable only)");
 #endif
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
   {
@@ -389,12 +389,10 @@ void mqtt_connect(void)
     }
 #endif
 #if WITH_MQTT_CONFIG
-    if(settings.mqtt_config)
-    {
-      mqttClient.onMessageAdvanced(mqtt_message);
-      mqtt_topic(topic, sizeof(topic), "cmd");
-      mqttClient.subscribe(topic, 0);
-    }
+    //immer abonniert: Steuerung (led.disable) geht auch mit mqtt.config=0, Konfiguration nur mit 1
+    mqttClient.onMessageAdvanced(mqtt_message);
+    mqtt_topic(topic, sizeof(topic), "cmd");
+    mqttClient.subscribe(topic, 0);
 #endif
     if(features & FEATURE_USB)
     {
@@ -557,7 +555,7 @@ void mqtt_service(void)
   //Befehl aus <base>/cmd bearbeiten (ausserhalb des Callbacks)
   if(cmd_state != CMD_NONE)
   {
-    if(settings.mqtt_config && mqttClient.connected())
+    if(mqttClient.connected())
     {
       mqtt_handle_command();
     }

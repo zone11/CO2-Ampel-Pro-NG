@@ -89,9 +89,9 @@ Behavior:
 - Ambient light is checked 1 minute after boot and then every 10 minutes; in the dark (value < 20) the
   LEDs dim to `led.brightness_dark` and return to `led.brightness` when it is light again (`led.auto=0`:
   always `led.brightness`)
-- `led.disable=1` turns the LEDs, the status LED and the buzzer off immediately (e.g. at night over MQTT;
-  also the violet `enable` indicator); measuring and MQTT continue. Without `save` it lasts until the next
-  restart
+- `led.disable=1` turns the LEDs, the status LED and the buzzer off immediately (e.g. at night over MQTT,
+  works without `mqtt.config`; also the violet `enable` indicator); measuring and MQTT continue. Without
+  `save` it lasts until the next restart
 - The red status LED blinks briefly with every new measurement (not in the dark)
 - Without a CO2 sensor (not found at boot) the traffic light is red, the boot log shows `Error: CO2 sensor
   not found` and no CO2/temperature/humidity values are published. At boot the firmware frees an I2C bus
@@ -409,9 +409,14 @@ diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and becom
 `<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
 config each, only while MQTT is connected); with `mqtt.ha=0` nothing is sent to `homeassistant/`.
 
-**Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`,
-`reset`. The device then accepts **JSON objects** on `<base>/cmd` (max. 1 KB), exactly like `json import`,
-and replies with JSON on `<base>/resp`:
+**LED control over MQTT** (always available when MQTT is on): `{"led.disable":true}` /
+`{"led.disable":false}` on `<base>/cmd` switches the LEDs (and buzzer) off and on, also with
+`mqtt.config=0`. It applies in RAM only (back to the saved value after a restart); everything else is
+answered with `{"result":"ERROR","errors":{...:"Configuration over MQTT is off (mqtt.config)"}}`.
+
+**Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`
+(applies immediately). The device then accepts all settings as **JSON objects** on `<base>/cmd` (max. 1 KB),
+exactly like `json import`, and replies with JSON on `<base>/resp`:
 
 ```bash
 BASE=co2ampel/F8F0056E78A2
