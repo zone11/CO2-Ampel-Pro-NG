@@ -9,7 +9,9 @@
 #   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py remove 3
 #   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py backup [file]
 #   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py restore winc_rootcert_<date>.bin
-#   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py provision --config site.txt
+#   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py export [settings.json]
+#   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py import settings.json
+#   ~/.platformio/penv/bin/python scripts/co2ampel_tool.py provision --config site.json
 #
 # Certificates: the firmware's "winc bridge" command passes the WiFi module's flash through (protocol
 # of the WiFi101 FirmwareUpdater sketch, writes limited to the certificate sector); the device restarts
@@ -18,9 +20,10 @@
 #
 # With an enable password (sys.password) set: export CO2AMPEL_PASSWORD=... before running the tool.
 #
-# provision: sends the "set key=value" lines of a settings file (format of the "dump" command), saves,
-# installs the root CA of the MQTT broker if mqtt.tls is on, restarts and reports the MQTT connection.
-# Values are never printed.
+# Settings files are JSON in the format of the "json export" command (flat dotted keys, or nested
+# objects: {"co2":{"t1":600}} = {"co2.t1":600}). import sends them with "json import" and saves; the
+# device applies all values or none. provision = import + root CA of the MQTT broker (if mqtt.tls is
+# on) + restart + MQTT check. Values are never printed; export files contain the passwords in clear text.
 #
 # Store layout (WINC flash 0x4000, 4 KB, format "v2"), little endian:
 #   16 bytes start pattern 11 F1 12 F2 ... 18 F8, u32 number of entries, then per entry:
@@ -31,6 +34,7 @@
 import argparse
 import datetime
 import hashlib
+import json
 import os
 import re
 import struct
@@ -104,14 +108,26 @@ class Device:
             if r == "OK" or r.startswith("ERROR"):
                 return lines
 
-    def get(self, key):
-        self.s.write(("get %s\n" % key).encode())
-        while True:
-            r = self.readline(3)
-            if r is None or r.startswith("ERROR"):
-                return None
-            if r.startswith(key + "="):
-                return r[len(key) + 1:]
+    def json_reply(self, timeout=10):
+        """Next line that is a JSON object (log lines in between are skipped)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            r = self.readline(deadline - time.time())
+            if r and r.startswith("{"):
+                return json.loads(r)
+        sys.exit("No JSON reply from the device")
+
+    def json_export(self):
+        self.s.write(b"json export\n")
+        return self.json_reply()
+
+    def json_import(self, conf):
+        """Sends a settings object with "json import"; returns the device's reply."""
+        text = json.dumps(conf, separators=(",", ":"))
+        if len(text) > 2000:
+            sys.exit("Settings too long for the device (%d of max. 2000 bytes)" % len(text))
+        self.s.write(("json import %s\n" % text).encode())
+        return self.json_reply()
 
     def remote_on(self):
         deadline = time.time() + 45 #the console answers only after the boot (WiFi/MQTT connect)
@@ -317,18 +333,41 @@ def write_store(bridge, old, new):
     describe(parse_store(new), known_roots())
 
 
-def read_config(path):
-    """set key=value lines; enable / exit / save / reset / comments (and the old "remote on") are ignored."""
-    items = []
-    for n, line in enumerate(open(path), 1):
-        line = line.strip()
-        if not line or line.startswith("#") or line in ("enable", "exit", "save", "reset", "remote on"):
-            continue
-        m = re.match(r"set ([a-z0-9_.]+)=(.*)$", line)
-        if not m:
-            sys.exit("%s line %d: expected 'set key=value'" % (path, n))
-        items.append((m.group(1), m.group(2)))
-    return items
+def flatten(obj, prefix=""):
+    """{"co2":{"t1":600}} -> {"co2.t1":600} (the device accepts both)."""
+    out = {}
+    for k, v in obj.items():
+        key = prefix + "." + k if prefix else k
+        if isinstance(v, dict):
+            out.update(flatten(v, key))
+        else:
+            out[key] = v
+    return out
+
+
+def load_config(path):
+    try:
+        conf = json.load(open(path))
+    except ValueError as e:
+        sys.exit("%s: invalid JSON (%s)" % (path, e))
+    if not isinstance(conf, dict):
+        sys.exit("%s: expected a JSON object" % path)
+    return flatten(conf)
+
+
+def import_config(dev, conf):
+    """Imports and saves conf; exits with the device's errors if anything was rejected."""
+    conf = dict(conf)
+    conf.pop("export", None)
+    conf["save"] = True
+    reply = dev.json_import(conf)
+    for key, msg in reply.get("warnings", {}).items():
+        print("Warning: %s: %s" % (key, msg))
+    if reply.get("result") != "OK":
+        for key, msg in reply.get("errors", {}).items():
+            print("Error: %s: %s" % (key, msg))
+        sys.exit("Import rejected, nothing changed")
+    print("Settings imported and saved (%d keys)" % (len(conf) - 1))
 
 
 def watch_boot(timeout=40):
@@ -368,30 +407,45 @@ def main():
     bk.add_argument("file", nargs="?")
     res = sub.add_parser("restore")
     res.add_argument("file", help="backup file written by this tool")
+    ex = sub.add_parser("export")
+    ex.add_argument("file", nargs="?", help="default: co2ampel_<date>.json")
+    im = sub.add_parser("import")
+    im.add_argument("file", help="settings file (JSON)")
     pv = sub.add_parser("provision")
-    pv.add_argument("--config", required=True, help="settings file with 'set key=value' lines")
+    pv.add_argument("--config", required=True, help="settings file (JSON)")
     args = ap.parse_args()
 
+    conf = load_config(args.file if args.cmd == "import" else args.config) \
+        if args.cmd in ("import", "provision") else None
     dev = Device(args.port)
 
-    if args.cmd == "provision":
-        items = read_config(args.config)
+    if args.cmd == "export":
         dev.remote_on()
-        for key, value in items:
-            r = dev.command("set %s=%s" % (key, value))
-            if r[-1] != "OK":
-                sys.exit("set %s: %s - nothing saved (restart the device to discard the keys set so far)" % (key, r[-1]))
-            print("set", key)
-        if dev.command("save")[-1] != "OK":
-            sys.exit("save failed")
-        print("Settings saved (%d keys)" % len(items))
-        conf = dict(items)
-        for key in ("mqtt.enabled", "mqtt.tls", "mqtt.broker", "mqtt.port"):
-            if key not in conf:
-                conf[key] = dev.get(key) or ""
+        conf = dev.json_export()
+        name = args.file or "co2ampel_%s.json" % datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600) #contains passwords
+        with os.fdopen(fd, "w") as f:
+            json.dump(conf, f, indent=2)
+            f.write("\n")
+        print("Saved %d settings to %s (contains passwords: keep it safe)" % (len(conf), name))
+        return
+
+    if args.cmd == "import":
+        dev.remote_on()
+        import_config(dev, conf)
+        dev.command("exit")
+        print("WiFi/MQTT changes apply after a restart (serial: reset)")
+        return
+
+    if args.cmd == "provision":
+        dev.remote_on()
+        import_config(dev, conf)
+        current = dev.json_export() #values not in the file
+        mqtt = {k: conf.get(k, current.get(k)) for k in ("mqtt.enabled", "mqtt.tls", "mqtt.broker", "mqtt.port")}
+        on = lambda v: v in (True, 1, "1", "true", "on")
         cert = None
-        if conf["mqtt.enabled"] == "1" and conf["mqtt.tls"] == "1" and conf["mqtt.broker"]:
-            cert = root_for_host(conf["mqtt.broker"], conf["mqtt.port"] or "8883")
+        if on(mqtt["mqtt.enabled"]) and on(mqtt["mqtt.tls"]) and mqtt["mqtt.broker"]:
+            cert = root_for_host(mqtt["mqtt.broker"], str(mqtt["mqtt.port"] or 8883))
         else:
             print("MQTT over TLS not enabled: no root certificate needed")
         bridge = dev.bridge()
