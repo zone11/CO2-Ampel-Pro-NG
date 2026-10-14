@@ -198,6 +198,63 @@ static void print_item_value(const serial_settings_ctx_t *ctx, const cfg_item_t 
   print_value(ctx->out, item);
 }
 
+static void print_json_string(Print *out, const char *str)
+{
+  out->print('"');
+  for(; *str; str++)
+  {
+    unsigned char c = (unsigned char)*str;
+    if((c == '"') || (c == '\\'))
+    {
+      out->print('\\');
+      out->print((char)c);
+    }
+    else if(c < 0x20)
+    {
+      out->print("\\u00");
+      print_hex_padded(out, c, 2);
+    }
+    else
+    {
+      out->print((char)c);
+    }
+  }
+  out->print('"');
+}
+
+// One JSON value: numbers plain, bools true/false, colors as "RRGGBB" (accepted by set), rest as strings
+static void print_item_json(const serial_settings_ctx_t *ctx, const cfg_item_t *item)
+{
+  Print *out = ctx->out;
+  if((item->flags & CFG_SECRET) && !ctx->local)
+  {
+    out->print("\"***\"");
+    return;
+  }
+  switch(item->type)
+  {
+    case CFG_BOOL:
+      out->print(*(bool *)item->ptr ? "true" : "false");
+      break;
+    case CFG_STRING:
+      print_json_string(out, (const char *)item->ptr);
+      break;
+    case CFG_COLOR:
+      out->print('"');
+      print_hex_padded(out, *(uint32_t *)item->ptr, 6);
+      out->print('"');
+      break;
+    case CFG_IP:
+      out->print('"');
+      print_value(out, item);
+      out->print('"');
+      break;
+    default:
+      print_value(out, item);
+      break;
+  }
+}
+
 static const cfg_item_t *find_item(const cfg_item_t *items, size_t count, const char *key)
 {
   for(size_t i = 0; i < count; i++)
@@ -458,6 +515,26 @@ bool serial_settings_handle_line(char *line,
     if(ctx->locked)
     {
       print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
+    if(strcasecmp(arg, "json") == 0) //alle Einstellungen als ein JSON-Objekt (eine Zeile)
+    {
+      if(ctx->out)
+      {
+        for(size_t i = 0; i < item_count; i++)
+        {
+          ctx->out->print((i == 0) ? "{" : ",");
+          print_json_string(ctx->out, items[i].key);
+          ctx->out->print(':');
+          print_item_json(ctx, &items[i]);
+        }
+        ctx->out->println("}");
+      }
+      return true;
+    }
+    if(*arg != 0)
+    {
+      print_error(ctx->out, "Use dump or dump json");
       return true;
     }
     for(size_t i = 0; i < item_count; i++)
