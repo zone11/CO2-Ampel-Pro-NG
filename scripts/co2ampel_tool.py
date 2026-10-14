@@ -113,12 +113,12 @@ class Device:
     def remote_on(self):
         deadline = time.time() + 45 #the console answers only after the boot (WiFi/MQTT connect)
         while True:
-            self.s.write(b"remote on\n")
+            self.s.write(b"enable\n")
             r = self.readline(2)
             while r is not None and r != "OK":
                 r = self.readline(2)
             if r == "OK":
-                time.sleep(0.5) #replies to repeated "remote on" lines sent while booting
+                time.sleep(0.5) #replies to repeated "enable" lines sent while booting
                 self.s.reset_input_buffer()
                 return
             #still in bridge mode from an aborted run? -> restart it
@@ -311,11 +311,11 @@ def write_store(bridge, old, new):
 
 
 def read_config(path):
-    """set key=value lines; remote on / save / reset / comments are ignored."""
+    """set key=value lines; enable / exit / save / reset / comments (and the old "remote on") are ignored."""
     items = []
     for n, line in enumerate(open(path), 1):
         line = line.strip()
-        if not line or line.startswith("#") or line in ("remote on", "save", "reset"):
+        if not line or line.startswith("#") or line in ("enable", "exit", "save", "reset", "remote on"):
             continue
         m = re.match(r"set ([a-z0-9_.]+)=(.*)$", line)
         if not m:

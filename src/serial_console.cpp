@@ -73,7 +73,7 @@ void serial_service(void)
   }
 
 
-  if(strcasecmp(line, "remote on") == 0)
+  if(strcasecmp(line, "enable") == 0)
   {
     remote_on = 1;
     buzzer(0);
@@ -82,7 +82,7 @@ void serial_service(void)
     Serial.println("OK");
     return;
   }
-  if(strcasecmp(line, "remote off") == 0)
+  if(strcasecmp(line, "exit") == 0)
   {
     remote_on = 0;
     ws2812.setBrightness(settings.brightness);
@@ -106,7 +106,7 @@ void serial_service(void)
   {
     if(!remote_on)
     {
-      Serial.println("ERROR: Remote control not enabled");
+      Serial.println("ERROR: Not enabled (send 'enable' first)");
       return;
     }
     winc_bridge(); //kehrt nicht zurueck (Neustart)

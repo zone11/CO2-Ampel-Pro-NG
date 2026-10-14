@@ -307,7 +307,7 @@ bool serial_settings_handle_line(char *line,
   {
     if(!ctx->remote_on)
     {
-      print_error(ctx->out, "Remote control not enabled");
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
       return true;
     }
 
@@ -426,7 +426,7 @@ bool serial_settings_handle_line(char *line,
   {
     if(!ctx->remote_on)
     {
-      print_error(ctx->out, "Remote control not enabled");
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
       return true;
     }
 
