@@ -7,6 +7,123 @@
 
 #if WITH_WEB
 
+#define CONFIG_BODY_MAX 2048 //max. POST auf /config (Passwort + JSON)
+
+// Writes text into a fixed buffer (for the JSON import reply on the page)
+class BufPrint : public Print
+{
+public:
+  BufPrint(char *b, size_t n) : buf(b), size(n) { buf[0] = 0; }
+  size_t write(uint8_t c) override
+  {
+    if(len < (size - 1))
+    {
+      buf[len++] = (char)c;
+      buf[len] = 0;
+    }
+    return 1;
+  }
+private:
+  char *buf;
+  size_t size;
+  size_t len = 0;
+};
+
+static void print_html(WiFiClient &client, const char *text) //Antwort/Benutzertext HTML-sicher ausgeben
+{
+  for(; *text; text++)
+  {
+    if(*text == '<')      { client.print("&lt;"); }
+    else if(*text == '>') { client.print("&gt;"); }
+    else if(*text == '&') { client.print("&amp;"); }
+    else                  { client.print(*text); }
+  }
+}
+
+// GET/POST /config: JSON import (as "json import" on serial, always saved). The form is sent as
+// text/plain ("p=<password>\r\nj=<json>"), so the JSON arrives unencoded.
+static void config_page(WiFiClient &client, bool post, size_t content_length)
+{
+  char result[400];
+  result[0] = 0;
+
+  if(post)
+  {
+    char *body = (content_length < CONFIG_BODY_MAX) ? (char *)malloc(content_length + 1) : NULL;
+    if(body == NULL)
+    {
+      strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"too long (max 2 KB) or empty\"}}");
+    }
+    else
+    {
+      size_t n = 0;
+      unsigned long t = millis();
+      while((n < content_length) && client.connected() && ((millis() - t) < 3000UL))
+      {
+        if(client.available())
+        {
+          body[n++] = client.read();
+        }
+      }
+      body[n] = 0;
+
+      const char *pw = "";
+      char *json = body;
+      if(strncmp(body, "p=", 2) == 0) //Passwortfeld (nur vorhanden, wenn sys.password gesetzt ist)
+      {
+        pw = body + 2;
+        json = strstr(body, "\r\n");
+        if(json != NULL)
+        {
+          *json = 0;
+          json += 2;
+        }
+      }
+      if((json == NULL) || (strncmp(json, "j=", 2) != 0))
+      {
+        strcpy(result, "{\"result\":\"ERROR\",\"errors\":{\"json\":\"no JSON\"}}");
+      }
+      else
+      {
+        BufPrint out(result, sizeof(result));
+        if(settings_enable(pw, &out)) //ohne sys.password immer erlaubt
+        {
+          BufPrint reply(result, sizeof(result));
+          if(settings_json_import(json + 2, &reply, true, true))
+          {
+            settings_save(); //Web-Import wird immer gespeichert
+          }
+        }
+      }
+      free(body);
+    }
+  }
+
+  client.print("HTTP/1.1 200 OK\r\n"
+               "Content-Type: text/html\r\n"
+               "Connection: close\r\n"
+               "\r\n"
+               "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><title>CO2-Ampel Config</title>\r\n"
+               "<style>body { font-family:Lato,sans-serif; padding:10px; } textarea { width:100%; max-width:40em; }</style>\r\n"
+               "</head><body>\r\n<h3>JSON import</h3>\r\n");
+  if(result[0])
+  {
+    client.print("<pre>");
+    print_html(client, result);
+    client.print("</pre>\r\n");
+  }
+  client.print("<form method=post enctype=text/plain>\r\n");
+  if(settings_password_set())
+  {
+    client.print("Passwort <input name=p type=password size=30 maxlength=32><br/>\r\n");
+  }
+  client.print("<textarea name=j rows=14 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
+               "<input type=submit value=Import> (wird gespeichert, saved; WiFi/MQTT nach Neustart, after reboot)\r\n"
+               "</form><br/>\r\n"
+               "Export: serial <code>json export</code> or MQTT <code>{\"export\":true}</code><br/><br/>\r\n"
+               "<a href='/'>Back</a>\r\n</body></html>\r\n");
+}
+
 static void urldecode(char *src) //URL Parameter dekodieren
 {
   char a, b, *dst = src;
@@ -94,6 +211,8 @@ void webserver_service(void)
   char req[3][3*64+1]; //HTTP request / POST-Werte SSID, Code, Passwort (URL-kodiert bis 3 Zeichen pro Byte)
   const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //Messwerte mit einer Nachkommastelle (fmt1)
+  char hline[24]; //aktuelle Headerzeile (nur fuer Content-Length)
+  size_t hlen = 0, content_length = 0;
   req[0][0] = 0;
   while(client.connected())
   {
@@ -217,6 +336,10 @@ void webserver_service(void)
             );
           }
           client.print(buf);
+        }
+        else if((strncmp(req[0], "GET /config", 11) == 0) || (strncmp(req[0], "POST /config", 12) == 0))
+        {
+          config_page(client, req[0][0] == 'P', content_length);
         }
         else if(strncmp(req[0], "GET /favicon", 12) == 0) //Favicon 
         {
@@ -347,7 +470,7 @@ void webserver_service(void)
           sprintf(buf,
               "<br/><br/>\r\n" \
               "%s" \
-              "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a>\r\n" \
+              "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a> - <a href='/config'>Config</a>\r\n" \
               "<br/><br/>\r\n" \
               "<div id=wifi>\r\n" \
               "<form method=post>\r\n" \
@@ -384,10 +507,20 @@ void webserver_service(void)
       }
       if(c == '\n')
       {
+        hline[hlen] = 0;
+        if(strncasecmp(hline, "Content-Length:", 15) == 0)
+        {
+          content_length = (size_t)atol(hline + 15);
+        }
+        hlen = 0;
         currentLineIsBlank = true;
       }
       else if(c != '\r')
       {
+        if(hlen < (sizeof(hline) - 1))
+        {
+          hline[hlen++] = c;
+        }
         currentLineIsBlank = false;
       }
     }
