@@ -91,7 +91,8 @@ void webserver_service(void)
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
   char buf[1024];
-  char req[2][3*64+1]; //HTTP request / POST-Werte (URL-kodiert bis 3 Zeichen pro Byte)
+  char req[3][3*64+1]; //HTTP request / POST-Werte SSID, Code, Passwort (URL-kodiert bis 3 Zeichen pro Byte)
+  const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //Messwerte mit einer Nachkommastelle (fmt1)
   req[0][0] = 0;
   while(client.connected())
@@ -236,6 +237,7 @@ void webserver_service(void)
             bool too_long = false;
             req[0][0] = 0; //SSID
             req[1][0] = 0; //Code
+            req[2][0] = 0; //Passwort (sys.password)
             for(unsigned int r=0, i=0, last_c=0; client.available();)
             {
               c = client.read();
@@ -248,7 +250,7 @@ void webserver_service(void)
                 r = last_c-'0';
                 i = 0;
               }
-              else if((r > 0) && (r < 3)) //1 bis 2
+              else if((r > 0) && (r < 4)) //1 bis 3
               {
                 if(i < (sizeof(req[0]) - 1))
                 {
@@ -264,15 +266,21 @@ void webserver_service(void)
             }
             urldecode(req[0]); //Serial.println(req[0]);
             urldecode(req[1]); //Serial.println(req[1]);
+            urldecode(req[2]);
             if((strlen(req[0]) >= sizeof(settings.wifi_ssid)) || (strlen(req[1]) >= sizeof(settings.wifi_code)))
             {
               too_long = true;
             }
-            if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
+            if(!settings_enable(req[2], NULL)) //mit sys.password: Passwort erforderlich
+            {
+              form_msg = "<b>Falsches Passwort / wrong password</b><br/>\r\n";
+            }
+            else if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
             {
               if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
               {
                 settings_save(); //Einstellungen speichern
+                form_msg = "<b>Gespeichert / saved</b><br/>\r\n";
               }
             }
           }
@@ -338,12 +346,14 @@ void webserver_service(void)
           WiFi.macAddress(mac);
           sprintf(buf,
               "<br/><br/>\r\n" \
+              "%s" \
               "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a>\r\n" \
               "<br/><br/>\r\n" \
               "<div id=wifi>\r\n" \
               "<form method=post>\r\n" \
               "SSID <input name=1 size=30 maxlength=64 placeholder=SSID value='%s'><br/>\r\n" \
               "Code <input name=2 size=30 maxlength=64 placeholder=Password value=''><br/>\r\n" \
+              "%s" \
               "<input type=submit> (Neustart erforderlich, requires reboot)<br/>\r\n" \
               "</form><br/>\r\n" \
               "<div id=info>\r\n" \
@@ -354,7 +364,10 @@ void webserver_service(void)
               "</div>\r\n" \
               "</body>\r\n" \
               "</html>\r\n",
-              settings.wifi_ssid, /*settings.wifi_code, */ fv.c_str(), 
+              form_msg,
+              settings_password_set() ? "" : settings.wifi_ssid, /*settings.wifi_code, */
+              settings_password_set() ? "Passwort <input name=3 type=password size=30 maxlength=32><br/>\r\n" : "",
+              fv.c_str(), 
               mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]
           );
           client.print(buf);

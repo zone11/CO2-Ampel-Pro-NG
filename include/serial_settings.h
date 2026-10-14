@@ -37,6 +37,7 @@ typedef struct
 {
   void *user;
   bool remote_on;
+  bool locked;    // password set and not enabled: get/dump refused too
   bool local;     // serial/web: may see secrets and change CFG_LOCAL items
   Print *out;
   bool (*on_save)(void *user);

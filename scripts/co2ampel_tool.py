@@ -16,6 +16,8 @@
 # afterwards. Every write saves a backup of the store first and is verified by reading it back.
 # Only RSA roots are supported (the WINC1500 verifies RSA chains without host support).
 #
+# With an enable password (sys.password) set: export CO2AMPEL_PASSWORD=... before running the tool.
+#
 # provision: sends the "set key=value" lines of a settings file (format of the "dump" command), saves,
 # installs the root CA of the MQTT broker if mqtt.tls is on, restarts and reports the MQTT connection.
 # Values are never printed.
@@ -29,6 +31,7 @@
 import argparse
 import datetime
 import hashlib
+import os
 import re
 import struct
 import subprocess
@@ -113,13 +116,17 @@ class Device:
     def remote_on(self):
         deadline = time.time() + 45 #the console answers only after the boot (WiFi/MQTT connect)
         while True:
-            self.s.write(b"enable\n")
+            self.s.write(b"exit\n") #harmless probe until the console answers
             r = self.readline(2)
             while r is not None and r != "OK":
                 r = self.readline(2)
             if r == "OK":
-                time.sleep(0.5) #replies to repeated "enable" lines sent while booting
+                time.sleep(0.5) #replies to repeated probes sent while booting
                 self.s.reset_input_buffer()
+                pw = os.environ.get("CO2AMPEL_PASSWORD", "")
+                r = self.command(("enable %s" % pw) if pw else "enable")[-1] #sent once: wrong ones lock
+                if r != "OK":
+                    sys.exit("enable: %s (password via the CO2AMPEL_PASSWORD environment variable)" % r)
                 return
             #still in bridge mode from an aborted run? -> restart it
             hello = struct.pack(">BIIH", 0x99, 0x11223344, 0x55667788, 0)

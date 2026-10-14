@@ -141,6 +141,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
+    bool enabled = !settings_password_set(); //mit Passwort: erste Zeile "enable <password>"
     for(char *line = strtok(cmd_pending, "\n"); line != NULL; line = strtok(NULL, "\n"))
     {
       size_t n = strlen(line);
@@ -152,7 +153,12 @@ static void mqtt_handle_command(void)
       {
         sscanf(line, "%31s", first); //nur das Kommando fuers Log, keine Werte
       }
-      if(!settings_handle_line(line, &reply, true, false))
+      if((strncasecmp(line, "enable", 6) == 0) && ((line[6] == 0) || (line[6] == ' ')))
+      {
+        enabled = settings_enable(line + ((line[6] == ' ') ? 7 : 6), &reply);
+        continue;
+      }
+      if(!settings_handle_line(line, &reply, enabled, false))
       {
         if(line[strspn(line, " \t")] != 0) //Leerzeilen ignorieren
         {

@@ -250,6 +250,11 @@ bool serial_settings_handle_line(char *line,
 
   if(match_cmd(line, "get", &arg))
   {
+    if(ctx->locked)
+    {
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
     if(*arg == 0)
     {
       print_error(ctx->out, "Missing key");
@@ -450,6 +455,11 @@ bool serial_settings_handle_line(char *line,
 
   if(match_cmd(line, "dump", &arg))
   {
+    if(ctx->locked)
+    {
+      print_error(ctx->out, "Not enabled (send 'enable' first)");
+      return true;
+    }
     for(size_t i = 0; i < item_count; i++)
     {
       if(ctx->out)

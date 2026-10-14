@@ -9,6 +9,12 @@
 // Handles one settings-API line (get/set/save/dump/help). Returns false if not a settings command.
 bool settings_handle_line(char *line, Print *out, bool remote_on, bool local);
 
+// Enable password (sys.password; empty = none). Prints OK / ERROR to out (may be NULL) and returns
+// true if the caller may enable. Wrong passwords lock further attempts for 1, 2, 4 ... 30 s
+// (shared by serial, MQTT and web, without blocking the main loop).
+bool settings_password_set(void);
+bool settings_enable(const char *password, Print *out);
+
 // Sets one item by key from text, with the same parsing/validation as "set". Local, no output.
 bool settings_set(const char *key, const char *value);
 

@@ -73,13 +73,15 @@ void serial_service(void)
   }
 
 
-  if(strcasecmp(line, "enable") == 0)
+  if((strncasecmp(line, "enable", 6) == 0) && ((line[6] == 0) || (line[6] == ' ')))
   {
-    remote_on = 1;
-    buzzer(0);
-    led_brightness_update();
-    leds(COLOR_MENU);
-    Serial.println("OK");
+    if(settings_enable(line + ((line[6] == ' ') ? 7 : 6), &Serial)) //antwortet OK / ERROR
+    {
+      remote_on = 1;
+      buzzer(0);
+      led_brightness_update();
+      leds(COLOR_MENU);
+    }
     return;
   }
   if(strcasecmp(line, "exit") == 0)

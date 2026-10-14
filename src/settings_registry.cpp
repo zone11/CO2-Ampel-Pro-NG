@@ -25,6 +25,7 @@ static bool on_save_settings(void *user)
 static const cfg_item_t settings_items[] =
 {
   { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
+  { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },
   { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL },
   { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL },
@@ -67,11 +68,69 @@ bool settings_save(void)
   return true;
 }
 
+bool settings_password_set(void)
+{
+  return settings.password[0] != 0;
+}
+
+bool settings_enable(const char *password, Print *out)
+{
+  static unsigned int fails = 0;
+  static unsigned long t_fail = 0, lock_ms = 0;
+
+  if(!settings_password_set())
+  {
+    if(out) { out->println("OK"); }
+    return true;
+  }
+  if((password == NULL) || (*password == 0))
+  {
+    if(out) { out->println("ERROR: Password required (enable <password>)"); }
+    return false;
+  }
+  if((fails > 0) && ((millis() - t_fail) < lock_ms))
+  {
+    if(out)
+    {
+      out->print("ERROR: Locked after a wrong password, retry in ");
+      out->print((lock_ms - (millis() - t_fail) + 999) / 1000);
+      out->println(" s");
+    }
+    return false;
+  }
+
+  //Vergleich ueber die volle Laenge (Laufzeit unabhaengig von der Position des ersten Unterschieds)
+  uint8_t diff = (strlen(password) >= sizeof(settings.password)) ? 1 : 0;
+  for(size_t i = 0; i < sizeof(settings.password); i++)
+  {
+    char a = (i <= strlen(password)) ? password[i] : 0;
+    diff |= (uint8_t)(a ^ settings.password[i]);
+    if(settings.password[i] == 0)
+    {
+      break;
+    }
+  }
+  if(diff == 0)
+  {
+    fails = 0;
+    if(out) { out->println("OK"); }
+    return true;
+  }
+
+  fails++;
+  t_fail = millis();
+  lock_ms = (fails < 6) ? (1000UL << (fails - 1)) : 30000UL; //1, 2, 4, 8, 16, 30 s
+  if(lock_ms > 30000UL) { lock_ms = 30000UL; }
+  if(out) { out->println("ERROR: Wrong password"); }
+  return false;
+}
+
 bool settings_handle_line(char *line, Print *out, bool remote_on, bool local)
 {
   serial_settings_ctx_t ctx;
   ctx.user = NULL;
   ctx.remote_on = remote_on;
+  ctx.locked = settings_password_set() && !remote_on;
   ctx.local = local;
   ctx.out = out;
   ctx.on_save = on_save_settings;
