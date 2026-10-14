@@ -43,6 +43,15 @@ typedef struct
   bool (*on_save)(void *user);
 } serial_settings_ctx_t;
 
+// Sets one item from text with the same parsing, range check and apply callback as "set"
+// (decimal: a JSON number, also for colors). Returns NULL or an error message. No access checks.
+const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decimal, void *user);
+const cfg_item_t *cfg_find_item(const cfg_item_t *items, size_t count, const char *key);
+
+// All items as one JSON object (no line end); secrets masked unless ctx->local.
+void cfg_print_json(const cfg_item_t *items, size_t item_count, const serial_settings_ctx_t *ctx);
+void print_json_string(Print *out, const char *str);
+
 // Parses and handles one line. The line buffer is modified in-place.
 // Returns true if the line was handled, false if it was not recognized.
 bool serial_settings_handle_line(char *line,

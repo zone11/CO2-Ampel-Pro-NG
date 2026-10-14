@@ -1,6 +1,7 @@
 #include "settings_registry.h"
 
 #include "app_globals.h"
+#include "json_parser.h"
 #include "led_control.h"
 #include "sensors.h"
 #include "serial_settings.h"
@@ -160,4 +161,178 @@ bool settings_set(const char *key, const char *value)
   }
   settings_handle_line(line, &sink, true, true);
   return sink.first == 'O';
+}
+
+// Collects "key":"message" pairs for the import reply
+class JsonPairs : public Print
+{
+public:
+  bool empty(void) const { return len == 0; }
+  const char *c_str(void) const { return buf; }
+  void add(const char *key, const char *msg)
+  {
+    if((len + strlen(key) + strlen(msg) + 8) >= sizeof(buf))
+    {
+      return; //voll: weitere Meldungen weglassen
+    }
+    if(len > 0)
+    {
+      print(',');
+    }
+    print_json_string(this, key);
+    print(':');
+    print_json_string(this, msg);
+  }
+  size_t write(uint8_t c) override
+  {
+    if(len < (sizeof(buf) - 1))
+    {
+      buf[len++] = (char)c;
+      buf[len] = 0;
+    }
+    return 1;
+  }
+private:
+  char buf[320] = "";
+  size_t len = 0;
+};
+
+typedef struct
+{
+  bool local;
+  bool save;
+  bool do_export;
+  const SETTINGS *before;
+  JsonPairs errors;
+  JsonPairs warnings;
+} import_ctx_t;
+
+static size_t item_size(const cfg_item_t *item)
+{
+  switch(item->type)
+  {
+    case CFG_U8:     return 1;
+    case CFG_U16:    return 2;
+    case CFG_BOOL:   return sizeof(bool);
+    case CFG_STRING: return item->max_len + 1;
+    case CFG_IP:     return sizeof(IPAddress);
+    default:         return 4;
+  }
+}
+
+static bool import_value(void *user, const char *key, json_type_t type, const char *value)
+{
+  import_ctx_t *ic = (import_ctx_t *)user;
+
+  if(strchr(key, '.') == NULL) //Befehlswoerter (Einstellungen enthalten immer einen Punkt)
+  {
+    bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
+    if(strcmp(key, "save") == 0)        { ic->save = on; }
+    else if(strcmp(key, "export") == 0) { ic->do_export = on; }
+    else                                { ic->warnings.add(key, "Unknown key"); }
+    return true;
+  }
+
+  const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
+  if(item == NULL)
+  {
+    ic->warnings.add(key, "Unknown key"); //z.B. Export einer neueren Firmware
+    return true;
+  }
+  if((item->flags & CFG_SECRET) && (strcmp(value, "***") == 0))
+  {
+    return true; //maskierter Wert aus einem Export: unveraendert lassen
+  }
+  if((type == JSON_NULL) || ((type == JSON_BOOL) && (item->type != CFG_BOOL)))
+  {
+    ic->errors.add(key, "Invalid value");
+    return true;
+  }
+
+  const char *err = cfg_set_value(item, value, type == JSON_NUMBER, NULL);
+  if(err != NULL)
+  {
+    ic->errors.add(key, err);
+    return true;
+  }
+  if((item->flags & CFG_LOCAL) && !ic->local)
+  {
+    size_t off = (const uint8_t *)item->ptr - (const uint8_t *)&settings;
+    if(memcmp(item->ptr, (const uint8_t *)ic->before + off, item_size(item)) != 0)
+    {
+      ic->errors.add(key, "Only via serial or web"); //unveraendert ist erlaubt (Export zurueckspielen)
+    }
+  }
+  return true;
+}
+
+bool settings_json_import(const char *json, Print *out, bool local, bool enabled)
+{
+  SETTINGS before = settings;
+  import_ctx_t ic;
+  char err[64];
+
+  ic.local = local;
+  ic.save = false;
+  ic.do_export = false;
+  ic.before = &before;
+
+  if(!enabled)
+  {
+    ic.errors.add("enable", "Not enabled (send 'enable' first)");
+  }
+  else if(!json_parse(json, import_value, &ic, err, sizeof(err)))
+  {
+    ic.errors.add("json", err);
+  }
+
+  bool ok = ic.errors.empty();
+  if(!ok) //alles oder nichts: vorherigen Zustand wiederherstellen
+  {
+    bool asc_changed = (settings.asc != before.asc);
+    settings = before;
+    if(asc_changed)
+    {
+      co2_set_asc(settings.asc);
+    }
+    apply_brightness(NULL, NULL);
+  }
+  else if(ic.save)
+  {
+    settings_save();
+  }
+
+  if(out)
+  {
+    out->print(ok ? "{\"result\":\"OK\"" : "{\"result\":\"ERROR\",\"errors\":{");
+    if(!ok)
+    {
+      out->print(ic.errors.c_str());
+      out->print('}');
+    }
+    else if(ic.save)
+    {
+      out->print(",\"saved\":true");
+    }
+    if(!ic.warnings.empty())
+    {
+      out->print(",\"warnings\":{");
+      out->print(ic.warnings.c_str());
+      out->print('}');
+    }
+    if(ic.do_export && ok)
+    {
+      serial_settings_ctx_t ctx;
+      ctx.user = NULL;
+      ctx.remote_on = true;
+      ctx.locked = false;
+      ctx.local = local;
+      ctx.out = out;
+      ctx.on_save = NULL;
+      out->print(",\"config\":");
+      cfg_print_json(settings_items, settings_items_count, &ctx);
+    }
+    out->println('}');
+  }
+  return ok;
 }

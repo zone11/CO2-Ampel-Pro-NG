@@ -15,6 +15,12 @@ bool settings_handle_line(char *line, Print *out, bool remote_on, bool local);
 bool settings_password_set(void);
 bool settings_enable(const char *password, Print *out);
 
+// Applies a JSON object of settings (as printed by "json export"), all or nothing: on any invalid
+// value nothing changes. Command words without a dot: "save":true writes the flash, "export":true
+// adds the full configuration to the reply. Unknown keys are warnings, "***" for secrets and
+// unchanged CFG_LOCAL values from remote callers are skipped. Prints one JSON line as reply.
+bool settings_json_import(const char *json, Print *out, bool local, bool enabled);
+
 // Sets one item by key from text, with the same parsing/validation as "set". Local, no output.
 bool settings_set(const char *key, const char *value);
 
