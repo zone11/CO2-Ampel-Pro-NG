@@ -5,6 +5,8 @@
 #ifndef VERSION
 #define VERSION "SET VERSION!"
 #endif
+#define PRODUCT_NAME       "CO2-Ampel-NG" //default system name (+ MAC id), HA model
+#define MANUFACTURER       "zone11"       //HA manufacturer
 
 // Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).
 // Runtime settings of a disabled feature stay in the settings record but are not offered.

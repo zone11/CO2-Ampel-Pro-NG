@@ -26,6 +26,14 @@ static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
   return true;
 }
 
+static bool apply_name(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  mqtt_ha_update(); //HA device name (only if discovery is on); hostname/AP SSID after a restart
+  return true;
+}
+
 static bool on_save_settings(void *user)
 {
   (void)user;
@@ -34,6 +42,7 @@ static bool on_save_settings(void *user)
 
 static const cfg_item_t settings_items[] =
 {
+  { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name },
   { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },

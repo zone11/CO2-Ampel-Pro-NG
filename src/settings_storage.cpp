@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     6            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     7            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -31,6 +31,7 @@ typedef struct
 static_assert(offsetof(SETTINGS_RECORD, crc) == RECORD_HEADER + sizeof(SETTINGS), "crc must follow data");
 static_assert(sizeof(SETTINGS) >= SETTINGS_V1_SIZE, "fields may only be appended");
 static_assert(offsetof(SETTINGS, brightness_dark) == 392, "v6 fields must start after the v5 record (392 bytes)");
+static_assert(offsetof(SETTINGS, name) == 431, "v7 name starts in the last padding byte of v6 (see default_padding_fields)");
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
@@ -100,6 +101,7 @@ void settings_defaults(SETTINGS *data)
   data->led_auto      = BRIGHTNESS_AUTO;
   data->led_disable   = false;
   data->password[0]   = 0;
+  data->name[0]       = 0;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -162,6 +164,7 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_client_id[sizeof(data->mqtt_client_id) - 1] = 0;
   data->mqtt_topic_prefix[sizeof(data->mqtt_topic_prefix) - 1] = 0;
   data->password[sizeof(data->password) - 1] = 0;
+  data->name[sizeof(data->name) - 1] = 0;
 
   return changed;
 }
@@ -182,6 +185,7 @@ static void default_padding_fields(SETTINGS *data, uint16_t version)
   if(version < 2) { data->asc         = CO2_ASC; }
   if(version < 3) { data->mqtt_config = MQTT_CONFIG; }
   if(version < 4) { data->mqtt_ha     = MQTT_HA; }
+  if(version < 7) { data->name[0]     = 0; } //byte 431 was padding in v6
 }
 
 SETTINGS_LOAD settings_read(SETTINGS *data)

@@ -1,6 +1,7 @@
 #include "mqtt_service.h"
 #include "sensors.h"
 #include "settings_registry.h"
+#include "wifi_manager.h"
 
 #if WITH_MQTT_CONFIG
 #define MQTT_CMD_MAX   1024 //max. JSON on <base>/cmd (read buffer in main.cpp)
@@ -57,15 +58,6 @@ void get_chip_id(char *buffer, size_t buffer_size)
   snprintf(buffer, buffer_size, "%08X%08X%08X%08X",
            (unsigned int)*id0, (unsigned int)*id1,
            (unsigned int)*id2, (unsigned int)*id3);
-}
-
-// Device ID from the MAC address (full MAC)
-void get_device_id(char *buffer, size_t buffer_size)
-{
-  byte mac[6];
-  WiFi.macAddress(mac);
-  snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
-           mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
 }
 
 // Topic <prefix>/<device id>/<suffix>
@@ -194,10 +186,11 @@ static bool ha_published = false; //configs published since boot (for the remova
 
 static void mqtt_publish_discovery(void)
 {
-  char device_id[16], topic[96], base[64], json[768];
+  char device_id[16], topic[96], base[64], json[768], name[2*32+1];
   IPAddress ip = WiFi.localIP();
 
   get_device_id(device_id, sizeof(device_id));
+  json_escape(name, sizeof(name), system_name());
   snprintf(base, sizeof(base), "%s/%s", settings.mqtt_topic_prefix, device_id);
 
   for(const HA_ENTITY &e : ha_entities)
@@ -220,10 +213,10 @@ static void mqtt_publish_discovery(void)
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
     n += snprintf(json + n, sizeof(json) - n,
-      ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"CO2-Ampel %s\","
-      "\"model\":\"CO2-Ampel Pro\",\"manufacturer\":\"Watterott\",\"sw_version\":\"%s\","
+      ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"%s\","
+      "\"model\":\"" PRODUCT_NAME "\",\"manufacturer\":\"" MANUFACTURER "\",\"sw_version\":\"%s\","
       "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
-      device_id, device_id + 8, VERSION, ip[0], ip[1], ip[2], ip[3]);
+      device_id, name, VERSION, ip[0], ip[1], ip[2], ip[3]);
 
     if(n >= sizeof(json))
     {
@@ -499,7 +492,9 @@ void mqtt_publish_sensors(void)
   mqttClient.publish(topic, json, false, 0);
 
   //device: firmware version and detected sensors (retained, so always available)
-  n = snprintf(json, sizeof(json), "{\"version\":\"%s\",\"sensors\":[", VERSION);
+  char name[2*32+1];
+  json_escape(name, sizeof(name), system_name());
+  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"sensors\":[", name, VERSION);
   const struct { unsigned int feature; const char *name; } sensor_names[] =
   {
     { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
