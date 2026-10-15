@@ -60,7 +60,7 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 88 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 93 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -170,6 +170,7 @@ Lines may end with CR, LF or CRLF; a line without ending is accepted after 500 m
 
 **Key list (settings):**
 ```
+sys.name
 sys.serial_output
 sys.password
 sys.buzzer
@@ -210,6 +211,13 @@ apply after `reset`.
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
 `status` shows the current LED state.
+
+System name (`sys.name`, max 32 characters, empty = default `CO2-Ampel-NG <MAC id>`, e.g.
+`CO2-Ampel-NG F8F0056E78A2`): used as the WiFi hostname, the access point SSID, `name` in the MQTT `device`
+topic and the Home Assistant device name. The hostname keeps only letters, digits and `-` (other characters
+become `-`, e.g. `Office 2` → `Office-2`). `status` shows the name and hostname. Home Assistant is updated
+immediately (if `mqtt.ha=1`), the MQTT `device` topic with the next publish, hostname and SSID after `reset`.
+The default is resolved at runtime, so an exported settings file does not carry one device's MAC to another.
 
 **JSON configuration:** `json export` prints all settings in one line, e.g.
 `{"sys.serial_output":false,...,"co2.t1":600,...,"led.color.t1":"007CB0",...}` (numbers, `true`/`false`,
@@ -327,13 +335,13 @@ save
 - After setting WiFi credentials, device will auto-connect on next boot
 - If the connection fails at boot, the device starts AP (Access Point) mode instead; a lost connection is
   retried every 30 s (MQTT reconnects every 30 s as well)
-- The device registers as hostname `CO2AMPEL-XX-XX` (last two MAC bytes)
+- The device registers with the hostname derived from `sys.name` (default `CO2-Ampel-NG-<MAC id>`)
 
 ### WiFi Web Interface
 
 When WiFi is enabled, the device creates either:
 - **Client Mode**: Connects to configured WiFi network
-- **AP Mode**: Creates access point `CO2AMPEL-XX-XX`
+- **AP Mode**: Creates access point `<sys.name>` (default `CO2-Ampel-NG <MAC id>`)
 
 Available endpoints:
 - `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot; with
@@ -364,7 +372,7 @@ With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base top
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"version":"0.5","sensors":["SCD30","LPS22HB"]}` (sensors detected at boot) | every interval | yes |
+| `<base>/device` | `{"name":"CO2-Ampel-NG F8F0056E78A2","version":"0.6","sensors":["SCD30","LPS22HB"]}` (`sys.name`, firmware version, sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
@@ -408,7 +416,8 @@ the certificate?`.
 
 **Home Assistant discovery** (off by default): enable it with `enable`, `set mqtt.ha=1`, `save` (applies
 immediately). The device then publishes retained discovery configs (now and on every connect) to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
-the MQTT integration) creates a device "CO2-Ampel XXXX" with the entities CO2, Temperature, Humidity,
+the MQTT integration) creates a device named `sys.name` (model CO2-Ampel-NG, manufacturer zone11, firmware
+version) with the entities CO2, Temperature, Humidity,
 Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and "WiFi signal" appear as
 diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and become unavailable when
 `<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
