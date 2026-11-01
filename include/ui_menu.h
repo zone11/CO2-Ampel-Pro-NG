@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off);
-void altitude_toffset(void); //Altitude und Temperaturoffset
+void altitude_toffset(void); //altitude and temperature offset
 void calibration(void); //Kalibrierung
 void menu(void);
 

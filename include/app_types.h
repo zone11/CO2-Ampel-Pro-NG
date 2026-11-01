@@ -47,6 +47,7 @@ typedef struct
   boolean led_auto;           // dim with the light sensor (v6)
   boolean led_disable;        // LEDs and buzzer off, e.g. at night (v6)
   char password[32+1];        // enable password, empty = none (v6)
+  char name[32+1];            // system name, empty = PRODUCT_NAME + MAC id (v7)
 } SETTINGS;
 
 #endif

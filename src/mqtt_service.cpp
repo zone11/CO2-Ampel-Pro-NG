@@ -1,10 +1,12 @@
 #include "mqtt_service.h"
 #include "sensors.h"
 #include "settings_registry.h"
+#include "system_control.h"
+#include "wifi_manager.h"
 
 #if WITH_MQTT_CONFIG
-#define MQTT_CMD_MAX   1024 //max. JSON auf <base>/cmd (Lesepuffer MQTT_READ_BUF in main.cpp)
-#define MQTT_REPLY_MAX 1400 //max. Antwort auf <base>/resp (Schreibpuffer 1536)
+#define MQTT_CMD_MAX   1024 //max. JSON on <base>/cmd (read buffer in main.cpp)
+#define MQTT_REPLY_MAX 1400 //max. reply on <base>/resp (write buffer 1536)
 
 typedef enum { CMD_NONE, CMD_READY, CMD_TOO_LONG } CMD_STATE;
 
@@ -32,7 +34,7 @@ public:
     else if(!overflow)
     {
       overflow = true;
-      memcpy(&buf[len], truncated, sizeof(truncated)); //inkl. Nullterminator
+      memcpy(&buf[len], truncated, sizeof(truncated)); //incl. terminator
     }
     return 1;
   }
@@ -45,7 +47,7 @@ private:
 static ReplyBuffer reply;
 #endif //WITH_MQTT_CONFIG
 
-// Holt die eindeutige Chip-ID des SAMD21
+// Unique chip ID of the SAMD21
 void get_chip_id(char *buffer, size_t buffer_size)
 {
   // SAMD21G18A Unique Identifier (128-bit = 4x 32-bit words)
@@ -59,21 +61,19 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
-// Generiert Device-ID aus MAC-Adresse (volle MAC-Adresse)
-void get_device_id(char *buffer, size_t buffer_size)
-{
-  byte mac[6];
-  WiFi.macAddress(mac);
-  snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
-           mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
-}
+static int state_led_disable = -1; //led.disable last published on <base>/state, -1 = not yet
+
+// Prefix and client id of the current connection: all topics use them until the next connect,
+// a change of the settings reconnects (mqtt_service)
+static char used_prefix[sizeof(settings.mqtt_topic_prefix)];
+static char used_client_id[sizeof(settings.mqtt_client_id)];
 
 // Topic <prefix>/<device id>/<suffix>
 static void mqtt_topic(char *buffer, size_t buffer_size, const char *suffix)
 {
   char device_id[16];
   get_device_id(device_id, sizeof(device_id));
-  snprintf(buffer, buffer_size, "%s/%s/%s", settings.mqtt_topic_prefix, device_id, suffix);
+  snprintf(buffer, buffer_size, "%s/%s/%s", used_prefix, device_id, suffix);
 }
 
 // Copies src into dst as JSON string content (escapes " and \, drops control characters)
@@ -101,13 +101,13 @@ static void json_escape(char *dst, size_t size, const char *src)
 static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int length)
 {
   (void)client;
-  (void)topic; //nur <base>/cmd ist abonniert
+  (void)topic; //only <base>/cmd is subscribed
 
-  if(length <= 0) //leer = eigenes Loeschen eines retained Befehls
+  if(length <= 0) //empty = our own clearing of a retained command
   {
     return;
   }
-  if(cmd_state != CMD_NONE) //vorheriger Befehl noch nicht bearbeitet
+  if(cmd_state != CMD_NONE) //previous command not handled yet
   {
     return;
   }
@@ -121,18 +121,18 @@ static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int len
   cmd_state = CMD_READY;
 }
 
-// Runs every line of the pending command through the settings API (as a remote caller:
+// Runs the pending JSON command through settings_json_import() (as a remote caller:
 // secrets masked, CFG_LOCAL keys refused) and publishes the reply on <base>/resp.
 static void mqtt_handle_command(void)
 {
   char topic[96];
 
-  //retained Befehl loeschen, damit er nicht bei jeder Verbindung erneut ausgefuehrt wird
+  //clear the retained command so it doesn't run again on every connect
   mqtt_topic(topic, sizeof(topic), "cmd");
   mqttClient.publish(topic, "", true, 0);
 
-  //nur JSON (wie "json import"): Einstellungen ohne Passwort, Schutz ueber die Broker-ACLs;
-  //Verbindungsdaten (CFG_LOCAL) bleiben gesperrt
+  //JSON only (like "json import"): settings without a password, protected by the broker ACLs;
+  //connection settings (CFG_LOCAL) stay locked
   reply.clear();
   const char *json = cmd_pending + strspn(cmd_pending, " \t\r\n");
   if(cmd_state == CMD_TOO_LONG)
@@ -147,7 +147,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
-    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //aus: nur Steuerung (led.disable)
+    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (led.disable)
   }
   cmd_state = CMD_NONE;
 
@@ -190,21 +190,32 @@ static const HA_ENTITY ha_entities[] =
   { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0 },
 };
 
-static bool ha_published = false; //Konfigurationen seit dem Start veroeffentlicht (fuer das Entfernen)
+static bool ha_published = false; //configs published since boot (for the removal)
+
+// Appends the HA device block and closes the config object; returns the new length
+static size_t ha_device(char *json, size_t size, size_t n, const char *device_id, const char *name)
+{
+  IPAddress ip = WiFi.localIP();
+  return n + snprintf(json + n, size - n,
+    ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"%s\","
+    "\"model\":\"" PRODUCT_NAME "\",\"manufacturer\":\"" MANUFACTURER "\",\"sw_version\":\"%s\","
+    "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
+    device_id, name, VERSION, ip[0], ip[1], ip[2], ip[3]);
+}
 
 static void mqtt_publish_discovery(void)
 {
-  char device_id[16], topic[96], base[64], json[768];
-  IPAddress ip = WiFi.localIP();
+  char device_id[16], topic[96], base[64], json[768], name[2*32+1];
 
   get_device_id(device_id, sizeof(device_id));
-  snprintf(base, sizeof(base), "%s/%s", settings.mqtt_topic_prefix, device_id);
+  json_escape(name, sizeof(name), system_name());
+  snprintf(base, sizeof(base), "%s/%s", used_prefix, device_id);
 
   for(const HA_ENTITY &e : ha_entities)
   {
     snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/sensor/%s/%s/config", device_id, e.key);
 
-    //aus oder Sensor fehlt: leere retained Nachricht entfernt die Entitaet in Home Assistant
+    //off or sensor missing: an empty retained message removes the entity in Home Assistant
     if(!settings.mqtt_ha || (e.needs && !(features & e.needs)))
     {
       mqttClient.publish(topic, "", true, 0);
@@ -219,18 +230,36 @@ static void mqtt_publish_discovery(void)
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
-    n += snprintf(json + n, sizeof(json) - n,
-      ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"CO2-Ampel %s\","
-      "\"model\":\"CO2-Ampel Pro\",\"manufacturer\":\"Watterott\",\"sw_version\":\"%s\","
-      "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
-      device_id, device_id + 8, VERSION, ip[0], ip[1], ip[2], ip[3]);
+    n = ha_device(json, sizeof(json), n, device_id, name);
 
     if(n >= sizeof(json))
     {
-      continue; //zu lang (sollte nicht vorkommen)
+      continue; //too long (should not happen)
     }
     mqttClient.publish(topic, json, true, 0);
   }
+
+  //switch "LEDs": on = led.disable false; commands on <base>/cmd (also with mqtt.config=0), state from <base>/state
+  snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/led/config", device_id);
+#if WITH_MQTT_CONFIG
+  if(settings.mqtt_ha)
+  {
+    size_t n = snprintf(json, sizeof(json),
+      "{\"name\":\"LEDs\",\"unique_id\":\"co2ampel_%s_led\",\"icon\":\"mdi:traffic-light\","
+      "\"command_topic\":\"%s/cmd\",\"payload_on\":\"{\\\"led.disable\\\":false}\","
+      "\"payload_off\":\"{\\\"led.disable\\\":true}\",\"state_topic\":\"%s/state\","
+      "\"value_template\":\"{{ 'OFF' if value_json['led.disable'] else 'ON' }}\","
+      "\"availability_topic\":\"%s/status\"",
+      device_id, base, base, base);
+    n = ha_device(json, sizeof(json), n, device_id, name);
+    if(n < sizeof(json))
+    {
+      mqttClient.publish(topic, json, true, 0);
+    }
+    return;
+  }
+#endif
+  mqttClient.publish(topic, "", true, 0); //off (or no command topic): remove the switch
 }
 #endif //WITH_HA
 
@@ -239,11 +268,11 @@ void mqtt_ha_update(void)
 #if WITH_HA
   if(!mqttClient.connected())
   {
-    return; //beim naechsten Verbindungsaufbau (nur wenn an)
+    return; //on the next connect (only if on)
   }
   if(settings.mqtt_ha || ha_published)
   {
-    mqtt_publish_discovery(); //an: Konfigurationen, aus: einmal leere Nachrichten
+    mqtt_publish_discovery(); //on: configs, off: empty messages once
     ha_published = settings.mqtt_ha;
   }
 #endif
@@ -315,7 +344,7 @@ void mqtt_connect(void)
     {
       Serial.println("MQTT: WiFi hardware not available");
     }
-    return; //keine WiFi-Hardware
+    return; //no WiFi hardware
   }
 
   if(WiFi.status() != WL_CONNECTED)
@@ -324,10 +353,10 @@ void mqtt_connect(void)
     {
       Serial.println("MQTT: WiFi not connected");
     }
-    return; //keine WiFi-Verbindung
+    return; //no WiFi connection
   }
 
-  //MQTT Client ID generieren wenn leer
+  //generate the MQTT client ID if empty
   if(strlen(settings.mqtt_client_id) == 0)
   {
     get_device_id(client_id, sizeof(client_id));
@@ -357,39 +386,43 @@ void mqtt_connect(void)
     Serial.println();
   }
 
-  //MQTT Client initialisieren
+  //set up the MQTT client
   char topic[96];
+  strcpy(used_prefix, settings.mqtt_topic_prefix);
+  strcpy(used_client_id, settings.mqtt_client_id);
   Client &net = settings.mqtt_tls ? (Client &)mqttSslClient : (Client &)mqttWifiClient;
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
-  mqttClient.setWill(topic, "offline", true, 1); //Broker meldet "offline" bei Verbindungsabbruch
+  mqttClient.setWill(topic, "offline", true, 1); //broker reports "offline" when the connection drops
 
-  //Verbinden
+  //connect (DNS, TCP and TLS can block up to ~40 s)
+  watchdog_feed();
   boolean connected = false;
   if(strlen(settings.mqtt_user) > 0)
   {
-    //Mit Authentifizierung
+    //with authentication
     connected = mqttClient.connect(client_id, settings.mqtt_user, settings.mqtt_pass);
   }
   else
   {
-    //Ohne Authentifizierung
+    //without authentication
     connected = mqttClient.connect(client_id);
   }
 
   if(connected)
   {
     mqttClient.publish(topic, "online", true, 1);
+    state_led_disable = -1; //publish <base>/state again
 #if WITH_HA
     ha_published = false;
-    if(settings.mqtt_ha) //aus: nichts senden (Entfernen nur beim Ausschalten, siehe mqtt_ha_update)
+    if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
     {
       mqtt_publish_discovery();
       ha_published = true;
     }
 #endif
 #if WITH_MQTT_CONFIG
-    //immer abonniert: Steuerung (led.disable) geht auch mit mqtt.config=0, Konfiguration nur mit 1
+    //always subscribed: control (led.disable) also works with mqtt.config=0, configuration only with 1
     mqttClient.onMessageAdvanced(mqtt_message);
     mqtt_topic(topic, sizeof(topic), "cmd");
     mqttClient.subscribe(topic, 0);
@@ -405,7 +438,7 @@ void mqtt_connect(void)
     {
       Serial.print("MQTT connection failed - ");
 
-      //Detaillierte Fehlerausgabe
+      //detailed error output
       lwmqtt_err_t err = mqttClient.lastError();
       lwmqtt_return_code_t rc = mqttClient.returnCode();
 
@@ -455,7 +488,7 @@ void mqtt_reconnect(void)
     return;
   }
 
-  //Nur alle 30 Sekunden neu versuchen
+  //retry every 30 seconds only
   if((millis() - last_attempt) < 30000UL)
   {
     return;
@@ -481,8 +514,8 @@ void mqtt_publish_sensors(void)
     return;
   }
 
-  //Messwerte als ein JSON (ein konsistenter Datensatz pro Intervall)
-  //nur echte Messwerte: ohne CO2-Sensor (oder vor der ersten Messung) fehlen co2/temperature/humidity
+  //readings as one JSON (one consistent record per interval)
+  //only real readings: without a CO2 sensor (or before the first reading) co2/temperature/humidity are missing
   char f1[16], f2[16];
   n = snprintf(json, sizeof(json), "{\"light\":%u", light_value);
   if(co2_valid)
@@ -498,8 +531,10 @@ void mqtt_publish_sensors(void)
   mqtt_topic(topic, sizeof(topic), "sensors");
   mqttClient.publish(topic, json, false, 0);
 
-  //Geraet: Firmware-Version und erkannte Sensoren (retained, damit immer abrufbar)
-  n = snprintf(json, sizeof(json), "{\"version\":\"%s\",\"sensors\":[", VERSION);
+  //device: firmware version and detected sensors (retained, so always available)
+  char name[2*32+1];
+  json_escape(name, sizeof(name), system_name());
+  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
   const struct { unsigned int feature; const char *name; } sensor_names[] =
   {
     { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
@@ -552,7 +587,7 @@ void mqtt_service(void)
   mqttClient.loop();
 
 #if WITH_MQTT_CONFIG
-  //Befehl aus <base>/cmd bearbeiten (ausserhalb des Callbacks)
+  //handle the command from <base>/cmd (outside the callback)
   if(cmd_state != CMD_NONE)
   {
     if(mqttClient.connected())
@@ -566,14 +601,38 @@ void mqtt_service(void)
   }
 #endif
 
-  //Verbindung pruefen
+  //check the connection
   if(!mqttClient.connected())
   {
     mqtt_reconnect();
     return;
   }
 
-  //Periodisches Publishing
+  //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
+  if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))
+  {
+    char topic[96];
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT topic prefix or client ID changed, reconnecting");
+    }
+    mqtt_topic(topic, sizeof(topic), "status");
+    mqttClient.publish(topic, "offline", true, 1); //a clean disconnect sends no LWT
+    mqttClient.disconnect();
+    mqtt_connect();
+    return;
+  }
+
+  //control state (retained): on connect and right after every change of led.disable
+  if(state_led_disable != (int)settings.led_disable)
+  {
+    char topic[96];
+    state_led_disable = settings.led_disable;
+    mqtt_topic(topic, sizeof(topic), "state");
+    mqttClient.publish(topic, settings.led_disable ? "{\"led.disable\":true}" : "{\"led.disable\":false}", true, 0);
+  }
+
+  //periodic publishing
   if((millis() - last_publish) > (settings.mqtt_interval * 1000UL))
   {
     last_publish = millis();

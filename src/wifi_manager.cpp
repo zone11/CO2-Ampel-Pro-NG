@@ -1,5 +1,60 @@
 #include "wifi_manager.h"
 #include "led_control.h"
+#include "system_control.h"
+
+void get_device_id(char *buffer, size_t buffer_size)
+{
+  byte mac[6];
+  WiFi.macAddress(mac);
+  snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
+           mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+}
+
+const char *system_name(void)
+{
+  static char name[sizeof(settings.name)];
+  char id[16];
+
+  if(settings.name[0] != 0)
+  {
+    return settings.name;
+  }
+  get_device_id(id, sizeof(id));
+  snprintf(name, sizeof(name), PRODUCT_NAME " %s", id);
+  return name;
+}
+
+void system_hostname(char *buffer, size_t buffer_size)
+{
+  const char *name = system_name();
+  size_t n = 0;
+
+  for(; (*name != 0) && (n < 32) && (n + 1 < buffer_size); name++)
+  {
+    char c = *name;
+    bool ok = ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'));
+    if(ok)
+    {
+      buffer[n++] = c;
+    }
+    else if((n > 0) && (buffer[n - 1] != '-')) //no leading dash, no runs
+    {
+      buffer[n++] = '-';
+    }
+  }
+  while((n > 0) && (buffer[n - 1] == '-')) //no trailing dash
+  {
+    n--;
+  }
+  buffer[n] = 0;
+
+  if(n == 0) //nothing usable left: default name
+  {
+    char id[16];
+    get_device_id(id, sizeof(id));
+    snprintf(buffer, buffer_size, "%s-%s", PRODUCT_NAME, id);
+  }
+}
 
 void print_ip_address_line(const IPAddress &ip)
 {
@@ -16,6 +71,12 @@ void print_wifi_status(void)
 {
   if(features & FEATURE_WINC1500)
   {
+    char hostname[33];
+    system_hostname(hostname, sizeof(hostname));
+    Serial.print("Name: ");
+    Serial.println(system_name());
+    Serial.print("Hostname: ");
+    Serial.println(hostname);
     Serial.print("WiFi SSID: ");
     Serial.println(strlen(settings.wifi_ssid) > 0 ? settings.wifi_ssid : "(not configured)");
     Serial.print("WiFi Password: ");
@@ -76,16 +137,14 @@ void print_wifi_status(void)
 
 unsigned int wifi_start_ap(void)
 {
-  byte mac[6];
-  char ssid[32];
+  char hostname[33];
 
   if(features & FEATURE_USB)
   {
     Serial.println("WiFi AP start...");
   }
 
-  WiFi.macAddress(mac); //MAC-Adresse abfragen
-  sprintf(ssid, "CO2AMPEL-%X-%X", mac[1], mac[0]);
+  system_hostname(hostname, sizeof(hostname));
 
   if(WiFi.status() != WL_IDLE_STATUS)
   {
@@ -93,17 +152,17 @@ unsigned int wifi_start_ap(void)
     //reset_mcu();
   }
 
-  WiFi.hostname(ssid); //Hostname setzen
-  if(WiFi.beginAP(ssid) != WL_AP_LISTENING)
+  WiFi.hostname(hostname);
+  if(WiFi.beginAP(system_name()) != WL_AP_LISTENING)
   {
     WiFi.end();
     return 1;
   }
 
-  delay(5000); //5s warten
+  delay(5000);
 
 #if WITH_WEB
-  server.begin(); //starte Webserver
+  server.begin(); //start the web server
 #endif
 
   return 0;
@@ -111,10 +170,9 @@ unsigned int wifi_start_ap(void)
 
 unsigned int wifi_start(void)
 {
-  byte mac[6];
-  char name[32];
+  char hostname[33];
 
-  if(settings.wifi_ssid[0] == 0) //keine Logindaten
+  if(settings.wifi_ssid[0] == 0) //no credentials
   {
     if(features & FEATURE_USB)
     {
@@ -128,8 +186,7 @@ unsigned int wifi_start(void)
     Serial.println("WiFi connect...");
   }
 
-  WiFi.macAddress(mac); //MAC-Adresse abfragen
-  sprintf(name, "CO2AMPEL-%X-%X", mac[1], mac[0]);
+  system_hostname(hostname, sizeof(hostname));
 
   if(WiFi.status() != WL_IDLE_STATUS)
   {
@@ -137,33 +194,34 @@ unsigned int wifi_start(void)
     //reset_mcu();
   }
 
-  WiFi.hostname(name); //Hostname setzen
-  if(strlen(settings.wifi_code) > 0) //Passwort
+  watchdog_feed(); //WiFi.begin() blocks up to 60 s
+  WiFi.hostname(hostname);
+  if(strlen(settings.wifi_code) > 0) //password
   {
-    WiFi.begin(settings.wifi_ssid, settings.wifi_code); //verbinde WiFi Netzwerk mit Passwort
+    WiFi.begin(settings.wifi_ssid, settings.wifi_code);
   }
   else
   {
-    WiFi.begin(settings.wifi_ssid); //verbinde WiFi Netzwerk ohne Passwort
+    WiFi.begin(settings.wifi_ssid); //open network
   }
 
-  //auf Verbindung warten
+  //wait for the connection
   for(unsigned int t=0; WiFi.status() == WL_IDLE_STATUS; t++)
   {
     if(t >= 6) //6s
     {
       break;
     }
-    status_led(1000); //Status-LED
+    status_led(1000);
   }
 
-  if(!(WiFi.status() == WL_CONNECTED)) //Verbindung fehlgeschlagen
+  if(!(WiFi.status() == WL_CONNECTED)) //connection failed
   {
     return 1;
   }
 
 #if WITH_WEB
-  server.begin(); //starte Webserver
+  server.begin(); //start the web server
 #endif
 
   return 0;

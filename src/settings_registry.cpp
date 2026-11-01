@@ -26,6 +26,21 @@ static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
   return true;
 }
 
+static bool apply_topic_prefix(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  return settings_topic_valid(settings.mqtt_topic_prefix); //the change itself reconnects MQTT (mqtt_service)
+}
+
+static bool apply_name(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  mqtt_ha_update(); //HA device name (only if discovery is on); hostname/AP SSID after a restart
+  return true;
+}
+
 static bool on_save_settings(void *user)
 {
   (void)user;
@@ -34,6 +49,7 @@ static bool on_save_settings(void *user)
 
 static const cfg_item_t settings_items[] =
 {
+  { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name },
   { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },
@@ -60,7 +76,7 @@ static const cfg_item_t settings_items[] =
   { "mqtt.user",        CFG_STRING, settings.mqtt_user,      0, 0, sizeof(settings.mqtt_user) - 1, NULL, CFG_LOCAL },
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
-  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
+  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, apply_topic_prefix },
 #if WITH_HA
   { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, apply_mqtt_ha, CFG_LOCAL },
 #endif
@@ -109,7 +125,7 @@ bool settings_enable(const char *password, Print *out)
     return false;
   }
 
-  //Vergleich ueber die volle Laenge (Laufzeit unabhaengig von der Position des ersten Unterschieds)
+  //compare the full length (run time independent of the position of the first difference)
   uint8_t diff = (strlen(password) >= sizeof(settings.password)) ? 1 : 0;
   for(size_t i = 0; i < sizeof(settings.password); i++)
   {
@@ -182,7 +198,7 @@ public:
   {
     if((len + strlen(key) + strlen(msg) + 8) >= sizeof(buf))
     {
-      return; //voll: weitere Meldungen weglassen
+      return; //full: drop further messages
     }
     if(len > 0)
     {
@@ -234,7 +250,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
 {
   import_ctx_t *ic = (import_ctx_t *)user;
 
-  if(strchr(key, '.') == NULL) //Befehlswoerter (Einstellungen enthalten immer einen Punkt)
+  if(strchr(key, '.') == NULL) //command words (settings always contain a dot)
   {
     bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
     if(ic->control_only && ((strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
@@ -250,7 +266,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
   if(item == NULL)
   {
-    ic->warnings.add(key, "Unknown key"); //z.B. Export einer neueren Firmware
+    ic->warnings.add(key, "Unknown key"); //e.g. an export of a newer firmware
     return true;
   }
   if(ic->control_only && !(item->flags & CFG_CONTROL))
@@ -260,7 +276,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   }
   if((item->flags & CFG_SECRET) && (strcmp(value, "***") == 0))
   {
-    return true; //maskierter Wert aus einem Export: unveraendert lassen
+    return true; //masked value from an export: leave unchanged
   }
   if((type == JSON_NULL) || ((type == JSON_BOOL) && (item->type != CFG_BOOL)))
   {
@@ -279,7 +295,7 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
     size_t off = (const uint8_t *)item->ptr - (const uint8_t *)&settings;
     if(memcmp(item->ptr, (const uint8_t *)ic->before + off, item_size(item)) != 0)
     {
-      ic->errors.add(key, "Only via serial or web"); //unveraendert ist erlaubt (Export zurueckspielen)
+      ic->errors.add(key, "Only via serial or web"); //unchanged is allowed (restoring an export)
     }
   }
   return true;
@@ -307,7 +323,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   }
 
   bool ok = ic.errors.empty();
-  if(!ok) //alles oder nichts: vorherigen Zustand wiederherstellen
+  if(!ok) //all or nothing: restore the previous state
   {
     bool asc_changed = (settings.asc != before.asc);
     bool led_changed = (settings.led_disable != before.led_disable);
@@ -365,4 +381,26 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
     out->println('}');
   }
   return ok;
+}
+
+size_t settings_item_count(void)
+{
+  return settings_items_count;
+}
+
+const cfg_item_t *settings_item(size_t index)
+{
+  return (index < settings_items_count) ? &settings_items[index] : NULL;
+}
+
+void settings_print_json(Print *out, bool mask_secrets)
+{
+  serial_settings_ctx_t ctx;
+  ctx.user = NULL;
+  ctx.remote_on = true;
+  ctx.locked = false;
+  ctx.local = !mask_secrets;
+  ctx.out = out;
+  ctx.on_save = NULL;
+  cfg_print_json(settings_items, settings_items_count, &ctx);
 }

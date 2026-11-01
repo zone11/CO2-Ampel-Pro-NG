@@ -40,6 +40,7 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ LED brightness: maximum, dark level, automatic dimming on/off, LEDs + buzzer off (`led.*`)
 - ✅ Configuration as JSON: `json export` / `json import` on serial, JSON over MQTT, web import page
 - ✅ Optional enable password for serial and the web forms
+- ✅ Watchdog: restarts the device when the firmware hangs (reset cause in `status` and MQTT `device`)
 
 **Planned Features:**
 - [ ] LoRaWAN/TTN integration
@@ -60,7 +61,7 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 88 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 93 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -97,6 +98,9 @@ Behavior:
   not found` and no CO2/temperature/humidity values are published. At boot the firmware frees an I2C bus
   that a sensor still holds after a restart in the middle of a transfer (`I2C bus recovered` in the boot
   log); if the CO2 sensor is still missing, unplug the device briefly
+- A watchdog restarts the device when the firmware hangs: after 2 minutes without progress (e.g. a sensor
+  blocking the I2C bus), after 4 seconds if interrupts stop. The boot log, `status` and the MQTT `device`
+  topic show the cause of the last reset (`power-on`, `watchdog`, `software`, `reset pin`, `brown-out`)
 
 **Customize your thresholds and colors:**
 ```bash
@@ -170,6 +174,7 @@ Lines may end with CR, LF or CRLF; a line without ending is accepted after 500 m
 
 **Key list (settings):**
 ```
+sys.name
 sys.serial_output
 sys.password
 sys.buzzer
@@ -204,12 +209,19 @@ mqtt.interval
 
 Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
 (`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
-Thresholds, colors, LED settings, buzzer and `mqtt.ha` apply immediately; the other WiFi and MQTT settings
-apply after `reset`.
+Thresholds, colors, LED settings, buzzer and `mqtt.ha` apply immediately, `mqtt.topic_prefix` and
+`mqtt.client_id` reconnect MQTT right away; the other WiFi and MQTT settings apply after `reset`.
 
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
 `status` shows the current LED state.
+
+System name (`sys.name`, max 32 characters, empty = default `CO2-Ampel-NG <MAC id>`, e.g.
+`CO2-Ampel-NG F8F0056E78A2`): used as the WiFi hostname, the access point SSID, `name` in the MQTT `device`
+topic and the Home Assistant device name. The hostname keeps only letters, digits and `-` (other characters
+become `-`, e.g. `Office 2` → `Office-2`). `status` shows the name and hostname. Home Assistant is updated
+immediately (if `mqtt.ha=1`), the MQTT `device` topic with the next publish, hostname and SSID after `reset`.
+The default is resolved at runtime, so an exported settings file does not carry one device's MAC to another.
 
 **JSON configuration:** `json export` prints all settings in one line, e.g.
 `{"sys.serial_output":false,...,"co2.t1":600,...,"led.color.t1":"007CB0",...}` (numbers, `true`/`false`,
@@ -229,8 +241,8 @@ json import {"co2.t1":650,"co2.t2":900,"led.brightness":80,"save":true}
 
 **Enable password** (`sys.password`, empty = none): once set (`enable`, `set sys.password=...`, `save`),
 `enable <password>` is required before `get`, `dump`, `json export/import`, `set`, `save` and
-`winc bridge`; the web WiFi form and the web JSON import ask for it as well (without a password both are
-open to anyone on the network). MQTT needs no password: protect `<base>/cmd` with broker ACLs. A wrong password
+`winc bridge`; the web WiFi form and the web configuration page ask for it as well (without a password
+both are open to anyone on the network, except for the passwords themselves). MQTT needs no password: protect `<base>/cmd` with broker ACLs. A wrong password
 locks further attempts for 1, 2, 4 ... 30 s. A forgotten password can only be cleared with a factory reset,
 which erases all settings: `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`.
 
@@ -276,6 +288,14 @@ exported line (`dump` output: paste the `set` lines, then `save`); then `reset`.
 
 **Factory reset:** `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload` flashes the firmware without
 the stored settings; the device starts with the defaults (also clears a forgotten `sys.password`).
+
+**Settings backup on upload:** every `pio run -t upload` stores the device's settings area in
+`.pio/settings-backup.bin` (a different previous one is kept as `.pio/settings-backup.bin.prev`; both contain
+the passwords in clear text). The upload erases the whole flash before writing, so an upload that breaks off
+loses the settings; the next upload then prints a note, and
+`CO2AMPEL_RESTORE_SETTINGS=1 pio run -e co2ampel_pro -t upload` writes the backup back
+(`CO2AMPEL_RESTORE_SETTINGS=<file>` for another one, e.g. the `.prev` file). If the device no longer shows up
+on USB after a broken upload, press the red reset button twice quickly to start the bootloader.
 
 
 ### WiFi Configuration via Serial
@@ -327,20 +347,25 @@ save
 - After setting WiFi credentials, device will auto-connect on next boot
 - If the connection fails at boot, the device starts AP (Access Point) mode instead; a lost connection is
   retried every 30 s (MQTT reconnects every 30 s as well)
-- The device registers as hostname `CO2AMPEL-XX-XX` (last two MAC bytes)
+- The device registers with the hostname derived from `sys.name` (default `CO2-Ampel-NG-<MAC id>`)
 
 ### WiFi Web Interface
 
 When WiFi is enabled, the device creates either:
 - **Client Mode**: Connects to configured WiFi network
-- **AP Mode**: Creates access point `CO2AMPEL-XX-XX`
+- **AP Mode**: Creates access point `<sys.name>` (default `CO2-Ampel-NG <MAC id>`)
 
 Available endpoints:
 - `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot; with
   `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
 - `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
-- `/config` - JSON import (paste e.g. a `json export`; saved immediately, asks for `sys.password` if set)
+- `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,
+  an empty password field keeps the current one), "Save" stores immediately (all or nothing, like
+  `json import`); JSON upload (file or paste) and download; restart button (WiFi/MQTT changes apply after
+  a restart). With `sys.password` set, every action asks for it
+- `/config.json` - Download of all settings as JSON, passwords as `***` (importing such a file keeps the
+  current passwords); with `sys.password` set, the config page also offers a download with passwords
 
 Example JSON response:
 ```json
@@ -355,13 +380,19 @@ sensor (the same applies to `/cmk-agent`, and the page `/` shows `--`). The page
 With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base topic
 `<mqtt.topic_prefix>/<device id>`, where the device id is the WiFi MAC address (e.g.
 `co2ampel/F8F0056E78A2`). `mqtt.client_id` only sets the MQTT client id (empty = device id).
+`mqtt.topic_prefix` (default `co2ampel`) may contain `/` for several levels (e.g. `home/co2`), but must not
+be empty, contain the wildcards `+` or `#`, or start, end or contain an empty level (`/co2`, `co2/`,
+`a//b`); such values are refused. After a change of the prefix or client id the device marks the old
+`<base>/status` as `offline` and reconnects with the new topics (the old retained `device` and `status`
+messages stay on the broker; clear them there if needed).
 
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"version":"0.5","sensors":["SCD30","LPS22HB"]}` (sensors detected at boot) | every interval | yes |
+| `<base>/device` | `{"name":"CO2-Ampel-NG F8F0056E78A2","version":"0.6","reset":"power-on","sensors":["SCD30","LPS22HB"]}` (`sys.name`, firmware version, cause of the last reset, sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
+| `<base>/state` | `{"led.disable":false}` (current LED state) | on connect and on every change | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
 
 `sensors` units: CO2 ppm, temperatures °C, humidity %, pressure hPa, light raw ADC value (0–1023; 1024 until the first reading 1 minute after boot);
@@ -403,15 +434,25 @@ the certificate?`.
 
 **Home Assistant discovery** (off by default): enable it with `enable`, `set mqtt.ha=1`, `save` (applies
 immediately). The device then publishes retained discovery configs (now and on every connect) to `homeassistant/sensor/<device id>/<value>/config`, so Home Assistant (with
-the MQTT integration) creates a device "CO2-Ampel XXXX" with the entities CO2, Temperature, Humidity,
+the MQTT integration) creates a device named `sys.name` (model CO2-Ampel-NG, manufacturer zone11, firmware
+version) with the entities CO2, Temperature, Humidity,
 Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and "WiFi signal" appear as
-diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and become unavailable when
+diagnostic entities, plus a switch "LEDs" (on = LEDs on; off sends `{"led.disable":true}` to `<base>/cmd`,
+works with `mqtt.config=0`, RAM only, see LED control below). They read from `<base>/sensors`,
+`<base>/wifi` and `<base>/state` and become unavailable when
 `<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
 config each, only while MQTT is connected); with `mqtt.ha=0` nothing is sent to `homeassistant/`.
+Any `mqtt.topic_prefix` works with Home Assistant: the discovery configs always go to `homeassistant/`
+and name the full state topics, and the entity ids are based on the device id, so a prefix change keeps
+the entities and their history. With broker ACLs, the device user needs write access to `<prefix>/#`,
+`homeassistant/sensor/<device id>/#` and `homeassistant/switch/<device id>/#`, the Home Assistant user read
+access to `<prefix>/#` and `homeassistant/#` and write access to `<prefix>/<device id>/cmd` (the broker drops unauthorized discovery messages silently, so nothing shows up in Home
+Assistant). The discovery prefix is fixed to `homeassistant` (Home Assistant's default).
 
 **LED control over MQTT** (always available when MQTT is on): `{"led.disable":true}` /
 `{"led.disable":false}` on `<base>/cmd` switches the LEDs (and buzzer) off and on, also with
-`mqtt.config=0`. It applies in RAM only (back to the saved value after a restart); everything else is
+`mqtt.config=0`. `<base>/state` shows the current state right after every change. It applies in RAM only
+(back to the saved value after a restart); everything else is
 answered with `{"result":"ERROR","errors":{...:"Configuration over MQTT is off (mqtt.config)"}}`.
 
 **Remote configuration** (off by default): enable it locally with `enable`, `set mqtt.config=1`, `save`
@@ -456,7 +497,7 @@ The CO2 sensor should be calibrated periodically via the service menu:
 5. Done: LEDs blue and a short beep (serial: `Calibration OK`)
 
 Automatic Self-Calibration (ASC) is disabled by default. Enable it with `enable`, `set co2.asc=1`, `save`
-(the default for new devices is `AUTO_KALIBRIERUNG` in `include/app_config.h`). ASC requires 7 days of
+(the default for new devices is `CO2_ASC` in `include/app_config.h`). ASC requires 7 days of
 continuous operation with at least 1 hour of fresh air exposure daily.
 
 ## Development
@@ -483,10 +524,10 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 
 ### Code Style
 
-The original code is in German and follows Arduino conventions. Future enhancements should:
+- English only: code, comments, web UI and documentation (`legacy/` keeps the original German firmware
+  as a reference and is not changed)
+- Arduino conventions, PlatformIO best practices
 - Maintain compatibility with existing hardware
-- Document changes in English
-- Follow PlatformIO best practices
 
 ## License
 

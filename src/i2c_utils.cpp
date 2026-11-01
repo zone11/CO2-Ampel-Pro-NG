@@ -2,7 +2,7 @@
 
 static void line_low(uint8_t pin)
 {
-  digitalWrite(pin, LOW); //erst LOW (Pull-up aus), dann Ausgang: nie aktiv HIGH treiben
+  digitalWrite(pin, LOW); //LOW first (pull-up off), then output: never drive HIGH actively
   pinMode(pin, OUTPUT);
 }
 
@@ -18,16 +18,16 @@ bool i2c_bus_recover(uint8_t sda, uint8_t scl)
   delayMicroseconds(20);
   bool stuck = (digitalRead(sda) == LOW);
 
-  //Slave haelt SDA (unterbrochene Uebertragung): mit Takten das laufende Byte zu Ende schieben
+  //slave holds SDA (interrupted transfer): clock out the pending byte
   for(int i = 0; (i < 9) && (digitalRead(sda) == LOW); i++)
   {
     line_low(scl);
-    delayMicroseconds(20); //ca. 25 kHz
+    delayMicroseconds(20); //approx. 25 kHz
     line_release(scl);
     delayMicroseconds(20);
   }
 
-  //STOP: SDA steigt, waehrend SCL high ist
+  //STOP: SDA rises while SCL is high
   line_low(sda);
   delayMicroseconds(20);
   line_release(sda);

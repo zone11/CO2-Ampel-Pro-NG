@@ -16,6 +16,6 @@ bool apply_led_disable(void *user, const cfg_item_t *item); // led.disable takes
 void print_led_status(void);
 void status_led(unsigned int on);
 void buzzer(unsigned int on);
-void ampel(unsigned int co2);
+void traffic_light(unsigned int co2);
 
 #endif

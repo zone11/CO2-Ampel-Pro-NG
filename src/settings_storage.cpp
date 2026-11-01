@@ -10,7 +10,7 @@
 // writes it back with the firmware, so settings survive firmware updates.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     6            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     7            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -31,6 +31,7 @@ typedef struct
 static_assert(offsetof(SETTINGS_RECORD, crc) == RECORD_HEADER + sizeof(SETTINGS), "crc must follow data");
 static_assert(sizeof(SETTINGS) >= SETTINGS_V1_SIZE, "fields may only be appended");
 static_assert(offsetof(SETTINGS, brightness_dark) == 392, "v6 fields must start after the v5 record (392 bytes)");
+static_assert(offsetof(SETTINGS, name) == 431, "v7 name starts in the last padding byte of v6 (see default_padding_fields)");
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
@@ -65,7 +66,7 @@ void settings_defaults(SETTINGS *data)
   memset(data, 0, sizeof(SETTINGS));
   data->valid         = true;
   data->serial_output = false;
-  data->brightness    = HELLIGKEIT;
+  data->brightness    = BRIGHTNESS;
   data->range[0]      = DEFAULT_T1;
   data->range[1]      = DEFAULT_T2;
   data->range[2]      = DEFAULT_T3;
@@ -75,7 +76,7 @@ void settings_defaults(SETTINGS *data)
   copy_str(data->wifi_ssid, sizeof(data->wifi_ssid), WIFI_SSID);
   copy_str(data->wifi_code, sizeof(data->wifi_code), WIFI_CODE);
 
-  //MQTT Standardeinstellungen
+  //MQTT defaults
   data->mqtt_enabled  = MQTT_ENABLED;
   copy_str(data->mqtt_broker, sizeof(data->mqtt_broker), MQTT_BROKER);
   data->mqtt_port     = MQTT_PORT;
@@ -85,27 +86,37 @@ void settings_defaults(SETTINGS *data)
   copy_str(data->mqtt_topic_prefix, sizeof(data->mqtt_topic_prefix), MQTT_TOPIC_PREFIX);
   data->mqtt_interval = MQTT_INTERVAL;
 
-  //LED Color Defaults
+  //LED color defaults
   data->color_t1      = DEFAULT_COLOR_T1;
   data->color_t2      = DEFAULT_COLOR_T2;
   data->color_t3      = DEFAULT_COLOR_T3;
   data->color_t4      = DEFAULT_COLOR_T4;
 
-  data->asc           = AUTO_KALIBRIERUNG;
+  data->asc           = CO2_ASC;
   data->mqtt_config   = MQTT_CONFIG;
   data->mqtt_ha       = MQTT_HA;
   data->mqtt_tls      = MQTT_TLS;
 
-  data->brightness_dark = HELLIGKEIT_DUNKEL;
-  data->led_auto      = HELLIGKEIT_AUTO;
+  data->brightness_dark = BRIGHTNESS_DARK;
+  data->led_auto      = BRIGHTNESS_AUTO;
   data->led_disable   = false;
   data->password[0]   = 0;
+  data->name[0]       = 0;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
 static bool to_bool(const boolean *b)
 {
   return *(const volatile uint8_t *)b != 0;
+}
+
+bool settings_topic_valid(const char *prefix)
+{
+  if((prefix[0] == 0) || (prefix[0] == '/') || (prefix[strlen(prefix) - 1] == '/') || strstr(prefix, "//"))
+  {
+    return false;
+  }
+  return strpbrk(prefix, "+#") == NULL;
 }
 
 // Replaces out-of-range values with defaults; returns true if anything was changed
@@ -161,7 +172,13 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_pass[sizeof(data->mqtt_pass) - 1] = 0;
   data->mqtt_client_id[sizeof(data->mqtt_client_id) - 1] = 0;
   data->mqtt_topic_prefix[sizeof(data->mqtt_topic_prefix) - 1] = 0;
+  if(!settings_topic_valid(data->mqtt_topic_prefix))
+  {
+    strcpy(data->mqtt_topic_prefix, def.mqtt_topic_prefix);
+    changed = true;
+  }
   data->password[sizeof(data->password) - 1] = 0;
+  data->name[sizeof(data->name) - 1] = 0;
 
   return changed;
 }
@@ -179,9 +196,10 @@ static bool legacy_plausible(const SETTINGS *old)
 // Fields that lived in struct padding before they existed (v1-v4 share one 388-byte layout)
 static void default_padding_fields(SETTINGS *data, uint16_t version)
 {
-  if(version < 2) { data->asc         = AUTO_KALIBRIERUNG; }
+  if(version < 2) { data->asc         = CO2_ASC; }
   if(version < 3) { data->mqtt_config = MQTT_CONFIG; }
   if(version < 4) { data->mqtt_ha     = MQTT_HA; }
+  if(version < 7) { data->name[0]     = 0; } //byte 431 was padding in v6
 }
 
 SETTINGS_LOAD settings_read(SETTINGS *data)
@@ -196,7 +214,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
 
   if(magic == SETTINGS_MAGIC)
   {
-    if(version > SETTINGS_VERSION) //nach Downgrade: nicht ueberschreiben, damit neuere Firmware sie wieder findet
+    if(version > SETTINGS_VERSION) //after a downgrade: don't overwrite, so the newer firmware finds them again
     {
       settings_defaults(data);
       return SETTINGS_NEWER;
@@ -207,7 +225,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
       memcpy(&crc, flash + RECORD_HEADER + size, sizeof(crc));
       if(crc == crc32(flash, RECORD_HEADER + size))
       {
-        settings_defaults(data);                       //Felder, die in kuerzeren Records fehlen
+        settings_defaults(data);                       //fields missing in shorter records
         memcpy(data, flash + RECORD_HEADER, size);
         default_padding_fields(data, version);
         settings_validate(data);
@@ -234,11 +252,11 @@ SETTINGS_LOAD settings_read(SETTINGS *data)
   return SETTINGS_DEFAULTS;
 }
 
-// Schreibt Einstellungen in Flash
+// Writes the settings to flash
 void settings_write(const SETTINGS *data)
 {
-  // SAMD21 Flash-Programmierung
-  // Page-Groesse: 64 Bytes (Row = 256 Bytes = 4 Pages)
+  // SAMD21 flash programming
+  // page size: 64 bytes (row = 256 bytes = 4 pages)
   uint32_t buf[RECORD_BYTES / 4];
   SETTINGS_RECORD *rec = (SETTINGS_RECORD *)buf;
 

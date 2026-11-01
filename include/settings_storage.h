@@ -15,4 +15,7 @@ SETTINGS_LOAD settings_read(SETTINGS *data);
 void settings_defaults(SETTINGS *data);
 void settings_write(const SETTINGS *data);
 
+// MQTT topic prefix check: not empty, no wildcards (+ #), no empty levels (leading, trailing or double /)
+bool settings_topic_valid(const char *prefix);
+
 #endif
