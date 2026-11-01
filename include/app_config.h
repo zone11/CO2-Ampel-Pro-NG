@@ -33,6 +33,9 @@
 #define DEFAULT_COLOR_T3   0xFF7F00 //orange-yellow
 #define DEFAULT_COLOR_T4   0xFF0000 //red
 
+//--- Watchdog ---
+#define WATCHDOG_TIMEOUT   120 //s without watchdog_feed() until reset (multiple of 2; WiFi/MQTT connects can block ~100 s)
+
 //--- WiFi ---
 #define WIFI_SSID          "" //WiFi SSID
 #define WIFI_CODE          "" //WiFi password

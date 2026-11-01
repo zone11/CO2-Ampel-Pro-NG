@@ -2,6 +2,7 @@
 
 #include "app_globals.h"
 #include "led_control.h"
+#include "system_control.h"
 
 #include <spi_flash/include/spi_flash.h>
 
@@ -37,6 +38,7 @@ static void read_bytes(uint8_t *buf, size_t len)
 {
   while(len > 0)
   {
+    watchdog_feed(); //IDLE_TIMEOUT restarts the bridge
     int c = Serial.read();
     if(c < 0)
     {

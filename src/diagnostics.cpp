@@ -2,6 +2,7 @@
 
 #include "app_globals.h"
 #include "led_control.h"
+#include "system_control.h"
 #include "sensors.h"
 
 #include <SPI.h>
@@ -29,8 +30,9 @@ void self_test(void) //self test
       {
         Serial.println("Error: ATWINC1500");
       }
-      while(1)
+      while(1) //stays on the error display
       {
+        watchdog_feed();
         leds(COLOR_RED);
         delay(500);
         leds(COLOR_YELLOW);
@@ -156,6 +158,7 @@ void air_test(void) //fresh air test
 
   while(1)
   {
+    watchdog_feed(); //runs until the button is pressed
     if(digitalRead(PIN_SWITCH) == 0) //button pressed?
     {
       break; //abort

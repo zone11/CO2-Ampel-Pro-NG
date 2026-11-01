@@ -20,6 +20,7 @@
 #include "tls_client.h"
 
 #include "led_control.h"
+#include "system_control.h"
 #include "sensors.h"
 #include "mqtt_service.h"
 #include "webserver.h"
@@ -85,6 +86,8 @@ void setup()
   {
     run_menu = 1;
   }
+
+  watchdog_init(); //fed by loop() and the long waits (menu, WiFi/MQTT connect, WINC bridge)
 
   //WS2812
   ws2812.begin();
@@ -235,6 +238,8 @@ void setup()
     features |= FEATURE_USB;
     delay(1500);
     Serial.println("\nCO2 Ampel Pro NG v" VERSION);
+    Serial.print("Reset cause: ");
+    Serial.println(reset_cause());
     Serial.print("Features:");
     if(features & FEATURE_SCD30)    { Serial.print(" SCD30"); }
     if(features & FEATURE_SCD4X)    { Serial.print(" SCD4X"); }
@@ -342,6 +347,8 @@ void loop()
   static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
   static unsigned long t_wifi=0;
   unsigned int overwrite=0;
+
+  watchdog_feed();
 
   //serial commands
   serial_service();

@@ -1,6 +1,7 @@
 #include "mqtt_service.h"
 #include "sensors.h"
 #include "settings_registry.h"
+#include "system_control.h"
 #include "wifi_manager.h"
 
 #if WITH_MQTT_CONFIG
@@ -59,6 +60,8 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id0, (unsigned int)*id1,
            (unsigned int)*id2, (unsigned int)*id3);
 }
+
+static int state_led_disable = -1; //led.disable last published on <base>/state, -1 = not yet
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -189,10 +192,20 @@ static const HA_ENTITY ha_entities[] =
 
 static bool ha_published = false; //configs published since boot (for the removal)
 
+// Appends the HA device block and closes the config object; returns the new length
+static size_t ha_device(char *json, size_t size, size_t n, const char *device_id, const char *name)
+{
+  IPAddress ip = WiFi.localIP();
+  return n + snprintf(json + n, size - n,
+    ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"%s\","
+    "\"model\":\"" PRODUCT_NAME "\",\"manufacturer\":\"" MANUFACTURER "\",\"sw_version\":\"%s\","
+    "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
+    device_id, name, VERSION, ip[0], ip[1], ip[2], ip[3]);
+}
+
 static void mqtt_publish_discovery(void)
 {
   char device_id[16], topic[96], base[64], json[768], name[2*32+1];
-  IPAddress ip = WiFi.localIP();
 
   get_device_id(device_id, sizeof(device_id));
   json_escape(name, sizeof(name), system_name());
@@ -217,11 +230,7 @@ static void mqtt_publish_discovery(void)
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
-    n += snprintf(json + n, sizeof(json) - n,
-      ",\"device\":{\"identifiers\":[\"co2ampel_%s\"],\"name\":\"%s\","
-      "\"model\":\"" PRODUCT_NAME "\",\"manufacturer\":\"" MANUFACTURER "\",\"sw_version\":\"%s\","
-      "\"configuration_url\":\"http://%u.%u.%u.%u/\"}}",
-      device_id, name, VERSION, ip[0], ip[1], ip[2], ip[3]);
+    n = ha_device(json, sizeof(json), n, device_id, name);
 
     if(n >= sizeof(json))
     {
@@ -229,6 +238,28 @@ static void mqtt_publish_discovery(void)
     }
     mqttClient.publish(topic, json, true, 0);
   }
+
+  //switch "LEDs": on = led.disable false; commands on <base>/cmd (also with mqtt.config=0), state from <base>/state
+  snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/led/config", device_id);
+#if WITH_MQTT_CONFIG
+  if(settings.mqtt_ha)
+  {
+    size_t n = snprintf(json, sizeof(json),
+      "{\"name\":\"LEDs\",\"unique_id\":\"co2ampel_%s_led\",\"icon\":\"mdi:traffic-light\","
+      "\"command_topic\":\"%s/cmd\",\"payload_on\":\"{\\\"led.disable\\\":false}\","
+      "\"payload_off\":\"{\\\"led.disable\\\":true}\",\"state_topic\":\"%s/state\","
+      "\"value_template\":\"{{ 'OFF' if value_json['led.disable'] else 'ON' }}\","
+      "\"availability_topic\":\"%s/status\"",
+      device_id, base, base, base);
+    n = ha_device(json, sizeof(json), n, device_id, name);
+    if(n < sizeof(json))
+    {
+      mqttClient.publish(topic, json, true, 0);
+    }
+    return;
+  }
+#endif
+  mqttClient.publish(topic, "", true, 0); //off (or no command topic): remove the switch
 }
 #endif //WITH_HA
 
@@ -364,7 +395,8 @@ void mqtt_connect(void)
   mqtt_topic(topic, sizeof(topic), "status");
   mqttClient.setWill(topic, "offline", true, 1); //broker reports "offline" when the connection drops
 
-  //connect
+  //connect (DNS, TCP and TLS can block up to ~40 s)
+  watchdog_feed();
   boolean connected = false;
   if(strlen(settings.mqtt_user) > 0)
   {
@@ -380,6 +412,7 @@ void mqtt_connect(void)
   if(connected)
   {
     mqttClient.publish(topic, "online", true, 1);
+    state_led_disable = -1; //publish <base>/state again
 #if WITH_HA
     ha_published = false;
     if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
@@ -501,7 +534,7 @@ void mqtt_publish_sensors(void)
   //device: firmware version and detected sensors (retained, so always available)
   char name[2*32+1];
   json_escape(name, sizeof(name), system_name());
-  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"sensors\":[", name, VERSION);
+  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
   const struct { unsigned int feature; const char *name; } sensor_names[] =
   {
     { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
@@ -588,6 +621,15 @@ void mqtt_service(void)
     mqttClient.disconnect();
     mqtt_connect();
     return;
+  }
+
+  //control state (retained): on connect and right after every change of led.disable
+  if(state_led_disable != (int)settings.led_disable)
+  {
+    char topic[96];
+    state_led_disable = settings.led_disable;
+    mqtt_topic(topic, sizeof(topic), "state");
+    mqttClient.publish(topic, settings.led_disable ? "{\"led.disable\":true}" : "{\"led.disable\":false}", true, 0);
   }
 
   //periodic publishing

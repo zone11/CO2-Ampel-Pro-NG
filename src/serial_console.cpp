@@ -5,6 +5,7 @@
 #include "led_control.h"
 #include "mqtt_service.h"
 #include "sensors.h"
+#include "system_control.h"
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
@@ -203,6 +204,8 @@ void serial_service(void)
   }
   if(strcasecmp(line, "status") == 0)
   {
+    Serial.print("Reset cause: ");
+    Serial.println(reset_cause());
     print_measurements();
     print_sensor_info();
     print_led_status();

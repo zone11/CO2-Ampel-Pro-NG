@@ -5,6 +5,7 @@
 #include "led_control.h"
 #include "sensors.h"
 #include "settings_registry.h"
+#include "system_control.h"
 
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off)
 {
@@ -24,6 +25,7 @@ unsigned int select_value(unsigned int value, unsigned int min, unsigned int max
   for(sw=0, timeout=0; timeout<1000; timeout++) //10s timeout
   {
     delay(10);
+    watchdog_feed(); //the timeout restarts while the button is held
 
     if(digitalRead(PIN_SWITCH) == LOW) //button pressed
     {
@@ -182,6 +184,7 @@ void calibration(void) //calibration
   co2 = co2_last = co2_sensor();
   for(again=0, cycle=0; cycle < (180/interval);)
   {
+    watchdog_feed(); //calibration takes several minutes
     if(digitalRead(PIN_SWITCH) == 0) //button pressed?
     {
       abort = 1;
