@@ -2,13 +2,6 @@
 
 Open changes and features for CO2-Ampel Pro NG. Not yet prioritized.
 
-## Release
-
-- [ ] **Release 0.6**: PR dev → main, tag/release `0.6` with the .bin. Release notes: web `/config` page
-      (all settings, JSON upload/download, restart), `sys.name` (hostname, AP SSID, MQTT `device`, HA device;
-      settings v7), English web UI and identifiers, topic prefix validation and reconnect on prefix/client id change,
-      README HA/ACL notes.
-
 ## Features (roadmap)
 
 - [ ] **OTA update triggered over MQTT** (pull): image ≤ ~123 KB, must not touch the settings area, version
@@ -28,13 +21,6 @@ Open changes and features for CO2-Ampel Pro NG. Not yet prioritized.
       without persistence.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 - [ ] Test in a real Home Assistant (payloads, switch and removal were checked on the broker without HA).
-
-## Done for 0.6 (remove after the release)
-
-- [x] Watchdog (WDT 4 s, extended to 120 s in software; reset cause in boot log, `status`, MQTT `device`).
-- [x] HA switch "LEDs" for `led.disable`, retained `<base>/state`.
-- [x] `upload_samba.py`: settings backup in `.pio/settings-backup.bin` (+ `.prev`), restore with
-      `CO2AMPEL_RESTORE_SETTINGS`, temp folder removed after the upload.
 
 ## Not tested on hardware
 
