@@ -60,12 +60,17 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
+// Prefix and client id of the current connection: all topics use them until the next connect,
+// a change of the settings reconnects (mqtt_service)
+static char used_prefix[sizeof(settings.mqtt_topic_prefix)];
+static char used_client_id[sizeof(settings.mqtt_client_id)];
+
 // Topic <prefix>/<device id>/<suffix>
 static void mqtt_topic(char *buffer, size_t buffer_size, const char *suffix)
 {
   char device_id[16];
   get_device_id(device_id, sizeof(device_id));
-  snprintf(buffer, buffer_size, "%s/%s/%s", settings.mqtt_topic_prefix, device_id, suffix);
+  snprintf(buffer, buffer_size, "%s/%s/%s", used_prefix, device_id, suffix);
 }
 
 // Copies src into dst as JSON string content (escapes " and \, drops control characters)
@@ -191,7 +196,7 @@ static void mqtt_publish_discovery(void)
 
   get_device_id(device_id, sizeof(device_id));
   json_escape(name, sizeof(name), system_name());
-  snprintf(base, sizeof(base), "%s/%s", settings.mqtt_topic_prefix, device_id);
+  snprintf(base, sizeof(base), "%s/%s", used_prefix, device_id);
 
   for(const HA_ENTITY &e : ha_entities)
   {
@@ -352,6 +357,8 @@ void mqtt_connect(void)
 
   //set up the MQTT client
   char topic[96];
+  strcpy(used_prefix, settings.mqtt_topic_prefix);
+  strcpy(used_client_id, settings.mqtt_client_id);
   Client &net = settings.mqtt_tls ? (Client &)mqttSslClient : (Client &)mqttWifiClient;
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
@@ -565,6 +572,21 @@ void mqtt_service(void)
   if(!mqttClient.connected())
   {
     mqtt_reconnect();
+    return;
+  }
+
+  //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
+  if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))
+  {
+    char topic[96];
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT topic prefix or client ID changed, reconnecting");
+    }
+    mqtt_topic(topic, sizeof(topic), "status");
+    mqttClient.publish(topic, "offline", true, 1); //a clean disconnect sends no LWT
+    mqttClient.disconnect();
+    mqtt_connect();
     return;
   }
 

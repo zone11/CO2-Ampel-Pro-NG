@@ -26,6 +26,13 @@ static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
   return true;
 }
 
+static bool apply_topic_prefix(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  return settings_topic_valid(settings.mqtt_topic_prefix); //the change itself reconnects MQTT (mqtt_service)
+}
+
 static bool apply_name(void *user, const cfg_item_t *item)
 {
   (void)user;
@@ -69,7 +76,7 @@ static const cfg_item_t settings_items[] =
   { "mqtt.user",        CFG_STRING, settings.mqtt_user,      0, 0, sizeof(settings.mqtt_user) - 1, NULL, CFG_LOCAL },
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
-  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, NULL },
+  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, apply_topic_prefix },
 #if WITH_HA
   { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, apply_mqtt_ha, CFG_LOCAL },
 #endif

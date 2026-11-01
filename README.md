@@ -205,8 +205,8 @@ mqtt.interval
 
 Value formats: numbers are decimal (or hex with `0x`), colors are hex RGB with optional `0x` or `#`
 (`FF7F00`, `0xFF7F00`, `#ff7f00`), booleans accept `1/0`, `on/off`, `true/false`.
-Thresholds, colors, LED settings, buzzer and `mqtt.ha` apply immediately; the other WiFi and MQTT settings
-apply after `reset`.
+Thresholds, colors, LED settings, buzzer and `mqtt.ha` apply immediately, `mqtt.topic_prefix` and
+`mqtt.client_id` reconnect MQTT right away; the other WiFi and MQTT settings apply after `reset`.
 
 LED brightness (1–255): `led.brightness` is the normal/maximum level (default 125), `led.brightness_dark`
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
@@ -368,6 +368,11 @@ sensor (the same applies to `/cmk-agent`, and the page `/` shows `--`). The page
 With `mqtt.enabled=1` the device connects to `mqtt.broker` and uses the base topic
 `<mqtt.topic_prefix>/<device id>`, where the device id is the WiFi MAC address (e.g.
 `co2ampel/F8F0056E78A2`). `mqtt.client_id` only sets the MQTT client id (empty = device id).
+`mqtt.topic_prefix` (default `co2ampel`) may contain `/` for several levels (e.g. `home/co2`), but must not
+be empty, contain the wildcards `+` or `#`, or start, end or contain an empty level (`/co2`, `co2/`,
+`a//b`); such values are refused. After a change of the prefix or client id the device marks the old
+`<base>/status` as `offline` and reconnects with the new topics (the old retained `device` and `status`
+messages stay on the broker; clear them there if needed).
 
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
@@ -422,6 +427,12 @@ Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and 
 diagnostic entities. They read from `<base>/sensors` and `<base>/wifi` and become unavailable when
 `<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
 config each, only while MQTT is connected); with `mqtt.ha=0` nothing is sent to `homeassistant/`.
+Any `mqtt.topic_prefix` works with Home Assistant: the discovery configs always go to `homeassistant/`
+and name the full state topics, and the entity ids are based on the device id, so a prefix change keeps
+the entities and their history. With broker ACLs, the device user needs write access to `<prefix>/#` and
+`homeassistant/sensor/<device id>/#`, the Home Assistant user read access to `<prefix>/#` and
+`homeassistant/#` (the broker drops unauthorized discovery messages silently, so nothing shows up in Home
+Assistant). The discovery prefix is fixed to `homeassistant` (Home Assistant's default).
 
 **LED control over MQTT** (always available when MQTT is on): `{"led.disable":true}` /
 `{"led.disable":false}` on `<base>/cmd` switches the LEDs (and buzzer) off and on, also with

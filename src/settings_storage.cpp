@@ -110,6 +110,15 @@ static bool to_bool(const boolean *b)
   return *(const volatile uint8_t *)b != 0;
 }
 
+bool settings_topic_valid(const char *prefix)
+{
+  if((prefix[0] == 0) || (prefix[0] == '/') || (prefix[strlen(prefix) - 1] == '/') || strstr(prefix, "//"))
+  {
+    return false;
+  }
+  return strpbrk(prefix, "+#") == NULL;
+}
+
 // Replaces out-of-range values with defaults; returns true if anything was changed
 static bool settings_validate(SETTINGS *data)
 {
@@ -163,6 +172,11 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_pass[sizeof(data->mqtt_pass) - 1] = 0;
   data->mqtt_client_id[sizeof(data->mqtt_client_id) - 1] = 0;
   data->mqtt_topic_prefix[sizeof(data->mqtt_topic_prefix) - 1] = 0;
+  if(!settings_topic_valid(data->mqtt_topic_prefix))
+  {
+    strcpy(data->mqtt_topic_prefix, def.mqtt_topic_prefix);
+    changed = true;
+  }
   data->password[sizeof(data->password) - 1] = 0;
   data->name[sizeof(data->name) - 1] = 0;
 

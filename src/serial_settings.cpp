@@ -331,8 +331,23 @@ const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decima
         {
           return "String too long";
         }
+        char old[64+1];
+        bool restore = item->apply && (item->max_len < sizeof(old));
+        if(restore)
+        {
+          strcpy(old, (const char *)item->ptr);
+        }
         strncpy((char *)item->ptr, value, item->max_len);
         ((char *)item->ptr)[item->max_len] = 0;
+        if(restore)
+        {
+          if(!item->apply(user, item)) //apply rejects the value (e.g. mqtt.topic_prefix): keep the old one
+          {
+            strcpy((char *)item->ptr, old);
+            return "Invalid value";
+          }
+          return NULL;
+        }
       }
       break;
     case CFG_IP:
