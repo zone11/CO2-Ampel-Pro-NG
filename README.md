@@ -289,6 +289,14 @@ exported line (`dump` output: paste the `set` lines, then `save`); then `reset`.
 **Factory reset:** `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload` flashes the firmware without
 the stored settings; the device starts with the defaults (also clears a forgotten `sys.password`).
 
+**Settings backup on upload:** every `pio run -t upload` stores the device's settings area in
+`.pio/settings-backup.bin` (a different previous one is kept as `.pio/settings-backup.bin.prev`; both contain
+the passwords in clear text). The upload erases the whole flash before writing, so an upload that breaks off
+loses the settings; the next upload then prints a note, and
+`CO2AMPEL_RESTORE_SETTINGS=1 pio run -e co2ampel_pro -t upload` writes the backup back
+(`CO2AMPEL_RESTORE_SETTINGS=<file>` for another one, e.g. the `.prev` file). If the device no longer shows up
+on USB after a broken upload, press the red reset button twice quickly to start the bootloader.
+
 
 ### WiFi Configuration via Serial
 
