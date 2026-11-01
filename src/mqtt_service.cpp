@@ -249,6 +249,7 @@ static void mqtt_publish_discovery(void)
       "\"command_topic\":\"%s/cmd\",\"payload_on\":\"{\\\"led.disable\\\":false}\","
       "\"payload_off\":\"{\\\"led.disable\\\":true}\",\"state_topic\":\"%s/state\","
       "\"value_template\":\"{{ 'OFF' if value_json['led.disable'] else 'ON' }}\","
+      "\"state_on\":\"ON\",\"state_off\":\"OFF\"," //without them HA compares the template result with payload_on/off
       "\"availability_topic\":\"%s/status\"",
       device_id, base, base, base);
     n = ha_device(json, sizeof(json), n, device_id, name);

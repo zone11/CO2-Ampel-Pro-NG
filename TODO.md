@@ -22,7 +22,8 @@ Done items are removed (the GitHub releases list what was done).
 - [ ] HA birth message (`homeassistant/status` = `online`): republish discovery, only matters for brokers
       without persistence.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
-- [ ] Test in a real Home Assistant (payloads, switch and removal were checked on the broker without HA).
+- [ ] Home Assistant: check the removal (`mqtt.ha=0`) and an HA restart (initial switch state from the retained
+      `<base>/state`) in a real HA; sensors and the LED switch work in HA 2026.10.4 (0.6.1).
 
 ## Not tested on hardware
 

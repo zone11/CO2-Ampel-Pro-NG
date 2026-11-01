@@ -447,7 +447,10 @@ and name the full state topics, and the entity ids are based on the device id, s
 the entities and their history. With broker ACLs, the device user needs write access to `<prefix>/#`,
 `homeassistant/sensor/<device id>/#` and `homeassistant/switch/<device id>/#`, the Home Assistant user read
 access to `<prefix>/#` and `homeassistant/#` and write access to `<prefix>/<device id>/cmd` (the broker drops unauthorized discovery messages silently, so nothing shows up in Home
-Assistant). The discovery prefix is fixed to `homeassistant` (Home Assistant's default).
+Assistant). The discovery prefix is fixed to `homeassistant` (Home Assistant's default). With a bridged
+broker (e.g. a `connection` in the Mosquitto add-on's `customize` folder), the bridge must forward
+`<prefix>/#` in both directions (`topic co2ampel/# both 0`), not only `homeassistant/#`: otherwise the
+entities are created but stay "Unavailable". The prefix does not have to be under `homeassistant/`.
 
 **LED control over MQTT** (always available when MQTT is on): `{"led.disable":true}` /
 `{"led.disable":false}` on `<base>/cmd` switches the LEDs (and buzzer) off and on, also with
