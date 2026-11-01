@@ -32,13 +32,13 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Customizable LED colors via serial commands
 - ✅ Settings dump feature for backup/restore (key/value)
 - ✅ MQTT support: measurements, device/WiFi info, online status, remote configuration
-- ✅ Home Assistant MQTT discovery
+- ✅ Home Assistant MQTT discovery (sensors and an LED switch)
 - ✅ MQTTS (MQTT over TLS, certificate and hostname checked)
 - ✅ PC tool for provisioning (settings + TLS root certificate in one run, no extra flashing)
 - ✅ Settings with version and CRC, kept across `pio run -t upload`
 - ✅ Automatic self-calibration (ASC) switchable at runtime (`co2.asc`)
 - ✅ LED brightness: maximum, dark level, automatic dimming on/off, LEDs + buzzer off (`led.*`)
-- ✅ Configuration as JSON: `json export` / `json import` on serial, JSON over MQTT, web import page
+- ✅ Configuration as JSON: `json export` / `json import` on serial, JSON over MQTT, web configuration page
 - ✅ Optional enable password for serial and the web forms
 - ✅ Watchdog: restarts the device when the firmware hangs (reset cause in `status` and MQTT `device`)
 
@@ -61,13 +61,13 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 93 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 94 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, `/config`, WiFi form; AP mode then has no use) | ~7 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, `/config`, WiFi form; AP mode then has no use) | ~10 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~1.5 KB |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
 ## Usage
 
@@ -509,7 +509,7 @@ continuous operation with at least 1 hour of fresh air exposure daily.
    password and JSON import, used by serial, web and MQTT), `serial_settings` (get/set/save/dump and
    JSON export), `json_parser` (JSON object parser), `serial_console` (serial commands), `wifi_manager`, `webserver`, `mqtt_service` (publish, HA discovery, commands),
    `tls_client` (TLS with hostname check), `winc_bridge` (WiFi module flash access), `ui_menu`/`diagnostics`
-   (service menu, self test), `i2c_utils`, `system_control`. Compile-time defaults and feature switches live
+   (service menu, self test), `i2c_utils`, `system_control` (reset, watchdog). Compile-time defaults and feature switches live
    in `include/app_config.h`, pins in `variants/co2ampel/variant.h`. PC tools are in `scripts/`
    (`upload_samba.py` upload with settings kept, `co2ampel_tool.py` provisioning and root certificates)
 2. New user settings: append the field to `SETTINGS` (`include/app_types.h`), set a default in
@@ -519,7 +519,9 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 3. Update `platformio.ini` if new dependencies are needed
 4. Build with `pio run`, upload with `pio run -t upload` (settings are kept; connect the device directly,
    not through a hub, and close any serial monitor first)
-5. Never use `%f` in printf formats: the build uses link time optimization without printf float support,
+5. Loops that may run longer than 2 minutes (waiting for the user, long connects) must call
+   `watchdog_feed()` (`include/system_control.h`), otherwise the watchdog restarts the device
+6. Never use `%f` in printf formats: the build uses link time optimization without printf float support,
    format one-decimal values with `fmt1()` (`include/sensors.h`)
 
 ### Code Style

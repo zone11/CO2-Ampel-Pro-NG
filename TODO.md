@@ -1,6 +1,7 @@
 # ToDo
 
-Open changes and features for CO2-Ampel Pro NG. Not yet prioritized.
+Open changes and features for CO2-Ampel Pro NG. Order: roadmap features top down; follow-ups when convenient.
+Done items are removed (the GitHub releases list what was done).
 
 ## Features (roadmap)
 
@@ -8,6 +9,7 @@ Open changes and features for CO2-Ampel Pro NG. Not yet prioritized.
       compare must handle `0.4` / `0.4.1`.
 - [ ] **LoRaWAN/TTN** with MCCI LMIC: one image with a runtime `net.mode` only if it stays within the OTA
       limit, otherwise a separate env. Dev unit has an RFM9x and TTN coverage.
+- [ ] Web interface with charts (listed as planned in the README, not prioritized yet).
 
 ## MQTT / Home Assistant follow-ups
 
@@ -26,9 +28,3 @@ Open changes and features for CO2-Ampel Pro NG. Not yet prioritized.
 
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only).
-
-## Housekeeping
-
-
-- [ ] `workfiles/CHANGELOG.md` stops at 0.3.3; update it or drop it in favor of the GitHub releases.
-- [ ] `test/hardware_test.cpp`: check whether it still builds / is still useful.
