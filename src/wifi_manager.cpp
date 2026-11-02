@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "led_control.h"
 #include "system_control.h"
+#include "health.h"
 
 void get_device_id(char *buffer, size_t buffer_size)
 {
@@ -20,7 +21,7 @@ const char *system_name(void)
     return settings.name;
   }
   get_device_id(id, sizeof(id));
-  snprintf(name, sizeof(name), PRODUCT_NAME " %s", id);
+  snprintf(name, sizeof(name), DEFAULT_NAME "%s", id);
   return name;
 }
 
@@ -195,6 +196,8 @@ unsigned int wifi_start(void)
   }
 
   watchdog_feed(); //WiFi.begin() blocks up to 60 s
+  phase_set(PHASE_WIFI_CONNECT);
+  health.wifi_connects++;
   WiFi.hostname(hostname);
   if(strlen(settings.wifi_code) > 0) //password
   {
@@ -212,7 +215,7 @@ unsigned int wifi_start(void)
     {
       break;
     }
-    status_led(1000);
+    status_wait(1000);
   }
 
   if(!(WiFi.status() == WL_CONNECTED)) //connection failed

@@ -1,4 +1,5 @@
 #include "led_control.h"
+#include "system_control.h"
 
 void leds(uint32_t color)
 {
@@ -8,6 +9,35 @@ void leds(uint32_t color)
 
 static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
+
+// LED state in the reset record: bit 0 = Quiet, bits 8-15 = button level
+static void led_state_save(void)
+{
+  reset_record_led((settings.quiet ? 1 : 0) | ((led_level & 0xFF) << 8));
+}
+
+void led_state_restore(void)
+{
+  if(reset_unplanned())
+  {
+    uint32_t led = last_run()->led;
+    settings.quiet = (led & 1) != 0;
+    led_level = (led >> 8) & 0xFF;
+  }
+  led_state_save();
+}
+
+void status_wait(unsigned int ms)
+{
+  if(settings.quiet)
+  {
+    delay(ms);
+  }
+  else
+  {
+    status_led(ms);
+  }
+}
 
 void led_brightness_update(void)
 {
@@ -36,16 +66,30 @@ void led_button_step(void)
   unsigned int min = settings.led_auto ? settings.brightness_dark : 1;
 
   led_level = ((level < min) || (level < 1)) ? 0 : level; //below the minimum: back to the maximum
+  led_state_save();
   led_brightness_update();
 }
 
-bool apply_led_disable(void *user, const cfg_item_t *item)
+bool apply_buzzer(void *user, const cfg_item_t *item)
 {
   (void)user;
   (void)item;
-  if(settings.led_disable)
+  if(!settings.buzzer)
+  {
+    buzzer(0); //immediately
+  }
+  return true;
+}
+
+bool apply_quiet(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  led_state_save();
+  if(settings.quiet)
   {
     leds(COLOR_OFF); //immediately, also with "enable"
+    status_led(0);
     buzzer(0);
   }
   else if(remote_on)
@@ -60,9 +104,9 @@ void print_led_status(void)
   uint32_t shown = ws2812.getPixelColor(0); //actually shown (scaled by the brightness)
 
   Serial.print("LEDs: ");
-  if(settings.led_disable)
+  if(settings.quiet)
   {
-    Serial.print("off (led.disable)");
+    Serial.print("off (Quiet)");
   }
   else
   {
@@ -140,7 +184,7 @@ void traffic_light(unsigned int co2)
 {
   static unsigned int blink_on=0;
 
-  if(settings.led_disable) //LEDs and buzzer off (e.g. at night)
+  if(settings.quiet) //Quiet: LEDs and buzzer off (e.g. at night)
   {
     leds(COLOR_OFF);
     buzzer(0);

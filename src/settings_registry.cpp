@@ -18,6 +18,7 @@ static bool apply_asc(void *user, const cfg_item_t *item)
   return true;
 }
 
+#if WITH_HA
 static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
 {
   (void)user;
@@ -25,6 +26,7 @@ static bool apply_mqtt_ha(void *user, const cfg_item_t *item)
   mqtt_ha_update();
   return true;
 }
+#endif
 
 static bool apply_topic_prefix(void *user, const cfg_item_t *item)
 {
@@ -52,7 +54,8 @@ static const cfg_item_t settings_items[] =
   { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name },
   { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
-  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, NULL },
+  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, apply_buzzer },
+  { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },
   { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL },
   { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL },
   { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL },
@@ -62,7 +65,6 @@ static const cfg_item_t settings_items[] =
   { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness },
   { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness },
   { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness },
-  { "led.disable",      CFG_BOOL,  &settings.led_disable,    0, 0, 0, apply_led_disable, CFG_CONTROL },
   { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
   { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },
@@ -326,16 +328,21 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   if(!ok) //all or nothing: restore the previous state
   {
     bool asc_changed = (settings.asc != before.asc);
-    bool led_changed = (settings.led_disable != before.led_disable);
+    bool quiet_changed = (settings.quiet != before.quiet);
+    bool buzzer_changed = (settings.buzzer != before.buzzer);
     bool ha_changed = (settings.mqtt_ha != before.mqtt_ha);
     settings = before;
     if(asc_changed)
     {
       co2_set_asc(settings.asc);
     }
-    if(led_changed)
+    if(quiet_changed)
     {
-      apply_led_disable(NULL, NULL);
+      apply_quiet(NULL, NULL);
+    }
+    if(buzzer_changed)
+    {
+      apply_buzzer(NULL, NULL);
     }
     if(ha_changed)
     {

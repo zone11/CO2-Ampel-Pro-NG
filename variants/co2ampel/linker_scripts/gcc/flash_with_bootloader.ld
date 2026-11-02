@@ -187,6 +187,14 @@ SECTIONS
 		__bss_end__ = .;
 	} > RAM
 
+	/* Not initialized at startup: keeps its content over a reset (reset record, system_control.cpp) */
+	.noinit (NOLOAD):
+	{
+		. = ALIGN(4);
+		*(.noinit*)
+		. = ALIGN(4);
+	} > RAM
+
 	.heap (COPY):
 	{
 		__end__ = .;

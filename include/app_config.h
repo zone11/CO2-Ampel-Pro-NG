@@ -5,13 +5,14 @@
 #ifndef VERSION
 #define VERSION "SET VERSION!"
 #endif
-#define PRODUCT_NAME       "CO2-Ampel-NG" //default system name (+ MAC id), HA model
+#define PRODUCT_NAME       "CO2-Ampel-NG" //HA model, page title
+#define DEFAULT_NAME       "CO2-"         //default system name: + MAC id (sys.name empty)
 #define MANUFACTURER       "zone11"       //HA manufacturer
 
 // Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).
 // Runtime settings of a disabled feature stay in the settings record but are not offered.
 #ifndef WITH_WEB
-#define WITH_WEB           1 //web server: readings, /json, /cmk-agent, /config, WiFi form
+#define WITH_WEB           1 //web server: readings, /json, /diag, /config, WiFi form
 #endif
 #ifndef WITH_HA
 #define WITH_HA            1 //Home Assistant MQTT discovery (mqtt.ha)

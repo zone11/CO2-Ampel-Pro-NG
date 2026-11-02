@@ -21,6 +21,7 @@
 
 #include "led_control.h"
 #include "system_control.h"
+#include "health.h"
 #include "sensors.h"
 #include "mqtt_service.h"
 #include "webserver.h"
@@ -62,6 +63,9 @@ void setup()
 {
   int run_menu=0;
 
+  reset_info_init(); //record of the previous run (hang/fault), before the watchdog starts
+  health_init();
+
   //pins
   pinMode(6, INPUT_PULLUP); //PA08 SDA1
   pinMode(7, INPUT_PULLUP); //PA09 SCL1
@@ -89,11 +93,22 @@ void setup()
 
   watchdog_init(); //fed by loop() and the long waits (menu, WiFi/MQTT connect, WINC bridge)
 
+  //settings, before the first LED output: Quiet keeps the LEDs dark
+  SETTINGS_LOAD load = settings_read(&settings);
+  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
+  {
+    settings_write(&settings); //save defaults or migrated settings
+  }
+  led_state_restore(); //after a watchdog reset or crash: Quiet and button level of the previous run
+
   //WS2812
   ws2812.begin();
   ws2812.setBrightness(BRIGHTNESS); //0...255
   ws2812.fill(COLOR_OFF, 0, NUM_LEDS);
-  ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs white
+  if(!settings.quiet)
+  {
+    ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs white
+  }
   ws2812.show();
 
   //Wire/I2C: release hung buses (e.g. restart while the SCD30 sends), then start
@@ -152,7 +167,7 @@ void setup()
         features |= FEATURE_SCD30;
         break;
       }
-      status_led(1000);
+      status_wait(1000);
     }
     scd30.setMeasurementInterval(MEASURE_INTERVAL);
     //scd30.startPeriodicMeasurement(1000); //0 or 700-1400, pressure in hPa
@@ -170,7 +185,7 @@ void setup()
         features |= FEATURE_SCD4X;
         break;
       }
-      status_led(1000);
+      status_wait(1000);
     }
   }
 
@@ -200,12 +215,7 @@ void setup()
     temp_offset = TEMP_OFFSET;
   }
 
-  //settings
-  SETTINGS_LOAD load = settings_read(&settings);
-  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
-  {
-    settings_write(&settings); //save defaults or migrated settings
-  }
+  //settings (read above)
   if(load == SETTINGS_DEFAULTS)
   {
     //default temperature offset (always Pro with WiFi and pressure sensor)
@@ -240,6 +250,23 @@ void setup()
     Serial.println("\nCO2 Ampel Pro NG v" VERSION);
     Serial.print("Reset cause: ");
     Serial.println(reset_cause());
+    const RESET_INFO *r = last_run();
+    if(r->valid)
+    {
+      Serial.print("Last run: ");
+      Serial.print(r->uptime);
+      Serial.print(" s, phase ");
+      Serial.print(phase_name(r->phase));
+      if(r->event != EVENT_NONE)
+      {
+        char a[40];
+        snprintf(a, sizeof(a), ", pc 0x%08lX lr 0x%08lX", (unsigned long)r->pc, (unsigned long)r->lr);
+        Serial.print(", ");
+        Serial.print(event_name(r->event));
+        Serial.print(a);
+      }
+      Serial.println();
+    }
     Serial.print("Features:");
     if(features & FEATURE_SCD30)    { Serial.print(" SCD30"); }
     if(features & FEATURE_SCD4X)    { Serial.print(" SCD4X"); }
@@ -331,8 +358,11 @@ void setup()
     {
       Serial.println("Error: CO2 sensor not found");
     }
-    leds(COLOR_RED);
-    status_led(1000);
+    if(!settings.quiet)
+    {
+      leds(COLOR_RED);
+    }
+    status_wait(1000);
     leds(COLOR_OFF);
     co2_value = co2_average = settings.range[2]; //set to red threshold
   }
@@ -349,12 +379,15 @@ void loop()
   unsigned int overwrite=0;
 
   watchdog_feed();
+  health_loop();
 
   //serial commands
+  phase_set(PHASE_SERIAL);
   serial_service();
 
 #if WITH_WEB
   //WiFi data
+  phase_set(PHASE_WEB);
   webserver_service();
 #endif
 
@@ -363,6 +396,7 @@ void loop()
 
   if(features & FEATURE_WINC1500)
   {
+    phase_set(PHASE_WIFI);
     int wifi_status = WiFi.status();
     if((wifi_status != WL_CONNECTED) && (wifi_status != WL_AP_LISTENING))
     {
@@ -381,6 +415,7 @@ void loop()
   }
 
   //button
+  phase_set(PHASE_LOOP);
   if(digitalRead(PIN_SWITCH) == LOW) //pressed
   {
     if(sw == 0)
@@ -431,8 +466,9 @@ void loop()
     //read sensor data
     if(check_sensors())
     {
+      phase_set(PHASE_LOOP);
       show_data();
-      if((dark == 0) && !settings.led_disable)
+      if((dark == 0) && !settings.quiet)
       {
         status_led(2);
       }
@@ -446,6 +482,7 @@ void loop()
   }
 
   //traffic light
+  phase_set(PHASE_LEDS);
   if(remote_on == 0)
   {
     #if USE_CO2_AVERAGE > 0
@@ -462,6 +499,7 @@ void loop()
     {
       t_light = millis();
 
+      phase_set(PHASE_LIGHT);
       light_value = light_sensor();
       if(light_value < LIGHT_DARK)
       {

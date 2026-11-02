@@ -6,6 +6,7 @@
 #include "mqtt_service.h"
 #include "sensors.h"
 #include "system_control.h"
+#include "health.h"
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
@@ -186,7 +187,7 @@ void serial_service(void)
       remote_on = 1;
       buzzer(0);
       led_brightness_update();
-      leds(settings.led_disable ? COLOR_OFF : COLOR_MENU); //led.disable applies here too
+      leds(settings.quiet ? COLOR_OFF : COLOR_MENU); //Quiet applies here too
     }
     return;
   }
@@ -211,6 +212,13 @@ void serial_service(void)
     print_led_status();
     print_wifi_status();
     print_mqtt_status();
+    return;
+  }
+  if(strcasecmp(line, "diag") == 0)
+  {
+    char diag[512];
+    health_json(diag, sizeof(diag));
+    Serial.println(diag);
     return;
   }
   if(strcasecmp(line, "winc bridge") == 0) //WiFi module flash for scripts/co2ampel_tool.py (local only)
@@ -240,6 +248,7 @@ void serial_service(void)
   }
   if(strcasecmp(line, "reset") == 0)
   {
+    mqtt_shutdown();
     if(remote_on)
     {
       Serial.println("OK");
