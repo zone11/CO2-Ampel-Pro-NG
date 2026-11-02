@@ -2,6 +2,7 @@
 
 Open changes and features for CO2-Ampel Pro NG. Order: roadmap features top down; follow-ups when convenient.
 Done items are removed (the GitHub releases list what was done).
+Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md).
 
 ## Stability (watchdog resets on the dev unit, 2026-11-01/02)
 
