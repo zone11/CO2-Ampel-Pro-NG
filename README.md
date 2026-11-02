@@ -30,8 +30,8 @@ Building your own variant, the code structure and the internals are described in
 - All settings at runtime: over USB serial, on the web configuration page or over MQTT (no recompiling)
 - Web page with the current measurements and the WiFi, MQTT and system status; JSON endpoint for your own scripts
 - MQTT with optional TLS (certificate and hostname checked)
-- Home Assistant discovery: the device, its sensors and an "LEDs" switch appear automatically
-- Switch the LEDs and the buzzer off and on over MQTT or Home Assistant (e.g. at night)
+- Home Assistant discovery: the device, its sensors and the switches "LEDs" and "Buzzer" appear automatically
+- Switch the LEDs and the buzzer off and on over MQTT or Home Assistant (e.g. at night), each on its own
 - Settings survive firmware updates; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
@@ -119,9 +119,12 @@ save
   5 minutes again. `sys.buzzer=0` turns it off completely.
 - The light sensor is checked 1 minute after power-on and then every 10 minutes. In the dark the LEDs dim to
   `led.brightness_dark` and go back to `led.brightness` when it is light again (`led.auto=0` turns this off).
-- `led.disable=1` turns the LEDs, the status LED and the buzzer off; measuring and MQTT keep running.
-  Without `save` this lasts until the next restart. After a watchdog restart it stays as it was; a power
-  loss, `reset`, the restart button or a firmware upload go back to the saved settings.
+- `led.disable=1` is a quiet mode: LEDs, status LED and buzzer off; measuring and MQTT keep running.
+  `led.disable=0` ends it, but the buzzer only sounds again if `sys.buzzer=1`.
+- `led.disable` and `sys.buzzer` can be switched over MQTT and Home Assistant at any time (see
+  [below](#switching-leds-and-buzzer-over-mqtt)). Without `save` a change lasts until the next restart. After
+  a watchdog restart it stays as it was; a power loss, `reset`, the restart button or a firmware upload go
+  back to the saved settings.
 
 ### Button
 
@@ -186,7 +189,7 @@ Without `save` a change lasts until the next restart.
 | `led.brightness` | 125 | LED brightness 1–255 |
 | `led.brightness_dark` | 20 | LED brightness in the dark 1–255 |
 | `led.auto` | 1 | dim automatically in the dark |
-| `led.disable` | 0 | LEDs, status LED and buzzer off |
+| `led.disable` | 0 | quiet mode: LEDs, status LED and buzzer off |
 | `led.color.t1` … `led.color.t4` | 007CB0, 00FF00, FF7F00, FF0000 | colors below `co2.t1`, up to `co2.t2`, up to `co2.t3`, from `co2.t3` |
 | `wifi.ssid`, `wifi.pass` | empty | WiFi network and password |
 | `mqtt.enabled` | 0 | MQTT on |
@@ -284,7 +287,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |
-| `<base>/state` | `{"led.disable":false}` | on connect and on every change | yes |
+| `<base>/state` | `{"led.disable":false,"sys.buzzer":1}` | on connect and on every change | yes |
 | `<base>/cmd` | commands to the device, see below | – | – |
 | `<base>/resp` | replies to commands | after each command | no |
 
@@ -298,7 +301,7 @@ retained messages stay on the broker; delete them there if you want.
 ### Home Assistant
 
 With `mqtt.ha=1` Home Assistant (with the MQTT integration) creates a device named like `sys.name` with
-the entities CO2, Temperature, Humidity, Light and (with a pressure sensor) Pressure, a switch "LEDs", and
+the entities CO2, Temperature, Humidity, Light and (with a pressure sensor) Pressure, the switches "LEDs" and "Buzzer", and
 the diagnostic entities Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase,
 Free RAM minimum and Longest loop. They show "unavailable" while the device is offline. `mqtt.ha=0` removes
 them again.
@@ -311,11 +314,18 @@ them again.
 - Home Assistant finds the device under its default discovery prefix `homeassistant`. This only matters if
   you changed that prefix in Home Assistant's MQTT settings: then the device does not show up.
 
-### Switching the LEDs Over MQTT
+### Switching LEDs and Buzzer Over MQTT
 
-`{"led.disable":true}` / `{"led.disable":false}` on `<base>/cmd` switches the LEDs and the buzzer off and
-on. This always works, also with `mqtt.config=0`, and is what the Home Assistant switch does. It is not
-saved, so it doesn't wear the flash; after a restart the saved setting applies again.
+These commands on `<base>/cmd` always work, also with `mqtt.config=0`; the Home Assistant switches send them:
+
+| Command | Effect | HA switch |
+|---|---|---|
+| `{"led.disable":true}` / `{"led.disable":false}` | quiet mode on (LEDs, status LED and buzzer off) / off | "LEDs" off / on |
+| `{"sys.buzzer":0}` / `{"sys.buzzer":1}` | buzzer alarm off / on, the LEDs stay as they are | "Buzzer" off / on |
+
+The buzzer sounds only with `sys.buzzer=1` **and** quiet mode off. `<base>/state` shows both values right
+after every change. The commands are not saved, so they don't wear the flash; after a restart the saved
+settings apply again (except after a watchdog restart, see [Using the Device](#using-the-device)).
 
 ### Remote Configuration
 

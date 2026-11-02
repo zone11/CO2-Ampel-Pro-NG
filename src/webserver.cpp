@@ -444,7 +444,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
     row(out, "Home Assistant", settings.mqtt_ha ? "on" : "off");
 #endif
 #if WITH_MQTT_CONFIG
-    row(out, "Remote config", settings.mqtt_config ? "on" : "off (led.disable only)");
+    row(out, "Remote config", settings.mqtt_config ? "on" : "off (LEDs and buzzer only)");
 #endif
   }
   out.print("</fieldset>\r\n");

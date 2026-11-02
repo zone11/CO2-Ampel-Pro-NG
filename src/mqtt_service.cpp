@@ -62,7 +62,7 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
-static int state_led_disable = -1; //led.disable last published on <base>/state, -1 = not yet
+static int state_published = -1; //led.disable + sys.buzzer last published on <base>/state, -1 = not yet
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -148,7 +148,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
-    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (led.disable)
+    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (led.disable, sys.buzzer)
   }
   cmd_state = CMD_NONE;
 
@@ -246,28 +246,38 @@ static void mqtt_publish_discovery(void)
     mqttClient.publish(topic, json, true, 0);
   }
 
-  //switch "LEDs": on = led.disable false; commands on <base>/cmd (also with mqtt.config=0), state from <base>/state
-  snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/led/config", device_id);
-#if WITH_MQTT_CONFIG
-  if(settings.mqtt_ha)
+  //switches from <base>/state, commands on <base>/cmd (also with mqtt.config=0, RAM only)
+  //"LEDs": on = led.disable false; "Buzzer": on = sys.buzzer 1
+  static const struct { const char *key, *name, *icon, *on, *off, *state; } switches[] =
   {
-    size_t n = snprintf(json, sizeof(json),
-      "{\"name\":\"LEDs\",\"unique_id\":\"co2ampel_%s_led\",\"icon\":\"mdi:traffic-light\","
-      "\"command_topic\":\"%s/cmd\",\"payload_on\":\"{\\\"led.disable\\\":false}\","
-      "\"payload_off\":\"{\\\"led.disable\\\":true}\",\"state_topic\":\"%s/state\","
-      "\"value_template\":\"{{ 'OFF' if value_json['led.disable'] else 'ON' }}\","
-      "\"state_on\":\"ON\",\"state_off\":\"OFF\"," //without them HA compares the template result with payload_on/off
-      "\"availability_topic\":\"%s/status\"",
-      device_id, base, base, base);
-    n = ha_device(json, sizeof(json), n, device_id, name);
-    if(n < sizeof(json))
+    { "led",    "LEDs",   "mdi:traffic-light", "{\\\"led.disable\\\":false}", "{\\\"led.disable\\\":true}",
+      "{{ 'OFF' if value_json['led.disable'] else 'ON' }}" },
+    { "buzzer", "Buzzer", "mdi:volume-high",   "{\\\"sys.buzzer\\\":1}",      "{\\\"sys.buzzer\\\":0}",
+      "{{ 'ON' if value_json['sys.buzzer'] else 'OFF' }}" },
+  };
+  for(const auto &sw : switches)
+  {
+    snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/%s/config", device_id, sw.key);
+#if WITH_MQTT_CONFIG
+    if(settings.mqtt_ha)
     {
-      mqttClient.publish(topic, json, true, 0);
+      size_t n = snprintf(json, sizeof(json),
+        "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"icon\":\"%s\","
+        "\"command_topic\":\"%s/cmd\",\"payload_on\":\"%s\",\"payload_off\":\"%s\","
+        "\"state_topic\":\"%s/state\",\"value_template\":\"%s\","
+        "\"state_on\":\"ON\",\"state_off\":\"OFF\"," //without them HA compares the template result with payload_on/off
+        "\"availability_topic\":\"%s/status\"",
+        sw.name, device_id, sw.key, sw.icon, base, sw.on, sw.off, base, sw.state, base);
+      n = ha_device(json, sizeof(json), n, device_id, name);
+      if(n < sizeof(json))
+      {
+        mqttClient.publish(topic, json, true, 0);
+      }
+      continue;
     }
-    return;
-  }
 #endif
-  mqttClient.publish(topic, "", true, 0); //off (or no command topic): remove the switch
+    mqttClient.publish(topic, "", true, 0); //off (or no command topic): remove the switch
+  }
 }
 #endif //WITH_HA
 
@@ -326,7 +336,7 @@ void print_mqtt_status(void)
 #endif
 #if WITH_MQTT_CONFIG
   Serial.print("Remote config: ");
-  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off (<prefix>/<id>/cmd: led.disable only)");
+  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off (<prefix>/<id>/cmd: led.disable, sys.buzzer only)");
 #endif
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
   {
@@ -506,7 +516,7 @@ void mqtt_connect(void)
   {
     health.mqtt_connects++;
     mqttClient.publish(topic, "online", true, 1);
-    state_led_disable = -1; //publish <base>/state again
+    state_published = -1; //publish <base>/state again
 #if WITH_HA
     ha_published = false;
     if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
@@ -516,7 +526,7 @@ void mqtt_connect(void)
     }
 #endif
 #if WITH_MQTT_CONFIG
-    //always subscribed: control (led.disable) also works with mqtt.config=0, configuration only with 1
+    //always subscribed: control (led.disable, sys.buzzer) also works with mqtt.config=0, configuration only with 1
     mqttClient.onMessageAdvanced(mqtt_message);
     mqtt_topic(topic, sizeof(topic), "cmd");
     mqttClient.subscribe(topic, 0);
@@ -707,13 +717,16 @@ void mqtt_service(void)
     return;
   }
 
-  //control state (retained): on connect and right after every change of led.disable
-  if(state_led_disable != (int)settings.led_disable)
+  //control state (retained): on connect and right after every change of led.disable or sys.buzzer
+  int state = (settings.led_disable ? 1 : 0) | ((settings.buzzer ? 1 : 0) << 1);
+  if(state_published != state)
   {
-    char topic[96];
-    state_led_disable = settings.led_disable;
+    char topic[96], json[48];
+    state_published = state;
+    snprintf(json, sizeof(json), "{\"led.disable\":%s,\"sys.buzzer\":%u}",
+             settings.led_disable ? "true" : "false", settings.buzzer ? 1 : 0);
     mqtt_topic(topic, sizeof(topic), "state");
-    mqttClient.publish(topic, settings.led_disable ? "{\"led.disable\":true}" : "{\"led.disable\":false}", true, 0);
+    mqttClient.publish(topic, json, true, 0);
   }
 
   //periodic publishing

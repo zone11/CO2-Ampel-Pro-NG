@@ -10,10 +10,10 @@ void leds(uint32_t color)
 static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
 
-// LED state in the reset record: bit 0 = led.disable, bits 8-15 = button level
-static void led_state_save(void)
+// LED state in the reset record: bit 0 = led.disable, bit 1 = sys.buzzer, bits 8-15 = button level
+void led_state_save(void)
 {
-  reset_record_led((settings.led_disable ? 1 : 0) | ((led_level & 0xFF) << 8));
+  reset_record_led((settings.led_disable ? 1 : 0) | (settings.buzzer ? 2 : 0) | ((led_level & 0xFF) << 8));
 }
 
 void led_state_restore(void)
@@ -22,6 +22,7 @@ void led_state_restore(void)
   {
     uint32_t led = last_run()->led;
     settings.led_disable = (led & 1) != 0;
+    settings.buzzer = (led >> 1) & 1;
     led_level = (led >> 8) & 0xFF;
   }
   led_state_save();
@@ -56,6 +57,18 @@ void led_button_step(void)
   led_level = ((level < min) || (level < 1)) ? 0 : level; //below the minimum: back to the maximum
   led_state_save();
   led_brightness_update();
+}
+
+bool apply_buzzer(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  led_state_save();
+  if(!settings.buzzer)
+  {
+    buzzer(0); //immediately
+  }
+  return true;
 }
 
 bool apply_led_disable(void *user, const cfg_item_t *item)
