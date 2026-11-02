@@ -153,6 +153,18 @@ when a read fails. Out-of-range pressure readings are dropped.
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
 
+## Socket Write Deadline
+
+`WiFiSocket::write()` retries `send()` forever while it returns `SOCK_ERR_BUFFER_FULL`, which also covers any failed
+request to the WiFi module. `scripts/wifi_send_guard.py` compiles that one library file with `send` renamed to
+`guarded_send()` (`wifi_manager.cpp`), which returns `SOCK_ERR_TIMEOUT` after `NET_WRITE_TIMEOUT`; the library then
+reports a failed write. MQTT closes and reconnects, the web page drops the rest of its output. After
+`NET_WRITE_TIMEOUTS_MAX` timeouts without a successful send the guard stops giving up: the module is probably stuck
+and only the watchdog restart recovers it.
+
+After a library update check that `nm firmware.elf` still lists `guarded_send`: LTO drops it if the rename no
+longer applies.
+
 ## MQTT Internals
 
 - After handling a command the device clears `<base>/cmd` with an empty retained message, so a command

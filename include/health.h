@@ -12,6 +12,7 @@ typedef struct
   uint32_t mqtt_failures; // failed MQTT connects since boot
   int mqtt_error;         // lwmqtt error of the last failed connect
   uint32_t i2c_errors;    // I2C bus timeouts, bus errors and stuck lines since boot
+  uint32_t net_write_timeouts; // socket writes given up after NET_WRITE_TIMEOUT since boot
 } HEALTH_COUNTERS;
 
 extern HEALTH_COUNTERS health;

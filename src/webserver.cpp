@@ -56,7 +56,10 @@ public:
   {
     if(len > 0)
     {
-      client.write((const uint8_t *)buf, len);
+      if(!client.getWriteError()) //after a write timeout: don't wait again for every block of the page
+      {
+        client.write((const uint8_t *)buf, len);
+      }
       len = 0;
     }
   }

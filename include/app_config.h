@@ -36,6 +36,8 @@
 
 //--- Watchdog ---
 #define WATCHDOG_TIMEOUT   120 //s without watchdog_feed() until reset (multiple of 2; WiFi/MQTT connects can block ~100 s)
+#define NET_WRITE_TIMEOUT 5000UL  //ms a socket write waits for the WiFi module
+#define NET_WRITE_TIMEOUTS_MAX 3  //in a row without a successful send, then the watchdog takes over
 
 //--- WiFi ---
 #define WIFI_SSID          "" //WiFi SSID

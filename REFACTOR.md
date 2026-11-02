@@ -1,15 +1,11 @@
 # Refactor
 
 Accepted refactor items from the code audit of 0.7 (2026-11-02). Decision: no rewrite, targeted fixes.
-Order: high first; H2 is a likely cause of the watchdog hangs (TODO.md "Stability").
+Order: high first.
 Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. hardware test).
 
 ## High
 
-- [ ] **H2 Socket writes without timeout** (M): WiFi101 `WiFiSocketClass::write` retries forever on
-      `SOCK_ERR_BUFFER_FULL` (`WiFiSocket.cpp:297`) when the peer stops reading; all MQTT publishes and web
-      pages go through it. Write deadline (e.g. 5 s) in a thin Client wrapper or a library override, then
-      close the socket; count it in `health`. `tls_client.*`, `mqtt_service.cpp`, `webserver.cpp` ChunkPrint.
 - [ ] **H3 Blocking, duplicated reconnects** (L): `wifi_start()` runs from `loop()` every 30 s (`main.cpp:405`)
       and from `webserver_service()` every 60 s (`webserver.cpp:684`), each blocks ≥ 6 s, then `mqtt_connect()`
       up to ~40 s (DNS 20 s + connect 20 s + 2 s retry); LEDs, button and serial stand still. One connection
