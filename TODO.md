@@ -16,8 +16,17 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       reset doesn't turn the LEDs back on.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
-- [ ] First MQTT connect right after boot sometimes fails ("Network connection failed", seen 2026-11-02 in 2
-      of 5 boots); the 30 s retry connects. Check whether a short wait after the WiFi connect helps.
+- [ ] First MQTT connect after a quick restart sometimes fails at once ("Network connection failed", TCP connect
+      refused within 0.1 s, WiFi already has its IP); the 30 s retry connects. Seen 2026-11-02 only when the
+      previous run was reset seconds after its MQTT connect (likely the broker still holds that connection);
+      not after the overnight watchdog resets (outages 2:00-2:05 = first attempt worked). Waiting longer for
+      WiFi does not help. Fix: retry once after ~2 s on a fast connect failure; clean MQTT disconnect
+      (`offline` + DISCONNECT) before intentional restarts (`reset`, /restart, reset_mcu).
+
+## Small changes
+
+- [ ] Default `sys.name`: `CO2-<MAC id>` instead of `CO2-Ampel-NG <MAC id>` (hostname, AP SSID, HA device and
+      page title follow; devices with an empty `sys.name` get a new HA device name, entity IDs stay; README).
 
 ## Features (roadmap)
 
