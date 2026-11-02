@@ -362,7 +362,7 @@ When WiFi is enabled, the device creates either:
 - **AP Mode**: Creates access point `<sys.name>` (default `CO2-Ampel-NG <MAC id>`)
 
 Available endpoints:
-- `/` - Status page in sections: Readings (with the current traffic light color), WiFi (status, IP, signal,
+- `/` - Status page titled `CO2-Ampel-NG | <sys.name>`, in sections: Measurements (with the current traffic light color), WiFi (status, IP, signal,
   MAC, WiFi module firmware; "Change WiFi" opens a form for SSID + password, saved to flash, applies after a
   reboot), MQTT (connected or the last connect error, broker, base topic, last publish, connects/failures,
   Home Assistant and remote config on/off) and System (firmware, uptime, reset cause, last hang or crash,
@@ -370,7 +370,7 @@ Available endpoints:
   for the password
 - `/json` - JSON API with sensor readings
 - `/diag` - Diagnostics as JSON (same as serial `diag`, see [Diagnostics](#diagnostics))
-- `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,
+- `/config` - Configuration page (`CO2-Ampel-NG | <sys.name> | Configuration`): all settings as a form (grouped like the keys; passwords are never shown,
   an empty password field keeps the current one), "Save" stores immediately (all or nothing, like
   `json import`); JSON upload (file or paste) and download; restart button (WiFi/MQTT changes apply after
   a restart). With `sys.password` set, every action asks for it

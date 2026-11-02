@@ -204,8 +204,21 @@ static void print_field(Print &out, const cfg_item_t *item)
   out.print("<br/>\r\n");
 }
 
-// HTTP header and HTML head shared by the pages (same style); extra = additional head elements
-static void page_head(Print &out, const char *title, const char *extra)
+// Page title "CO2-Ampel-NG | <sys.name>[ | <page>]"
+static void page_title(Print &out, const char *page)
+{
+  out.print(PRODUCT_NAME " | ");
+  print_html(out, system_name(), false);
+  if(page)
+  {
+    out.print(" | ");
+    out.print(page);
+  }
+}
+
+// HTTP header, HTML head and heading shared by the pages (same style); page = NULL for the main page,
+// extra = additional head elements
+static void page_head(Print &out, const char *page, const char *extra)
 {
   out.print("HTTP/1.1 200 OK\r\n"
             "Content-Type: text/html\r\n"
@@ -213,15 +226,16 @@ static void page_head(Print &out, const char *title, const char *extra)
             "\r\n"
             "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><meta name=viewport content='width=device-width'>\r\n"
             "<title>");
-  out.print(title);
+  page_title(out, page);
   out.print("</title>\r\n"
             "<link rel=icon href='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA='>\r\n"
             "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
             "label{display:inline-block;width:14em}fieldset{margin-bottom:10px}"
-            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}"
-            ".big{font-size:2em}.big label{font-size:0.5em}</style>\r\n");
+            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}</style>\r\n");
   out.print(extra);
-  out.print("</head><body>\r\n");
+  out.print("</head><body>\r\n<h2>");
+  page_title(out, page);
+  out.print("</h2>\r\n");
 }
 
 // GET /config: all settings as a form (from the key table), JSON upload/download, restart
@@ -230,11 +244,10 @@ static void config_page(WiFiClient &client, const char *result)
   ChunkPrint out(client);
   bool pw = settings_password_set();
 
-  page_head(out, "CO2-Ampel Config",
+  page_head(out, "Configuration",
             "<script>function pw(f){var p=document.getElementById('pw'),h=f.elements[0];if(p)h.value=p.value;}\r\n"
             "function ld(i){var r=new FileReader();r.onload=function(){document.getElementById('j').value=r.result;};"
             "r.readAsText(i.files[0]);}</script>\r\n");
-  out.print("<h2>CO2-Ampel configuration</h2>\r\n");
   if((result != NULL) && result[0])
   {
     out.print("<pre>");
@@ -318,16 +331,12 @@ static void main_page(WiFiClient &client, const char *form_msg)
   bool pw = settings_password_set(); //with a password: no SSID, broker or topic on this page
   char v[96], f1[16], f2[16];
 
-  page_head(out, "CO2-Ampel",
+  page_head(out, NULL,
             "<meta http-equiv=refresh content=30>\r\n"
             "<script>function wifi(){var b=document.getElementById('wifi');"
             "b.style.display=(b.style.display=='block')?'none':'block';}</script>\r\n");
-  out.print("<h2>");
-  print_html(out, system_name());
-  out.print("</h2>\r\n");
-
-  //readings: without a CO2 sensor "--" instead of start values; pressure only with a pressure sensor
-  out.print("<fieldset class=big><legend>Readings</legend>\r\n");
+  //measurements: without a CO2 sensor "--" instead of start values; pressure only with a pressure sensor
+  out.print("<fieldset><legend>Measurements</legend>\r\n");
   uint32_t shown = ws2812.getPixelColor(0);
   snprintf(v, sizeof(v), "%u ppm", co2_value);
   out.print("<label>CO2</label> ");
@@ -338,19 +347,19 @@ static void main_page(WiFiClient &client, const char *form_msg)
     out.print(v);
   }
   out.print("<br/>\r\n");
-  snprintf(v, sizeof(v), "%s &deg;C", fmt1(f1, temp_value));
-  out.print("<label>Temperature</label> "); out.print(co2_valid ? v : "--"); out.print("<br/>\r\n");
+  snprintf(v, sizeof(v), "%s °C", fmt1(f1, temp_value));
+  row(out, "Temperature", co2_valid ? v : "--");
   snprintf(v, sizeof(v), "%s %%", fmt1(f1, humi_value));
-  out.print("<label>Humidity</label> "); out.print(co2_valid ? v : "--"); out.print("<br/>\r\n");
+  row(out, "Humidity", co2_valid ? v : "--");
   if(pres_valid)
   {
     snprintf(v, sizeof(v), "%s hPa", fmt1(f1, pres_value));
-    out.print("<label>Pressure</label> "); out.print(v); out.print("<br/>\r\n");
-    snprintf(v, sizeof(v), "%s &deg;C", fmt1(f1, temp2_value));
-    out.print("<label>Pressure sensor temperature</label> "); out.print(v); out.print("<br/>\r\n");
+    row(out, "Pressure", v);
+    snprintf(v, sizeof(v), "%s °C", fmt1(f1, temp2_value));
+    row(out, "Pressure sensor temperature", v);
   }
   snprintf(v, sizeof(v), "%u", light_value);
-  out.print("<label>Light</label> "); out.print((light_value < 1024) ? v : "--"); out.print("<br/>\r\n"); //1024 = no reading yet
+  row(out, "Light", (light_value < 1024) ? v : "--"); //1024 = no reading yet
   out.print("</fieldset>\r\n");
 
   //WiFi
