@@ -1,5 +1,6 @@
 #include "sensors.h"
 #include "led_control.h"
+#include "system_control.h"
 
 // Formats like "%.1f" without printf float support (not linked: saves the libc float/dtoa code)
 const char *fmt1(char *buf, float value)
@@ -165,6 +166,8 @@ void co2_set_asc(bool on)
 
 static void read_pressure(void)
 {
+  uint8_t phase = sys_phase;
+  phase_set(PHASE_PRESSURE);
   if(features & FEATURE_LPS22HB)
   {
     pres_value  = lps22.readPressure()*10; //kPa -> hPa
@@ -177,11 +180,13 @@ static void read_pressure(void)
     temp2_value = bmp280.readTemperature()-temp_offset;
     pres_valid  = true;
   }
+  sys_phase = phase;
 }
 
 unsigned int check_sensors(void) //read the sensors
 {
   static unsigned long t_pres = 0;
+  phase_set(PHASE_CO2);
   if(features & FEATURE_SCD30)
   {
     uint16_t ready = 0;

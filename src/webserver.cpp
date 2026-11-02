@@ -2,6 +2,7 @@
 #include "sensors.h"
 #include "settings_registry.h"
 #include "wifi_manager.h"
+#include "health.h"
 
 #include <ctype.h>
 
@@ -554,6 +555,17 @@ void webserver_service(void)
             n += sprintf(buf + n, " \"p\": %s,\r\n \"u\": %s,\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
           sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
+          client.print(buf);
+        }
+        else if(strncmp(req[0], "GET /diag", 9) == 0) //health JSON
+        {
+          int n = sprintf(buf,
+              "HTTP/1.1 200 OK\r\n" \
+              "Content-Type: application/json\r\n" \
+              "Connection: close\r\n" \
+              "\r\n");
+          n += health_json(buf + n, sizeof(buf) - n - 2);
+          strcpy(buf + n, "\r\n");
           client.print(buf);
         }
         else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk agent

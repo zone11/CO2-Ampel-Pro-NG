@@ -2,6 +2,7 @@
 #include "sensors.h"
 #include "settings_registry.h"
 #include "system_control.h"
+#include "health.h"
 #include "wifi_manager.h"
 
 #if WITH_MQTT_CONFIG
@@ -177,17 +178,23 @@ typedef struct
   const char *unit;         // NULL = none
   bool diagnostic;
   unsigned int needs;       // required feature bits, 0 = always
+  bool text;                // text sensor (no state_class)
 } HA_ENTITY;
 
 static const HA_ENTITY ha_entities[] =
 {
-  { "co2",           "CO2",                         "sensors", "carbon_dioxide",       "ppm", false, 0 },
-  { "temperature",   "Temperature",                 "sensors", "temperature",          "°C",  false, 0 },
-  { "humidity",      "Humidity",                    "sensors", "humidity",             "%",   false, 0 },
-  { "pressure",      "Pressure",                    "sensors", "atmospheric_pressure", "hPa", false, FEATURE_LPS22HB|FEATURE_BMP280 },
-  { "pressure_temp", "Pressure sensor temperature", "sensors", "temperature",          "°C",  true,  FEATURE_LPS22HB|FEATURE_BMP280 },
-  { "light",         "Light",                       "sensors", NULL,                   NULL,  false, 0 },
-  { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0 },
+  { "co2",           "CO2",                         "sensors", "carbon_dioxide",       "ppm", false, 0, false },
+  { "temperature",   "Temperature",                 "sensors", "temperature",          "°C",  false, 0, false },
+  { "humidity",      "Humidity",                    "sensors", "humidity",             "%",   false, 0, false },
+  { "pressure",      "Pressure",                    "sensors", "atmospheric_pressure", "hPa", false, FEATURE_LPS22HB|FEATURE_BMP280, false },
+  { "pressure_temp", "Pressure sensor temperature", "sensors", "temperature",          "°C",  true,  FEATURE_LPS22HB|FEATURE_BMP280, false },
+  { "light",         "Light",                       "sensors", NULL,                   NULL,  false, 0, false },
+  { "rssi",          "WiFi signal",                 "wifi",    "signal_strength",      "dBm", true,  0, false },
+  { "uptime",        "Uptime",                      "diag",    "duration",             "s",   true,  0, false },
+  { "reset",         "Reset cause",                 "diag",    NULL,                   NULL,  true,  0, true  },
+  { "last_phase",    "Last reset phase",            "diag",    NULL,                   NULL,  true,  0, true  },
+  { "ram_free_min",  "Free RAM minimum",            "diag",    "data_size",            "B",   true,  0, false },
+  { "loop_max_ms",   "Longest loop",                "diag",    "duration",             "ms",  true,  0, false },
 };
 
 static bool ha_published = false; //configs published since boot (for the removal)
@@ -225,8 +232,8 @@ static void mqtt_publish_discovery(void)
     size_t n = snprintf(json, sizeof(json),
       "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\","
       "\"state_topic\":\"%s/%s\",\"value_template\":\"{{ value_json.%s }}\","
-      "\"availability_topic\":\"%s/status\",\"state_class\":\"measurement\"",
-      e.name, device_id, e.key, base, e.state, e.key, base);
+      "\"availability_topic\":\"%s/status\"%s",
+      e.name, device_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
@@ -398,6 +405,7 @@ void mqtt_connect(void)
 
   //connect (DNS, TCP and TLS can block up to ~40 s)
   watchdog_feed();
+  phase_set(PHASE_MQTT_CONNECT);
   boolean connected = false;
   if(strlen(settings.mqtt_user) > 0)
   {
@@ -412,6 +420,7 @@ void mqtt_connect(void)
 
   if(connected)
   {
+    health.mqtt_connects++;
     mqttClient.publish(topic, "online", true, 1);
     state_led_disable = -1; //publish <base>/state again
 #if WITH_HA
@@ -435,6 +444,8 @@ void mqtt_connect(void)
   }
   else
   {
+    health.mqtt_failures++;
+    health.mqtt_error = mqttClient.lastError();
     if(features & FEATURE_USB)
     {
       Serial.print("MQTT connection failed - ");
@@ -562,6 +573,12 @@ void mqtt_publish_sensors(void)
            ssid, ip[0], ip[1], ip[2], ip[3], (long)WiFi.RSSI());
   mqttClient.publish(topic, json, false, 0);
 
+  //health (retained: the last state before a hang stays on the broker)
+  char diag[512];
+  health_json(diag, sizeof(diag));
+  mqtt_topic(topic, sizeof(topic), "diag");
+  mqttClient.publish(topic, diag, true, 0);
+
   if(features & FEATURE_USB)
   {
     mqtt_topic(topic, sizeof(topic), "sensors");
@@ -585,6 +602,7 @@ void mqtt_service(void)
   }
 
   //MQTT Loop (non-blocking)
+  phase_set(PHASE_MQTT_LOOP);
   mqttClient.loop();
 
 #if WITH_MQTT_CONFIG
@@ -593,6 +611,7 @@ void mqtt_service(void)
   {
     if(mqttClient.connected())
     {
+      phase_set(PHASE_MQTT_CMD);
       mqtt_handle_command();
     }
     else
@@ -637,6 +656,7 @@ void mqtt_service(void)
   if((millis() - last_publish) > (settings.mqtt_interval * 1000UL))
   {
     last_publish = millis();
+    phase_set(PHASE_MQTT_PUBLISH);
     mqtt_publish_sensors();
   }
 }

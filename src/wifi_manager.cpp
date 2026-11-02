@@ -1,6 +1,7 @@
 #include "wifi_manager.h"
 #include "led_control.h"
 #include "system_control.h"
+#include "health.h"
 
 void get_device_id(char *buffer, size_t buffer_size)
 {
@@ -195,6 +196,8 @@ unsigned int wifi_start(void)
   }
 
   watchdog_feed(); //WiFi.begin() blocks up to 60 s
+  phase_set(PHASE_WIFI_CONNECT);
+  health.wifi_connects++;
   WiFi.hostname(hostname);
   if(strlen(settings.wifi_code) > 0) //password
   {

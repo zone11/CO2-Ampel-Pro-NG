@@ -41,6 +41,8 @@ This is going to be a modernized version of the original CO2-Ampel firmware, mig
 - ✅ Configuration as JSON: `json export` / `json import` on serial, JSON over MQTT, web configuration page
 - ✅ Optional enable password for serial and the web forms
 - ✅ Watchdog: restarts the device when the firmware hangs (reset cause in `status` and MQTT `device`)
+- ✅ Diagnostics: uptime, reset count, where a hang or crash happened, free RAM, loop time and
+  connection counters (serial `diag`, web `/diag`, MQTT `<base>/diag`, Home Assistant diagnostic entities)
 
 **Planned Features:**
 - [ ] LoRaWAN/TTN integration
@@ -61,7 +63,7 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 94 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 97 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -100,7 +102,10 @@ Behavior:
   log); if the CO2 sensor is still missing, unplug the device briefly
 - A watchdog restarts the device when the firmware hangs: after 2 minutes without progress (e.g. a sensor
   blocking the I2C bus), after 4 seconds if interrupts stop. The boot log, `status` and the MQTT `device`
-  topic show the cause of the last reset (`power-on`, `watchdog`, `software`, `reset pin`, `brown-out`)
+  topic show the cause of the last reset (`power-on`, `watchdog`, `fault`, `software`, `reset pin`, `brown-out`)
+- Diagnostics survive every reset except a power loss: after a hang (watchdog) or a crash (`fault`, the device
+  restarts at once) `diag` shows what the firmware was doing (`last_phase`) and the code address (`last_pc`,
+  `last_lr`), see [Diagnostics](#diagnostics)
 
 **Customize your thresholds and colors:**
 ```bash
@@ -156,6 +161,7 @@ enable [pw]    Allow changes (set/save; LEDs violet and dimmed unless led.disabl
                with sys.password set: enable <password>
 exit           Leave enable mode (traffic light resumes)
 status         Show measurements, CO2 sensor info, LED state (incl. the color shown) and WiFi/MQTT status
+diag           Show the diagnostics as JSON (uptime, last reset, RAM, loop time, connection counters)
 i2c scan       List responding I2C devices on both buses (with chip IDs)
 winc bridge    WiFi module flash access for scripts/co2ampel_tool.py (enable; restarts the device)
 reset          Reset device (after enable it answers OK and turns the LEDs off first)
@@ -360,6 +366,7 @@ Available endpoints:
   `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
 - `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
+- `/diag` - Diagnostics as JSON (same as serial `diag`, see [Diagnostics](#diagnostics))
 - `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,
   an empty password field keeps the current one), "Save" stores immediately (all or nothing, like
   `json import`); JSON upload (file or paste) and download; restart button (WiFi/MQTT changes apply after
@@ -374,6 +381,37 @@ Example JSON response:
 `c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
 `u` pressure sensor temperature (°C) only with a pressure sensor, `c`/`t`/`h` only with a working CO2
 sensor (the same applies to `/cmk-agent`, and the page `/` shows `--`). The page `/` refreshes every 2 minutes.
+
+### Diagnostics
+
+Serial `diag`, the web endpoint `/diag` and the MQTT topic `<base>/diag` return the same JSON:
+
+```json
+{"uptime":3600,"resets":1,"reset":"watchdog","last_event":"hang","last_phase":"mqtt.loop",
+ "last_pc":"0x0000C872","last_lr":"0x000090C5","last_uptime":7342,"ram_free":13512,"ram_free_min":13096,
+ "heap_free":24,"loop_max_ms":59,"wifi_connects":1,"mqtt_connects":1,"mqtt_failures":0,"mqtt_error":0}
+```
+
+| Key | Meaning |
+|---|---|
+| `uptime` | seconds since the last start |
+| `resets` | resets since power-on (0 after power-on) |
+| `reset` | cause of the last reset (as in `status`) |
+| `last_event` | `hang` (watchdog after 2 minutes without progress), `fault` (crash, restarted at once) or `none` (other resets; `watchdog` with `none` = interrupts stopped) |
+| `last_phase` | what the firmware did last before the reset: `boot`, `loop`, `serial`, `web`, `wifi`, `wifi.connect`, `mqtt.loop`, `mqtt.connect`, `mqtt.publish`, `mqtt.cmd`, `co2`, `pressure`, `light`, `leds` |
+| `last_pc`, `last_lr` | code address of the hang or crash (0 without one) |
+| `last_uptime` | how long the previous run lasted (s, 2 s steps) |
+| `ram_free` | free RAM between heap and stack now (bytes) |
+| `ram_free_min` | free RAM never touched since boot (bytes; the closest the stack came to the heap) |
+| `heap_free` | free bytes inside the heap |
+| `loop_max_ms` | longest main loop since boot (ms) |
+| `wifi_connects` | WiFi connect attempts since boot |
+| `mqtt_connects`, `mqtt_failures`, `mqtt_error` | MQTT connects / failed connects since boot, error of the last failed one |
+
+The `last_*` values come from a RAM area that survives every reset except a power loss (`resets` 0 and
+`last_event` `none` after power-on). To map `last_pc` to the source, keep the `firmware.elf` of the flashed
+build and run `arm-none-eabi-addr2line -f -C -i -e firmware.elf <last_pc> <last_lr>` (the toolchain is in
+`~/.platformio/packages/toolchain-gccarmnoneeabi/bin/`).
 
 ### MQTT
 
@@ -391,6 +429,7 @@ messages stay on the broker; clear them there if needed).
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
 | `<base>/device` | `{"name":"CO2-Ampel-NG F8F0056E78A2","version":"0.6","reset":"power-on","sensors":["SCD30","LPS22HB"]}` (`sys.name`, firmware version, cause of the last reset, sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
+| `<base>/diag` | diagnostics JSON, see [Diagnostics](#diagnostics) (retained: the last values before a hang stay on the broker) | every interval | yes |
 | `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
 | `<base>/state` | `{"led.disable":false}` (current LED state) | on connect and on every change | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
@@ -437,7 +476,8 @@ immediately). The device then publishes retained discovery configs (now and on e
 the MQTT integration) creates a device named `sys.name` (model CO2-Ampel-NG, manufacturer zone11, firmware
 version) with the entities CO2, Temperature, Humidity,
 Light, and, with a pressure sensor, Pressure; "Pressure sensor temperature" and "WiFi signal" appear as
-diagnostic entities, plus a switch "LEDs" (on = LEDs on; off sends `{"led.disable":true}` to `<base>/cmd`,
+diagnostic entities (also Uptime, Reset cause, Last reset phase, Free RAM minimum and Longest loop from
+`<base>/diag`), plus a switch "LEDs" (on = LEDs on; off sends `{"led.disable":true}` to `<base>/cmd`,
 works with `mqtt.config=0`, RAM only, see LED control below). They read from `<base>/sensors`,
 `<base>/wifi` and `<base>/state` and become unavailable when
 `<base>/status` is `offline`. `set mqtt.ha=0` removes the entities again right away (one empty retained
