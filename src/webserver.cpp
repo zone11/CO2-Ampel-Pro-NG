@@ -217,7 +217,7 @@ static void page_head(Print &out, const char *title, const char *extra)
   out.print("</title>\r\n"
             "<link rel=icon href='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA='>\r\n"
             "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
-            "label{display:inline-block;width:12em}fieldset{margin-bottom:10px}"
+            "label{display:inline-block;width:14em}fieldset{margin-bottom:10px}"
             "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}"
             ".big{font-size:2em}.big label{font-size:0.5em}</style>\r\n");
   out.print(extra);
@@ -311,7 +311,7 @@ static const char *fmt_duration(char *buf, size_t size, unsigned long s)
   return buf;
 }
 
-// GET /: readings, WiFi (with the login form), MQTT and system status in sections like /config
+// GET /: names as in Home Assistant; readings, WiFi (with the login form), MQTT and system status in sections like /config
 static void main_page(WiFiClient &client, const char *form_msg)
 {
   ChunkPrint out(client);
@@ -319,7 +319,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   char v[96], f1[16], f2[16];
 
   page_head(out, "CO2-Ampel",
-            "<meta http-equiv=refresh content=120>\r\n"
+            "<meta http-equiv=refresh content=30>\r\n"
             "<script>function wifi(){var b=document.getElementById('wifi');"
             "b.style.display=(b.style.display=='block')?'none':'block';}</script>\r\n");
   out.print("<h2>");
@@ -347,7 +347,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
     snprintf(v, sizeof(v), "%s hPa", fmt1(f1, pres_value));
     out.print("<label>Pressure</label> "); out.print(v); out.print("<br/>\r\n");
     snprintf(v, sizeof(v), "%s &deg;C", fmt1(f1, temp2_value));
-    out.print("<label>Temperature 2</label> "); out.print(v); out.print("<br/>\r\n");
+    out.print("<label>Pressure sensor temperature</label> "); out.print(v); out.print("<br/>\r\n");
   }
   snprintf(v, sizeof(v), "%u", light_value);
   out.print("<label>Light</label> "); out.print((light_value < 1024) ? v : "--"); out.print("<br/>\r\n"); //1024 = no reading yet
@@ -369,7 +369,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   if(status == WL_CONNECTED)
   {
     snprintf(v, sizeof(v), "%ld dBm", (long)WiFi.RSSI());
-    row(out, "Signal", v);
+    row(out, "WiFi signal", v);
   }
   snprintf(v, sizeof(v), "%02X:%02X:%02X:%02X:%02X:%02X", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
   row(out, "MAC", v);

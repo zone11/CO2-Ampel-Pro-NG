@@ -383,7 +383,7 @@ Example JSON response:
 ```
 `c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
 `u` pressure sensor temperature (°C) only with a pressure sensor, `c`/`t`/`h` only with a working CO2
-sensor (the page `/` then shows `--`). The page `/` refreshes every 2 minutes.
+sensor (the page `/` then shows `--`). The page `/` refreshes every 30 seconds and names the values like the Home Assistant entities.
 
 ### Diagnostics
 
