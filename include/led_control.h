@@ -11,14 +11,14 @@ void leds(uint32_t color);
 void led_brightness_update(void);  // applies the current state (call after enable/exit/menu)
 void led_set_dark(bool dark);      // light sensor result
 void led_button_step(void);        // short button press: halve, wrap back to the maximum
-void led_state_restore(void);      // at boot after the settings: led.disable, sys.buzzer and the button level
-                                   // of the previous run after a watchdog reset or crash (saved settings otherwise)
-void led_state_save(void);         // after changing these outside the settings API (service menu)
+void led_state_restore(void);      // at boot after the settings: quiet mode and the button level of the
+                                   // previous run after a watchdog reset or crash (saved settings otherwise)
 bool apply_brightness(void *user, const cfg_item_t *item);
-bool apply_led_disable(void *user, const cfg_item_t *item); // led.disable takes effect immediately
+bool apply_quiet(void *user, const cfg_item_t *item);       // sys.quiet: LEDs, status LED and buzzer off at once
 bool apply_buzzer(void *user, const cfg_item_t *item);      // sys.buzzer (0 silences at once)
 void print_led_status(void);
 void status_led(unsigned int on);
+void status_wait(unsigned int ms); // boot waits: status LED blink, dark in quiet mode
 void buzzer(unsigned int on);
 void traffic_light(unsigned int co2);
 

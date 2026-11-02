@@ -93,11 +93,22 @@ void setup()
 
   watchdog_init(); //fed by loop() and the long waits (menu, WiFi/MQTT connect, WINC bridge)
 
+  //settings, before the first LED output: quiet mode keeps the LEDs dark
+  SETTINGS_LOAD load = settings_read(&settings);
+  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
+  {
+    settings_write(&settings); //save defaults or migrated settings
+  }
+  led_state_restore(); //after a watchdog reset or crash: quiet mode and button level of the previous run
+
   //WS2812
   ws2812.begin();
   ws2812.setBrightness(BRIGHTNESS); //0...255
   ws2812.fill(COLOR_OFF, 0, NUM_LEDS);
-  ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs white
+  if(!settings.quiet)
+  {
+    ws2812.fill(ws2812.Color(20,20,20), 0, 4); //4 LEDs white
+  }
   ws2812.show();
 
   //Wire/I2C: release hung buses (e.g. restart while the SCD30 sends), then start
@@ -156,7 +167,7 @@ void setup()
         features |= FEATURE_SCD30;
         break;
       }
-      status_led(1000);
+      status_wait(1000);
     }
     scd30.setMeasurementInterval(MEASURE_INTERVAL);
     //scd30.startPeriodicMeasurement(1000); //0 or 700-1400, pressure in hPa
@@ -174,7 +185,7 @@ void setup()
         features |= FEATURE_SCD4X;
         break;
       }
-      status_led(1000);
+      status_wait(1000);
     }
   }
 
@@ -204,12 +215,7 @@ void setup()
     temp_offset = TEMP_OFFSET;
   }
 
-  //settings
-  SETTINGS_LOAD load = settings_read(&settings);
-  if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
-  {
-    settings_write(&settings); //save defaults or migrated settings
-  }
+  //settings (read above)
   if(load == SETTINGS_DEFAULTS)
   {
     //default temperature offset (always Pro with WiFi and pressure sensor)
@@ -234,12 +240,7 @@ void setup()
     }
   }
   co2_set_asc(settings.asc); //ASC from the settings
-  led_state_restore(); //after a watchdog reset or crash: LED state of the previous run (e.g. off over MQTT)
   led_brightness_update();
-  if(settings.led_disable)
-  {
-    leds(COLOR_OFF); //boot white off right away
-  }
 
   //USB connection
   if(USBDevice.connected()) //(Serial) uses flow control for detection
@@ -357,8 +358,11 @@ void setup()
     {
       Serial.println("Error: CO2 sensor not found");
     }
-    leds(COLOR_RED);
-    status_led(1000);
+    if(!settings.quiet)
+    {
+      leds(COLOR_RED);
+    }
+    status_wait(1000);
     leds(COLOR_OFF);
     co2_value = co2_average = settings.range[2]; //set to red threshold
   }
@@ -464,7 +468,7 @@ void loop()
     {
       phase_set(PHASE_LOOP);
       show_data();
-      if((dark == 0) && !settings.led_disable)
+      if((dark == 0) && !settings.quiet)
       {
         status_led(2);
       }

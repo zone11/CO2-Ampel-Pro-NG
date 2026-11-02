@@ -99,7 +99,7 @@ void settings_defaults(SETTINGS *data)
 
   data->brightness_dark = BRIGHTNESS_DARK;
   data->led_auto      = BRIGHTNESS_AUTO;
-  data->led_disable   = false;
+  data->quiet   = false;
   data->password[0]   = 0;
   data->name[0]       = 0;
 }
@@ -136,7 +136,7 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_ha       = to_bool(&data->mqtt_ha);
   data->mqtt_tls      = to_bool(&data->mqtt_tls);
   data->led_auto      = to_bool(&data->led_auto);
-  data->led_disable   = to_bool(&data->led_disable);
+  data->quiet   = to_bool(&data->quiet);
 
   if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
   if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }

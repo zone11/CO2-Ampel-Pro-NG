@@ -144,13 +144,15 @@ watchdog, no address saved).
 - Before an intentional restart (`reset`, restart button) the device publishes `offline` and disconnects
   cleanly. If a connect is refused at once (e.g. the broker still holds the previous connection after a quick
   restart), it retries after 2 seconds.
-- Runtime control keys (`CFG_CONTROL`: `led.disable`, `sys.buzzer`) are accepted on `<base>/cmd` also with
-  `mqtt.config=0`, in RAM only (no `save`/`export`). Their state is published on `<base>/state` and kept in the
-  reset record over a watchdog reset or crash. A new control key needs the flag, an apply callback that calls
-  `led_state_save()` (if it should survive a watchdog reset), the field in `<base>/state` and, for Home
-  Assistant, an entry in the `switches` table in `mqtt_service.cpp`.
+- Runtime control keys (`CFG_CONTROL`, currently only `sys.quiet`) are accepted on `<base>/cmd` also with
+  `mqtt.config=0`, in RAM only (no `save`/`export`). Quiet mode is published on `<base>/state` and kept in the
+  reset record (bit 0, the button brightness level in bits 8–15) over a watchdog reset or crash; the settings
+  are read before the first LED output so the device stays dark at boot. A new control key needs the flag,
+  an apply callback, the field in `<base>/state` and, for Home Assistant, an entry in the `switches` table in
+  `mqtt_service.cpp`.
 - The Home Assistant discovery configs go to `homeassistant/sensor/<device ID>/<value>/config` and
-  `homeassistant/switch/<device ID>/{led,buzzer}/config` and name the full state topics; the entity IDs are based on
+  `homeassistant/switch/<device ID>/quiet/config` and name the full state topics (the old `led`/`buzzer` switch
+  configs are cleared on every discovery publish); the entity IDs are based on
   the device ID, so a prefix change keeps the entities.
 
 ## WiFi Module Root Certificates

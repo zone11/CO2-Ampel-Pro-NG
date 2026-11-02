@@ -215,7 +215,7 @@ unsigned int wifi_start(void)
     {
       break;
     }
-    status_led(1000);
+    status_wait(1000);
   }
 
   if(!(WiFi.status() == WL_CONNECTED)) //connection failed

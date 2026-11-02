@@ -62,7 +62,7 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
-static int state_published = -1; //led.disable + sys.buzzer last published on <base>/state, -1 = not yet
+static int state_published = -1; //quiet mode last published on <base>/state, -1 = not yet
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -148,7 +148,7 @@ static void mqtt_handle_command(void)
   }
   else
   {
-    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (led.disable, sys.buzzer)
+    settings_json_import(json, &reply, false, true, !settings.mqtt_config); //off: control only (sys.quiet)
   }
   cmd_state = CMD_NONE;
 
@@ -247,14 +247,18 @@ static void mqtt_publish_discovery(void)
   }
 
   //switches from <base>/state, commands on <base>/cmd (also with mqtt.config=0, RAM only)
-  //"LEDs": on = led.disable false; "Buzzer": on = sys.buzzer 1
+  //"Quiet mode": on = sys.quiet true
   static const struct { const char *key, *name, *icon, *on, *off, *state; } switches[] =
   {
-    { "led",    "LEDs",   "mdi:traffic-light", "{\\\"led.disable\\\":false}", "{\\\"led.disable\\\":true}",
-      "{{ 'OFF' if value_json['led.disable'] else 'ON' }}" },
-    { "buzzer", "Buzzer", "mdi:volume-high",   "{\\\"sys.buzzer\\\":1}",      "{\\\"sys.buzzer\\\":0}",
-      "{{ 'ON' if value_json['sys.buzzer'] else 'OFF' }}" },
+    { "quiet", "Quiet mode", "mdi:sleep", "{\\\"sys.quiet\\\":true}", "{\\\"sys.quiet\\\":false}",
+      "{{ 'ON' if value_json.quiet else 'OFF' }}" },
   };
+  //switches of 0.6/0.7 development builds: remove them from Home Assistant
+  for(const char *old : { "led", "buzzer" })
+  {
+    snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/%s/config", device_id, old);
+    mqttClient.publish(topic, "", true, 0);
+  }
   for(const auto &sw : switches)
   {
     snprintf(topic, sizeof(topic), MQTT_DISCOVERY_PREFIX "/switch/%s/%s/config", device_id, sw.key);
@@ -336,7 +340,7 @@ void print_mqtt_status(void)
 #endif
 #if WITH_MQTT_CONFIG
   Serial.print("Remote config: ");
-  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off (<prefix>/<id>/cmd: led.disable, sys.buzzer only)");
+  Serial.println(settings.mqtt_config ? "on (<prefix>/<id>/cmd)" : "off (<prefix>/<id>/cmd: sys.quiet only)");
 #endif
   if(settings.mqtt_enabled && (features & FEATURE_WINC1500))
   {
@@ -526,7 +530,7 @@ void mqtt_connect(void)
     }
 #endif
 #if WITH_MQTT_CONFIG
-    //always subscribed: control (led.disable, sys.buzzer) also works with mqtt.config=0, configuration only with 1
+    //always subscribed: control (sys.quiet) also works with mqtt.config=0, configuration only with 1
     mqttClient.onMessageAdvanced(mqtt_message);
     mqtt_topic(topic, sizeof(topic), "cmd");
     mqttClient.subscribe(topic, 0);
@@ -717,16 +721,13 @@ void mqtt_service(void)
     return;
   }
 
-  //control state (retained): on connect and right after every change of led.disable or sys.buzzer
-  int state = (settings.led_disable ? 1 : 0) | ((settings.buzzer ? 1 : 0) << 1);
-  if(state_published != state)
+  //control state (retained): on connect and right after every change of quiet mode
+  if(state_published != (int)settings.quiet)
   {
-    char topic[96], json[48];
-    state_published = state;
-    snprintf(json, sizeof(json), "{\"led.disable\":%s,\"sys.buzzer\":%u}",
-             settings.led_disable ? "true" : "false", settings.buzzer ? 1 : 0);
+    char topic[96];
+    state_published = settings.quiet;
     mqtt_topic(topic, sizeof(topic), "state");
-    mqttClient.publish(topic, json, true, 0);
+    mqttClient.publish(topic, settings.quiet ? "{\"quiet\":true}" : "{\"quiet\":false}", true, 0);
   }
 
   //periodic publishing

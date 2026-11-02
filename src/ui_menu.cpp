@@ -153,7 +153,6 @@ void altitude_toffset(void) //altitude and temperature offset
 
   //done
   settings_save();
-  led_state_save(); //buzzer in the reset record
   leds(COLOR_BLUE);
   buzzer(250);
 

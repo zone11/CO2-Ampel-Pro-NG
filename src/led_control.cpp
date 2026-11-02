@@ -10,10 +10,10 @@ void leds(uint32_t color)
 static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
 
-// LED state in the reset record: bit 0 = led.disable, bit 1 = sys.buzzer, bits 8-15 = button level
-void led_state_save(void)
+// LED state in the reset record: bit 0 = quiet mode, bits 8-15 = button level
+static void led_state_save(void)
 {
-  reset_record_led((settings.led_disable ? 1 : 0) | (settings.buzzer ? 2 : 0) | ((led_level & 0xFF) << 8));
+  reset_record_led((settings.quiet ? 1 : 0) | ((led_level & 0xFF) << 8));
 }
 
 void led_state_restore(void)
@@ -21,11 +21,22 @@ void led_state_restore(void)
   if(reset_unplanned())
   {
     uint32_t led = last_run()->led;
-    settings.led_disable = (led & 1) != 0;
-    settings.buzzer = (led >> 1) & 1;
+    settings.quiet = (led & 1) != 0;
     led_level = (led >> 8) & 0xFF;
   }
   led_state_save();
+}
+
+void status_wait(unsigned int ms)
+{
+  if(settings.quiet)
+  {
+    delay(ms);
+  }
+  else
+  {
+    status_led(ms);
+  }
 }
 
 void led_brightness_update(void)
@@ -63,7 +74,6 @@ bool apply_buzzer(void *user, const cfg_item_t *item)
 {
   (void)user;
   (void)item;
-  led_state_save();
   if(!settings.buzzer)
   {
     buzzer(0); //immediately
@@ -71,14 +81,15 @@ bool apply_buzzer(void *user, const cfg_item_t *item)
   return true;
 }
 
-bool apply_led_disable(void *user, const cfg_item_t *item)
+bool apply_quiet(void *user, const cfg_item_t *item)
 {
   (void)user;
   (void)item;
   led_state_save();
-  if(settings.led_disable)
+  if(settings.quiet)
   {
     leds(COLOR_OFF); //immediately, also with "enable"
+    status_led(0);
     buzzer(0);
   }
   else if(remote_on)
@@ -93,9 +104,9 @@ void print_led_status(void)
   uint32_t shown = ws2812.getPixelColor(0); //actually shown (scaled by the brightness)
 
   Serial.print("LEDs: ");
-  if(settings.led_disable)
+  if(settings.quiet)
   {
-    Serial.print("off (led.disable)");
+    Serial.print("off (quiet mode)");
   }
   else
   {
@@ -173,7 +184,7 @@ void traffic_light(unsigned int co2)
 {
   static unsigned int blink_on=0;
 
-  if(settings.led_disable) //LEDs and buzzer off (e.g. at night)
+  if(settings.quiet) //quiet mode: LEDs and buzzer off (e.g. at night)
   {
     leds(COLOR_OFF);
     buzzer(0);
