@@ -501,6 +501,7 @@ void mqtt_connect(void)
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
   mqttClient.setWill(topic, "offline", true, 1); //broker reports "offline" when the connection drops
+  mqttClient.setKeepAlive(30); //10 s default: one late ping (broker limit 15 s) dropped the connection
 
   //connect (DNS, TCP and TLS can block up to ~40 s)
   watchdog_feed();

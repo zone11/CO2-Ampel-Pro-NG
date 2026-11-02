@@ -155,6 +155,8 @@ watchdog, no address saved).
   configs are cleared on every discovery publish); `unique_id` and `default_entity_id` are based on the device
   ID, so a prefix change or a new `sys.name` keeps the entities. HA reads `default_entity_id` (2025.10+) only
   when it creates an entity; a `sys.name` change republishes the configs, HA updates only the device name.
+- MQTT keepalive 30 s (the library default of 10 s dropped connections after one late ping): the broker reports
+  a dead device after up to 45 s.
 
 ## WiFi Module Root Certificates
 

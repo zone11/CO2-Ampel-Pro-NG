@@ -310,7 +310,7 @@ retained messages stay on the broker; delete them there if you want.
 With `mqtt.ha=1` Home Assistant (with the MQTT integration) creates a device named like `sys.name` with
 the entities CO2, Temperature, Humidity, Light and (with a pressure sensor) Pressure, a switch "Quiet", and
 the diagnostic entities Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase,
-Free RAM minimum and Longest loop. They show "unavailable" while the device is offline. `mqtt.ha=0` removes
+Free RAM minimum and Longest loop. They show "unavailable" while the device is offline (up to 45 seconds later if it loses power or hangs). `mqtt.ha=0` removes
 them again.
 
 - Moved a device? Just change `sys.name`: the device name in Home Assistant follows at once, and the entity

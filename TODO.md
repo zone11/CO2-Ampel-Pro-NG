@@ -26,12 +26,10 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## MQTT / Home Assistant follow-ups
 
-- [ ] 0.7.1 candidate: MQTT keepalive 30 s (`mqttClient.setKeepAlive(30)`) if the drops repeat. Seen once on the
-      dev unit, 2026-11-02 10:52:36 UTC: broker `exceeded timeout` with the 10 s default, reconnect in the same
-      second, no readings lost, cause of the missed ping unknown. Trade-off: HA shows a hung device as offline
-      after up to 45 s instead of 15 s.
-- [ ] Same drop: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
+- [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
       whether the Mosquitto bridge echoes `<base>/status` back.
+- [ ] First unit: `loop_max_ms` ~5.1 s on every boot (second unit < 100 ms), also on a boot without failed MQTT
+      connects; find the call that blocks. Two failed connects (error -3) on some boots, second unit none.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
