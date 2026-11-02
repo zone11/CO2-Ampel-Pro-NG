@@ -3,6 +3,8 @@
 #include "settings_registry.h"
 #include "wifi_manager.h"
 #include "health.h"
+#include "mqtt_service.h"
+#include "system_control.h"
 
 #include <ctype.h>
 
@@ -202,25 +204,37 @@ static void print_field(Print &out, const cfg_item_t *item)
   out.print("<br/>\r\n");
 }
 
+// HTTP header and HTML head shared by the pages (same style); extra = additional head elements
+static void page_head(Print &out, const char *title, const char *extra)
+{
+  out.print("HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><meta name=viewport content='width=device-width'>\r\n"
+            "<title>");
+  out.print(title);
+  out.print("</title>\r\n"
+            "<link rel=icon href='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA='>\r\n"
+            "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
+            "label{display:inline-block;width:12em}fieldset{margin-bottom:10px}"
+            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}"
+            ".big{font-size:2em}.big label{font-size:0.5em}</style>\r\n");
+  out.print(extra);
+  out.print("</head><body>\r\n");
+}
+
 // GET /config: all settings as a form (from the key table), JSON upload/download, restart
 static void config_page(WiFiClient &client, const char *result)
 {
   ChunkPrint out(client);
   bool pw = settings_password_set();
 
-  out.print("HTTP/1.1 200 OK\r\n"
-            "Content-Type: text/html\r\n"
-            "Connection: close\r\n"
-            "\r\n"
-            "<!DOCTYPE html>\r\n<html><head><meta charset=utf-8><meta name=viewport content='width=device-width'>\r\n"
-            "<title>CO2-Ampel Config</title>\r\n"
-            "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
-            "label{display:inline-block;width:12em}fieldset{margin-bottom:10px}"
-            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}</style>\r\n"
+  page_head(out, "CO2-Ampel Config",
             "<script>function pw(f){var p=document.getElementById('pw'),h=f.elements[0];if(p)h.value=p.value;}\r\n"
             "function ld(i){var r=new FileReader();r.onload=function(){document.getElementById('j').value=r.result;};"
-            "r.readAsText(i.files[0]);}</script>\r\n"
-            "</head><body>\r\n<h2>CO2-Ampel configuration</h2>\r\n");
+            "r.readAsText(i.files[0]);}</script>\r\n");
+  out.print("<h2>CO2-Ampel configuration</h2>\r\n");
   if((result != NULL) && result[0])
   {
     out.print("<pre>");
@@ -272,6 +286,177 @@ static void config_page(WiFiClient &client, const char *result)
   out.print("<h3>Restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
             "<input type=submit value='Restart'></form>\r\n"
             "<p><a href='/'>Back</a></p>\r\n</body></html>\r\n");
+}
+
+// One line "<label>name</label> value" (value HTML-escaped)
+static void row(Print &out, const char *label, const char *value)
+{
+  out.print("<label>");
+  out.print(label);
+  out.print("</label> ");
+  print_html(out, value);
+  out.print("<br/>\r\n");
+}
+
+static const char *fmt_duration(char *buf, size_t size, unsigned long s)
+{
+  if(s >= 86400UL)
+  {
+    snprintf(buf, size, "%lud %02lu:%02lu:%02lu", s / 86400UL, (s / 3600UL) % 24, (s / 60) % 60, s % 60);
+  }
+  else
+  {
+    snprintf(buf, size, "%02lu:%02lu:%02lu", s / 3600UL, (s / 60) % 60, s % 60);
+  }
+  return buf;
+}
+
+// GET /: readings, WiFi (with the login form), MQTT and system status in sections like /config
+static void main_page(WiFiClient &client, const char *form_msg)
+{
+  ChunkPrint out(client);
+  bool pw = settings_password_set(); //with a password: no SSID, broker or topic on this page
+  char v[96], f1[16], f2[16];
+
+  page_head(out, "CO2-Ampel",
+            "<meta http-equiv=refresh content=120>\r\n"
+            "<script>function wifi(){var b=document.getElementById('wifi');"
+            "b.style.display=(b.style.display=='block')?'none':'block';}</script>\r\n");
+  out.print("<h2>");
+  print_html(out, system_name());
+  out.print("</h2>\r\n");
+
+  //readings: without a CO2 sensor "--" instead of start values; pressure only with a pressure sensor
+  out.print("<fieldset class=big><legend>Readings</legend>\r\n");
+  uint32_t shown = ws2812.getPixelColor(0);
+  snprintf(v, sizeof(v), "%u ppm", co2_value);
+  out.print("<label>CO2</label> ");
+  out.print(co2_valid ? v : "--");
+  if(shown != 0)
+  {
+    snprintf(v, sizeof(v), " <span style='color:#%06lX'>&#9679;</span>", (unsigned long)shown);
+    out.print(v);
+  }
+  out.print("<br/>\r\n");
+  snprintf(v, sizeof(v), "%s &deg;C", fmt1(f1, temp_value));
+  out.print("<label>Temperature</label> "); out.print(co2_valid ? v : "--"); out.print("<br/>\r\n");
+  snprintf(v, sizeof(v), "%s %%", fmt1(f1, humi_value));
+  out.print("<label>Humidity</label> "); out.print(co2_valid ? v : "--"); out.print("<br/>\r\n");
+  if(pres_valid)
+  {
+    snprintf(v, sizeof(v), "%s hPa", fmt1(f1, pres_value));
+    out.print("<label>Pressure</label> "); out.print(v); out.print("<br/>\r\n");
+    snprintf(v, sizeof(v), "%s &deg;C", fmt1(f1, temp2_value));
+    out.print("<label>Temperature 2</label> "); out.print(v); out.print("<br/>\r\n");
+  }
+  snprintf(v, sizeof(v), "%u", light_value);
+  out.print("<label>Light</label> "); out.print((light_value < 1024) ? v : "--"); out.print("<br/>\r\n"); //1024 = no reading yet
+  out.print("</fieldset>\r\n");
+
+  //WiFi
+  int status = WiFi.status();
+  IPAddress ip = WiFi.localIP();
+  byte mac[6];
+  WiFi.macAddress(mac);
+  out.print("<fieldset><legend>WiFi</legend>\r\n");
+  row(out, "Status", (status == WL_CONNECTED) ? "connected" : (status == WL_AP_LISTENING) ? "access point" : "disconnected");
+  if(!pw && (status == WL_CONNECTED))
+  {
+    row(out, "SSID", WiFi.SSID());
+  }
+  snprintf(v, sizeof(v), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+  row(out, "IP address", v);
+  if(status == WL_CONNECTED)
+  {
+    snprintf(v, sizeof(v), "%ld dBm", (long)WiFi.RSSI());
+    row(out, "Signal", v);
+  }
+  snprintf(v, sizeof(v), "%02X:%02X:%02X:%02X:%02X:%02X", mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+  row(out, "MAC", v);
+  String fv = WiFi.firmwareVersion();
+  row(out, "WINC1500 firmware", fv.c_str());
+  out.print(form_msg);
+  out.print("<button onclick='wifi()'>Change WiFi</button>\r\n"
+            "<div id=wifi style='display:none'><form method=post>\r\n"
+            "<label>SSID</label> <input name=1 size=30 maxlength=64 placeholder=SSID value='");
+  print_html(out, pw ? "" : settings.wifi_ssid, true);
+  out.print("'><br/>\r\n<label>Password</label> <input name=2 type=password size=30 maxlength=64><br/>\r\n");
+  if(pw)
+  {
+    out.print("<label>Enable password</label> <input name=3 type=password size=30 maxlength=32><br/>\r\n");
+  }
+  out.print("<input type=submit value='Save'> (applies after a restart)</form></div>\r\n</fieldset>\r\n");
+
+  //MQTT
+  out.print("<fieldset><legend>MQTT</legend>\r\n");
+  if(!settings.mqtt_enabled)
+  {
+    row(out, "Status", "off");
+  }
+  else
+  {
+    const char *err = mqtt_error_text();
+    bool connected = mqttClient.connected();
+    if(!connected && err[0])
+    {
+      snprintf(v, sizeof(v), "disconnected (%s)", err);
+      row(out, "Status", v);
+    }
+    else
+    {
+      row(out, "Status", connected ? "connected" : "disconnected");
+    }
+    if(!pw)
+    {
+      snprintf(v, sizeof(v), "%s:%u%s", settings.mqtt_broker, settings.mqtt_port, settings.mqtt_tls ? " (TLS)" : "");
+      row(out, "Broker", v);
+      char id[16];
+      get_device_id(id, sizeof(id));
+      snprintf(v, sizeof(v), "%s/%s", settings.mqtt_topic_prefix, id);
+      row(out, "Base topic", v);
+    }
+    long age = mqtt_publish_age();
+    if(age >= 0)
+    {
+      snprintf(v, sizeof(v), "%ld s ago (every %u s)", age, settings.mqtt_interval);
+    }
+    else
+    {
+      snprintf(v, sizeof(v), "not yet (every %u s)", settings.mqtt_interval);
+    }
+    row(out, "Last publish", v);
+    snprintf(v, sizeof(v), "%lu / %lu", (unsigned long)health.mqtt_connects, (unsigned long)health.mqtt_failures);
+    row(out, "Connects / failures", v);
+    if(connected && err[0])
+    {
+      row(out, "Last error", err);
+    }
+#if WITH_HA
+    row(out, "Home Assistant", settings.mqtt_ha ? "on" : "off");
+#endif
+#if WITH_MQTT_CONFIG
+    row(out, "Remote config", settings.mqtt_config ? "on" : "off (led.disable only)");
+#endif
+  }
+  out.print("</fieldset>\r\n");
+
+  //system
+  const RESET_INFO *r = last_run();
+  out.print("<fieldset><legend>System</legend>\r\n");
+  row(out, "Firmware", VERSION);
+  row(out, "Uptime", fmt_duration(v, sizeof(v), uptime_s()));
+  row(out, "Reset cause", reset_cause());
+  if(r->valid && (r->event != EVENT_NONE))
+  {
+    snprintf(v, sizeof(v), "%s in %s after %s", event_name(r->event), phase_name(r->phase), fmt_duration(f2, sizeof(f2), r->uptime));
+    row(out, "Last reset", v);
+  }
+  snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
+  row(out, "Free RAM", v);
+  out.print("</fieldset>\r\n");
+
+  out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a>\r\n"
+            "</body></html>\r\n");
 }
 
 // GET /config.json (masked) or POST /config/export (with password: full backup)
@@ -507,7 +692,7 @@ void webserver_service(void)
   //}
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
-  char buf[1024];
+  char buf[640]; //replies of /json, /diag and errors (the pages use ChunkPrint)
   char req[3][3*64+1]; //HTTP request / POST values SSID, code, password (URL-encoded, up to 3 chars per byte)
   const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
@@ -653,86 +838,7 @@ void webserver_service(void)
               }
             }
           }
-          //HTTP header + data
-          sprintf(buf,
-              "HTTP/1.1 200 OK\r\n" \
-              "Content-Type: text/html\r\n" \
-              "Connection: close\r\n" \
-              "\r\n"
-              "<!DOCTYPE html>\r\n" \
-              "<html>\r\n" \
-              "<head>\r\n" \
-              "<meta charset=utf-8>\r\n" \
-              "<meta http-equiv=refresh content=120>\r\n" \
-              "<title>CO2-Ampel</title>\r\n" \
-              "<link rel=icon href=\"data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=\">\r\n" \
-              "<style>\r\n" \
-              "body { font-size:1.0em; font-family:Lato,sans-serif; padding:10px; }\r\n" \
-              "#data { font-size:3.0em; }\r\n" \
-              "#wifi { font-size:1.0em; display:none; }\r\n" \
-              "#info { font-size:0.9em; }\r\n" \
-              "</style>\r\n" \
-              "<script>\r\n" \
-              "function wifi() {\r\n" \
-              "var box = document.getElementById('wifi');\r\n" \
-              "if(box.style.display != 'block') { box.style.display = 'block'; }\r\n" \
-              "else { box.style.display = 'none'; }\r\n" \
-              "}\r\n" \
-              "</script>\r\n" \
-              "</head>\r\n" \
-              "<body>\r\n"
-          );
-          client.print(buf);
-
-          //without a CO2 sensor "--" instead of start values; pressure lines only with a pressure sensor
-          char co2_text[12];
-          sprintf(co2_text, "%u", co2_value);
-          int n = sprintf(buf,
-              "<div id=data>\r\n" \
-              "CO2 (ppm): %s<br/>\r\n" \
-              "Temperature (&deg;C): %s<br/>\r\n" \
-              "Humidity (%% rel): %s<br/>\r\n",
-              co2_valid ? co2_text : "--", co2_valid ? fmt1(f1, temp_value) : "--", co2_valid ? fmt1(f2, humi_value) : "--");
-          if(pres_valid)
-          {
-            n += sprintf(buf + n,
-                "Pressure (hPa): %s<br/>\r\n" \
-                "Temperature 2 (&deg;C): %s<br/>\r\n",
-                fmt1(f3, pres_value), fmt1(f4, temp2_value));
-          }
-          sprintf(buf + n, "</div>\r\n");
-          client.print(buf);
-
-          String fv = WiFi.firmwareVersion();
-          byte mac[6];
-          WiFi.macAddress(mac);
-          sprintf(buf,
-              "<br/><br/>\r\n" \
-              "%s" \
-              "<a href='/json'>JSON</a> - <a href='#' onclick='wifi();'>WiFi Login</a> - <a href='/config'>Config</a>\r\n" \
-              "<br/><br/>\r\n" \
-              "<div id=wifi>\r\n" \
-              "<form method=post>\r\n" \
-              "SSID <input name=1 size=30 maxlength=64 placeholder=SSID value='%s'><br/>\r\n" \
-              "Code <input name=2 size=30 maxlength=64 placeholder=Password value=''><br/>\r\n" \
-              "%s" \
-              "<input type=submit> (requires a restart)<br/>\r\n" \
-              "</form><br/>\r\n" \
-              "<div id=info>\r\n" \
-              "Firmware: v" VERSION ", \r\n" \
-              "WINC1500: %s, \r\n" \
-              "MAC: %02x:%02x:%02x:%02x:%02x:%02x\r\n" \
-              "</div>\r\n" \
-              "</div>\r\n" \
-              "</body>\r\n" \
-              "</html>\r\n",
-              form_msg,
-              settings_password_set() ? "" : settings.wifi_ssid, /*settings.wifi_code, */
-              settings_password_set() ? "Password <input name=3 type=password size=30 maxlength=32><br/>\r\n" : "",
-              fv.c_str(), 
-              mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]
-          );
-          client.print(buf);
+          main_page(client, form_msg);
         }
         break;
       }

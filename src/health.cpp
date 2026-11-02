@@ -49,11 +49,16 @@ static uint32_t ram_free_min(void)
   return (uint32_t)p - (uint32_t)heap_top();
 }
 
+uint32_t health_ram_free(void)
+{
+  return __get_MSP() - (uint32_t)heap_top();
+}
+
 size_t health_json(char *buf, size_t size)
 {
   const RESET_INFO *r = last_run();
   struct mallinfo mi = mallinfo();
-  uint32_t ram_free = __get_MSP() - (uint32_t)heap_top();
+  uint32_t ram_free = health_ram_free();
 
   int n = snprintf(buf, size,
     "{\"uptime\":%lu,\"resets\":%lu,\"reset\":\"%s\","

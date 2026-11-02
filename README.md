@@ -63,7 +63,7 @@ The original firmware's variants (Basic, Plus, COVID) are not separate builds: t
 boot, and the COVID thresholds are a preset you set with `set co2.*` (see below).
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 97 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -362,8 +362,12 @@ When WiFi is enabled, the device creates either:
 - **AP Mode**: Creates access point `<sys.name>` (default `CO2-Ampel-NG <MAC id>`)
 
 Available endpoints:
-- `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot; with
-  `sys.password` set the form asks for it and does not show the current SSID)
+- `/` - Status page in sections: Readings (with the current traffic light color), WiFi (status, IP, signal,
+  MAC, WiFi module firmware; "Change WiFi" opens a form for SSID + password, saved to flash, applies after a
+  reboot), MQTT (connected or the last connect error, broker, base topic, last publish, connects/failures,
+  Home Assistant and remote config on/off) and System (firmware, uptime, reset cause, last hang or crash,
+  free RAM). With `sys.password` set the page shows no SSID, broker or base topic, and the WiFi form asks
+  for the password
 - `/json` - JSON API with sensor readings
 - `/diag` - Diagnostics as JSON (same as serial `diag`, see [Diagnostics](#diagnostics))
 - `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,

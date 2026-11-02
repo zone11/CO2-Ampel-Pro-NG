@@ -337,6 +337,74 @@ void print_mqtt_status(void)
   }
 }
 
+// Result of the last failed connect (library error and broker return code)
+static int last_err = LWMQTT_SUCCESS, last_rc = LWMQTT_CONNECTION_ACCEPTED;
+static unsigned long last_publish_ms = 0; //last sensors publish, 0 = none yet
+
+static const char *err_text(int err)
+{
+  switch(err)
+  {
+    case LWMQTT_NETWORK_FAILED_CONNECT: return "Network connection failed";
+    case LWMQTT_NETWORK_TIMEOUT:        return "Network timeout";
+    case LWMQTT_NETWORK_FAILED_READ:    return "Network read failed";
+    case LWMQTT_NETWORK_FAILED_WRITE:   return "Network write failed";
+    case LWMQTT_CONNECTION_DENIED:      return "Connection denied by broker";
+    default:                            return NULL;
+  }
+}
+
+static const char *rc_text(int rc)
+{
+  switch(rc)
+  {
+    case LWMQTT_UNACCEPTABLE_PROTOCOL:    return "Unacceptable protocol version";
+    case LWMQTT_IDENTIFIER_REJECTED:      return "Client ID rejected";
+    case LWMQTT_SERVER_UNAVAILABLE:       return "Server unavailable";
+    case LWMQTT_BAD_USERNAME_OR_PASSWORD: return "Bad username or password";
+    case LWMQTT_NOT_AUTHORIZED:           return "Not authorized";
+    default:                              return NULL;
+  }
+}
+
+static void print_code(const char *text, int code)
+{
+  if(text)
+  {
+    Serial.println(text);
+  }
+  else
+  {
+    Serial.print("Code ");
+    Serial.println(code);
+  }
+}
+
+const char *mqtt_error_text(void)
+{
+  static char code[24];
+  if(last_rc != LWMQTT_CONNECTION_ACCEPTED) //the broker's answer says more than the library error
+  {
+    const char *t = rc_text(last_rc);
+    if(t) { return t; }
+    snprintf(code, sizeof(code), "Return code %d", last_rc);
+    return code;
+  }
+  if(last_err != LWMQTT_SUCCESS)
+  {
+    const char *t = err_text(last_err);
+    if(t) { return t; }
+    snprintf(code, sizeof(code), "Error %d", last_err);
+    return code;
+  }
+  return "";
+}
+
+long mqtt_publish_age(void)
+{
+  return (last_publish_ms == 0) ? -1 : (long)((millis() - last_publish_ms) / 1000);
+}
+
 void mqtt_connect(void)
 {
   char client_id[48];
@@ -444,48 +512,28 @@ void mqtt_connect(void)
   }
   else
   {
+    last_err = mqttClient.lastError();
+    last_rc = mqttClient.returnCode();
     health.mqtt_failures++;
-    health.mqtt_error = mqttClient.lastError();
+    health.mqtt_error = last_err;
     if(features & FEATURE_USB)
     {
       Serial.print("MQTT connection failed - ");
 
       //detailed error output
-      lwmqtt_err_t err = mqttClient.lastError();
-      lwmqtt_return_code_t rc = mqttClient.returnCode();
-
-      if(err != LWMQTT_SUCCESS)
+      if(last_err != LWMQTT_SUCCESS)
       {
         Serial.print("Error: ");
-        switch(err)
+        print_code(err_text(last_err), last_err);
+        if((last_err == LWMQTT_NETWORK_FAILED_CONNECT) && settings.mqtt_tls)
         {
-          case LWMQTT_NETWORK_FAILED_CONNECT:
-            Serial.println("Network connection failed");
-            if(settings.mqtt_tls)
-            {
-              Serial.println("  TLS: root CA stored in the WINC1500? Does mqtt.broker match the certificate? (see README)");
-            }
-            break;
-          case LWMQTT_NETWORK_TIMEOUT: Serial.println("Network timeout"); break;
-          case LWMQTT_NETWORK_FAILED_READ: Serial.println("Network read failed"); break;
-          case LWMQTT_NETWORK_FAILED_WRITE: Serial.println("Network write failed"); break;
-          case LWMQTT_CONNECTION_DENIED: Serial.println("Connection denied by broker"); break;
-          default: Serial.print("Code "); Serial.println(err); break;
+          Serial.println("  TLS: root CA stored in the WINC1500? Does mqtt.broker match the certificate? (see README)");
         }
       }
-
-      if(rc != LWMQTT_CONNECTION_ACCEPTED)
+      if(last_rc != LWMQTT_CONNECTION_ACCEPTED)
       {
         Serial.print("Return Code: ");
-        switch(rc)
-        {
-          case LWMQTT_UNACCEPTABLE_PROTOCOL: Serial.println("Unacceptable protocol version"); break;
-          case LWMQTT_IDENTIFIER_REJECTED: Serial.println("Client ID rejected"); break;
-          case LWMQTT_SERVER_UNAVAILABLE: Serial.println("Server unavailable"); break;
-          case LWMQTT_BAD_USERNAME_OR_PASSWORD: Serial.println("Bad username or password"); break;
-          case LWMQTT_NOT_AUTHORIZED: Serial.println("Not authorized"); break;
-          default: Serial.print("Code "); Serial.println(rc); break;
-        }
+        print_code(rc_text(last_rc), last_rc);
       }
     }
   }
@@ -541,7 +589,10 @@ void mqtt_publish_sensors(void)
   }
   snprintf(json + n, sizeof(json) - n, "}");
   mqtt_topic(topic, sizeof(topic), "sensors");
-  mqttClient.publish(topic, json, false, 0);
+  if(mqttClient.publish(topic, json, false, 0))
+  {
+    last_publish_ms = millis() | 1; //never 0
+  }
 
   //device: firmware version and detected sensors (retained, so always available)
   char name[2*32+1];

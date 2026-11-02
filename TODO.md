@@ -16,12 +16,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       reset doesn't turn the LEDs back on.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
-
-## Web interface
-
-- [ ] Remove the `/cmk-agent` endpoint (Checkmk format).
-- [ ] MQTT status on the main page.
-- [ ] Main page in sections like the config page.
+- [ ] First MQTT connect right after boot sometimes fails ("Network connection failed", seen 2026-11-02 once
+      in three boots); the 30 s retry connects. Check whether a short wait after the WiFi connect helps.
 
 ## Features (roadmap)
 
