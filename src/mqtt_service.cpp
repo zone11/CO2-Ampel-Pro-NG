@@ -337,6 +337,15 @@ void print_mqtt_status(void)
   }
 }
 
+static boolean mqtt_try_connect(const char *client_id)
+{
+  if(strlen(settings.mqtt_user) > 0)
+  {
+    return mqttClient.connect(client_id, settings.mqtt_user, settings.mqtt_pass); //with authentication
+  }
+  return mqttClient.connect(client_id); //without authentication
+}
+
 // Result of the last failed connect (library error and broker return code)
 static int last_err = LWMQTT_SUCCESS, last_rc = LWMQTT_CONNECTION_ACCEPTED;
 static unsigned long last_publish_ms = 0; //last sensors publish, 0 = none yet
@@ -474,16 +483,23 @@ void mqtt_connect(void)
   //connect (DNS, TCP and TLS can block up to ~40 s)
   watchdog_feed();
   phase_set(PHASE_MQTT_CONNECT);
-  boolean connected = false;
-  if(strlen(settings.mqtt_user) > 0)
+  unsigned long t_connect = millis();
+  boolean connected = mqtt_try_connect(client_id);
+  if(!connected && (mqttClient.lastError() == LWMQTT_NETWORK_FAILED_CONNECT) && ((millis() - t_connect) < 2000))
   {
-    //with authentication
-    connected = mqttClient.connect(client_id, settings.mqtt_user, settings.mqtt_pass);
-  }
-  else
-  {
-    //without authentication
-    connected = mqttClient.connect(client_id);
+    //refused at once: after a quick restart the broker may still hold the previous connection,
+    //a new attempt (new socket) a moment later usually works
+    last_err = LWMQTT_NETWORK_FAILED_CONNECT;
+    last_rc = LWMQTT_CONNECTION_ACCEPTED;
+    health.mqtt_failures++;
+    health.mqtt_error = last_err;
+    if(features & FEATURE_USB)
+    {
+      Serial.println("MQTT connection refused, retrying in 2 s");
+    }
+    delay(2000);
+    watchdog_feed();
+    connected = mqtt_try_connect(client_id);
   }
 
   if(connected)
@@ -682,14 +698,11 @@ void mqtt_service(void)
   //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
   if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))
   {
-    char topic[96];
     if(features & FEATURE_USB)
     {
       Serial.println("MQTT topic prefix or client ID changed, reconnecting");
     }
-    mqtt_topic(topic, sizeof(topic), "status");
-    mqttClient.publish(topic, "offline", true, 1); //a clean disconnect sends no LWT
-    mqttClient.disconnect();
+    mqtt_shutdown(); //"offline" on the old status topic
     mqtt_connect();
     return;
   }
@@ -710,4 +723,16 @@ void mqtt_service(void)
     phase_set(PHASE_MQTT_PUBLISH);
     mqtt_publish_sensors();
   }
+}
+
+void mqtt_shutdown(void)
+{
+  if(!mqttClient.connected())
+  {
+    return;
+  }
+  char topic[96];
+  mqtt_topic(topic, sizeof(topic), "status");
+  mqttClient.publish(topic, "offline", true, 1); //a clean disconnect sends no LWT
+  mqttClient.disconnect();
 }

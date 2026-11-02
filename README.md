@@ -222,8 +222,8 @@ LED brightness (1–255): `led.brightness` is the normal/maximum level (default 
 the level in the dark (default 20), `led.auto=0` keeps `led.brightness` regardless of the light sensor.
 `status` shows the current LED state.
 
-System name (`sys.name`, max 32 characters, empty = default `CO2-Ampel-NG <MAC id>`, e.g.
-`CO2-Ampel-NG F8F0056E78A2`): used as the WiFi hostname, the access point SSID, `name` in the MQTT `device`
+System name (`sys.name`, max 32 characters, empty = default `CO2-<MAC id>`, e.g.
+`CO2-F8F0056E78A2`): used as the WiFi hostname, the access point SSID, `name` in the MQTT `device`
 topic and the Home Assistant device name. The hostname keeps only letters, digits and `-` (other characters
 become `-`, e.g. `Office 2` → `Office-2`). `status` shows the name and hostname. Home Assistant is updated
 immediately (if `mqtt.ha=1`), the MQTT `device` topic with the next publish, hostname and SSID after `reset`.
@@ -353,13 +353,13 @@ save
 - After setting WiFi credentials, device will auto-connect on next boot
 - If the connection fails at boot, the device starts AP (Access Point) mode instead; a lost connection is
   retried every 30 s (MQTT reconnects every 30 s as well)
-- The device registers with the hostname derived from `sys.name` (default `CO2-Ampel-NG-<MAC id>`)
+- The device registers with the hostname derived from `sys.name` (default `CO2-<MAC id>`)
 
 ### WiFi Web Interface
 
 When WiFi is enabled, the device creates either:
 - **Client Mode**: Connects to configured WiFi network
-- **AP Mode**: Creates access point `<sys.name>` (default `CO2-Ampel-NG <MAC id>`)
+- **AP Mode**: Creates access point `<sys.name>` (default `CO2-<MAC id>`)
 
 Available endpoints:
 - `/` - Status page titled `CO2-Ampel-NG | <sys.name>`, in sections: Measurements (with the current traffic light color), WiFi (status, IP, signal,
@@ -430,10 +430,10 @@ messages stay on the broker; clear them there if needed).
 | Topic | Payload | Published | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` s (default 60) | no |
-| `<base>/device` | `{"name":"CO2-Ampel-NG F8F0056E78A2","version":"0.6","reset":"power-on","sensors":["SCD30","LPS22HB"]}` (`sys.name`, firmware version, cause of the last reset, sensors detected at boot) | every interval | yes |
+| `<base>/device` | `{"name":"CO2-F8F0056E78A2","version":"0.7","reset":"power-on","sensors":["SCD30","LPS22HB"]}` (`sys.name`, firmware version, cause of the last reset, sensors detected at boot) | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics JSON, see [Diagnostics](#diagnostics) (retained: the last values before a hang stay on the broker) | every interval | yes |
-| `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears) | on connect | yes |
+| `<base>/status` | `online`, or `offline` (last will, sent by the broker when the device disappears; sent by the device itself before `reset` and the restart button) | on connect | yes |
 | `<base>/state` | `{"led.disable":false}` (current LED state) | on connect and on every change | yes |
 | `<base>/resp` | reply to a command, see below | after each command | no |
 

@@ -885,6 +885,7 @@ void webserver_service(void)
 
   if(restart_pending) //restart button on /config: only after the page has been sent
   {
+    mqtt_shutdown();
     delay(500);
     NVIC_SystemReset();
   }

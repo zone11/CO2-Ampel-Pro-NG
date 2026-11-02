@@ -21,7 +21,7 @@ const char *system_name(void)
     return settings.name;
   }
   get_device_id(id, sizeof(id));
-  snprintf(name, sizeof(name), PRODUCT_NAME " %s", id);
+  snprintf(name, sizeof(name), DEFAULT_NAME "%s", id);
   return name;
 }
 

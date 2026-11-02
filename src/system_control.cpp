@@ -2,6 +2,7 @@
 
 #include "app_globals.h"
 #include "led_control.h"
+#include "mqtt_service.h"
 
 #include <Wire.h>
 
@@ -23,6 +24,7 @@ void reset_mcu(void)
 
   if(features & FEATURE_WINC1500)
   {
+    mqtt_shutdown();
     WiFi.end(); //WiFi.disconnect();
   }
   if(features & FEATURE_SCD30)

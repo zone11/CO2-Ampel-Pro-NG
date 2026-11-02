@@ -248,6 +248,7 @@ void serial_service(void)
   }
   if(strcasecmp(line, "reset") == 0)
   {
+    mqtt_shutdown();
     if(remote_on)
     {
       Serial.println("OK");
