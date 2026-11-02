@@ -2,8 +2,9 @@
 
 Alternative firmware for the **Watterott CO2-Ampel Pro**: a CO2 traffic light that shows the air quality
 with four LEDs, warns with a buzzer when it is time to ventilate, and sends its readings to your network
-(web page, MQTT, Home Assistant). It is based on version 24 of the
-[original firmware](https://github.com/watterott/CO2-Ampel) and runs on the unchanged hardware.
+(web page, MQTT, Home Assistant). It started as a port of version 24 of the
+[original firmware](https://github.com/watterott/CO2-Ampel) by Watterott electronic and has since been
+largely rewritten. It runs on the unmodified hardware.
 
 ✅ **Status**: in daily use and tested on hardware
 
