@@ -308,7 +308,8 @@ them again.
   `homeassistant/sensor/<device ID>/#` and `homeassistant/switch/<device ID>/#`; Home Assistant needs read
   access to `<prefix>/#` and `homeassistant/#` and write access to `<base>/cmd`. Without them the broker
   silently drops the messages and nothing appears in Home Assistant.
-- Home Assistant must use its default discovery prefix `homeassistant`.
+- Home Assistant finds the device under its default discovery prefix `homeassistant`. This only matters if
+  you changed that prefix in Home Assistant's MQTT settings: then the device does not show up.
 
 ### Switching the LEDs Over MQTT
 
