@@ -135,6 +135,24 @@ never touched since boot (the closest the stack came to the heap; filled with a 
 the free bytes inside the heap. `last_event` `none` with `reset` `watchdog` means interrupts stopped (4 s
 watchdog, no address saved).
 
+## I2C Hangs
+
+The Wire library waits for the bus without a limit, so a device holding SCL low would hang the loop until the
+watchdog restarts. `i2c_timeouts_enable()` turns on the SERCOM SCL low timeout (25-35 ms) after the sensor init,
+because `Wire.begin()` clears it. It counts on `GCM_SERCOMx_SLOW`, which the core leaves off (GCLK1, 32 kHz);
+without that clock the timeout never fires. `INACTOUT` stays off: its ~200 us would also end normal clock
+stretching. The SCD30 may stretch up to 150 ms in rare cases, which now ends as one failed read.
+
+`i2c_wire_ok()` / `i2c_wire1_ok()` run before the sensor reads: on a timeout, a bus error, a bus state other than
+idle or a low line they count `i2c_errors` and re-init the bus; if a line stays low the read is skipped. The flags
+only show the last transfer, so `i2c_errors` can miss a timeout in an earlier one.
+
+The LPS22HB runs in continuous mode (1 Hz, BDU): in one-shot mode the library's `readPressure()` loops forever
+when a read fails. Out-of-range pressure readings are dropped.
+
+Known limit: a device that starts holding SCL during an address write makes the core's
+`startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
+
 ## MQTT Internals
 
 - After handling a command the device clears `<base>/cmd` with an empty retained message, so a command

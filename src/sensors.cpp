@@ -1,6 +1,7 @@
 #include "sensors.h"
 #include "led_control.h"
 #include "system_control.h"
+#include "i2c_utils.h"
 
 // Formats like "%.1f" without printf float support (not linked: saves the libc float/dtoa code)
 const char *fmt1(char *buf, float value)
@@ -164,21 +165,31 @@ void co2_set_asc(bool on)
   }
 }
 
+// A failed read gives garbage (LPS22HB about 0): keep the last value
+static void store_pressure(float pressure, float temperature)
+{
+  if((pressure >= 260) && (pressure <= 1400))
+  {
+    pres_value  = pressure;
+    temp2_value = temperature-temp_offset;
+    pres_valid  = true;
+  }
+}
+
 static void read_pressure(void)
 {
   uint8_t phase = sys_phase;
   phase_set(PHASE_PRESSURE);
-  if(features & FEATURE_LPS22HB)
+  if(i2c_wire1_ok())
   {
-    pres_value  = lps22.readPressure()*10; //kPa -> hPa
-    temp2_value = lps22.readTemperature()-temp_offset;
-    pres_valid  = true;
-  }
-  if(features & FEATURE_BMP280)
-  {
-    pres_value  = bmp280.readPressure()/100; //Pa -> hPa
-    temp2_value = bmp280.readTemperature()-temp_offset;
-    pres_valid  = true;
+    if(features & FEATURE_LPS22HB)
+    {
+      store_pressure(lps22.readPressure()*10, lps22.readTemperature()); //kPa -> hPa
+    }
+    if(features & FEATURE_BMP280)
+    {
+      store_pressure(bmp280.readPressure()/100, bmp280.readTemperature()); //Pa -> hPa
+    }
   }
   sys_phase = phase;
 }
@@ -187,6 +198,10 @@ unsigned int check_sensors(void) //read the sensors
 {
   static unsigned long t_pres = 0;
   phase_set(PHASE_CO2);
+  if((features & (FEATURE_SCD30|FEATURE_SCD4X)) && !i2c_wire_ok())
+  {
+    return 0;
+  }
   if(features & FEATURE_SCD30)
   {
     uint16_t ready = 0;

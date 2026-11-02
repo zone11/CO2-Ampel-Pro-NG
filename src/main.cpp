@@ -136,6 +136,12 @@ void setup()
     if(lps22.begin())
     {
       features |= FEATURE_LPS22HB;
+      //continuous mode: readPressure() in one-shot mode loops forever when a read fails
+      lps22.setOutputRate(RATE_1_HZ);
+      Wire1.beginTransmission(ADDR_LPS22HB);
+      Wire1.write(0x10); //CTRL_REG1
+      Wire1.write((RATE_1_HZ << 4) | 0x02); //+ BDU: no torn values
+      Wire1.endTransmission();
     }
   }
 
@@ -188,6 +194,8 @@ void setup()
       status_wait(1000);
     }
   }
+
+  i2c_timeouts_enable();
 
   //temperature offset
   if(features & FEATURE_SCD30)

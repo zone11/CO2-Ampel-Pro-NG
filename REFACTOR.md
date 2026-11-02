@@ -1,16 +1,11 @@
 # Refactor
 
 Accepted refactor items from the code audit of 0.7 (2026-11-02). Decision: no rewrite, targeted fixes.
-Order: high first; H1/H2 are the likely causes of the watchdog hangs (TODO.md "Stability").
+Order: high first; H2 is a likely cause of the watchdog hangs (TODO.md "Stability").
 Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. hardware test).
 
 ## High
 
-- [ ] **H1 I2C waits without timeout** (M): the SAMD core 1.8.14 loops on `INTFLAG.MB/SB` without a deadline
-      (`SERCOM.cpp:525,538,671`); a slave holding SCL low hangs the loop with interrupts running. Enable the
-      SERCOM hardware timeouts `CTRLA.LOWTOUTEN` and `CTRLA.INACTOUT` after `Wire.begin()` (enable-protected:
-      disable, set, enable), count BUSERR in `health` and run `i2c_bus_recover()` + `Wire.begin()` on errors.
-      `main.cpp:117-120`, `i2c_utils.cpp`, `sensors.cpp` `check_sensors()`.
 - [ ] **H2 Socket writes without timeout** (M): WiFi101 `WiFiSocketClass::write` retries forever on
       `SOCK_ERR_BUFFER_FULL` (`WiFiSocket.cpp:297`) when the peer stops reading; all MQTT publishes and web
       pages go through it. Write deadline (e.g. 5 s) in a thin Client wrapper or a library override, then

@@ -426,6 +426,7 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `ram_free`, `ram_free_min`, `heap_free` | free memory now / lowest since start / inside the heap (bytes) |
 | `loop_max_ms` | longest pause of the main loop (ms) |
 | `wifi_connects`, `mqtt_connects`, `mqtt_failures`, `mqtt_error` | connection counters since start |
+| `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
 
 These values survive restarts, but not a power loss: read them before unplugging the device. If the device
 restarts repeatedly, please open an issue with the `diag` output and the firmware version (`last_pc` and

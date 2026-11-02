@@ -8,9 +8,12 @@ Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md).
 
 Three watchdog resets in one night (21:37, 02:34, 03:32 UTC): main loop hung for 2 minutes with interrupts
 running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entities).
-- [ ] Wait for the next hang, read `last_phase` / `last_pc` / `last_lr` (`addr2line` with
-      `workfiles/elf/0.7-dev-diag.elf`) and fix the cause.
-- [ ] I2C: the SAMD Wire library waits without timeout; bounded waits, bus recovery + error counter on timeout.
+- [ ] Wait for the next hang, read `last_phase` / `last_pc` / `last_lr` (`addr2line` with the ELF of the flashed
+      build, `workfiles/elf/`) and fix the cause.
+- [ ] I2C timeout with a real stuck bus: tested only with the MCU itself holding SCL (2026-11-02); short SCL to GND
+      on a dev unit and watch `i2c_errors`, also the recursion in `startTransmissionWIRE()` (DEVELOPMENT.md).
+- [ ] SCD30 bus clock: `Wire.setClock(50000)` in `setup()` is undone by the `Wire.begin()` in the SCD30 init, the
+      bus runs at 100 kHz. Decide on one and remove the other (test: the SCD30 is the device that hung before).
 - [ ] WiFi101: find the calls that can block forever (socket write, SPI) and reset the WINC1500 instead of the MCU.
 - [ ] Watchdog per phase (short limit for the normal loop, long only for connects) for shorter outages.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
@@ -28,8 +31,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
       whether the Mosquitto bridge echoes `<base>/status` back.
-- [ ] First unit: `loop_max_ms` ~5.1 s on every boot (second unit < 100 ms), also on a boot without failed MQTT
-      connects; find the call that blocks. Two failed connects (error -3) on some boots, second unit none.
+- [ ] Both units: `loop_max_ms` ~5.1 s (2026-11-02: 5084 and 5108 ms, no failed MQTT connects), time of the block
+      not recorded, but already there 34 s after boot (second unit, 2026-11-02), so a boot/connect step; find it. First unit: two failed connects (error -3) on some boots.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
