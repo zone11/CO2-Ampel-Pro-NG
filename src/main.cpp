@@ -234,7 +234,12 @@ void setup()
     }
   }
   co2_set_asc(settings.asc); //ASC from the settings
+  led_state_restore(); //after a watchdog reset or crash: LED state of the previous run (e.g. off over MQTT)
   led_brightness_update();
+  if(settings.led_disable)
+  {
+    leds(COLOR_OFF); //boot white off right away
+  }
 
   //USB connection
   if(USBDevice.connected()) //(Serial) uses flow control for detection

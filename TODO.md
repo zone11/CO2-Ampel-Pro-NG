@@ -12,8 +12,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] I2C: the SAMD Wire library waits without timeout; bounded waits, bus recovery + error counter on timeout.
 - [ ] WiFi101: find the calls that can block forever (socket write, SPI) and reset the WINC1500 instead of the MCU.
 - [ ] Watchdog per phase (short limit for the normal loop, long only for connects) for shorter outages.
-- [ ] Keep `led.disable` (set over MQTT) and the button level over a watchdog reset (RAM record), so a
-      reset doesn't turn the LEDs back on.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
 

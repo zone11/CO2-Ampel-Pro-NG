@@ -94,7 +94,8 @@ Behavior:
   always `led.brightness`)
 - `led.disable=1` turns the LEDs, the status LED and the buzzer off immediately (e.g. at night over MQTT,
   works without `mqtt.config`; also the violet `enable` indicator); measuring and MQTT continue. Without
-  `save` it lasts until the next restart
+  `save` it lasts until the next restart; a watchdog reset or crash keeps it (and the brightness set with
+  the button), a power loss, `reset`, the restart button or an upload return to the saved settings
 - The red status LED blinks briefly with every new measurement (not in the dark)
 - Without a CO2 sensor (not found at boot) the traffic light is red, the boot log shows `Error: CO2 sensor
   not found` and no CO2/temperature/humidity values are published. At boot the firmware frees an I2C bus

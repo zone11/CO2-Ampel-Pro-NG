@@ -38,6 +38,7 @@ typedef struct
   uint32_t phase;  // last phase of the previous run
   uint32_t pc, lr; // code address at the hang/fault (0 without event)
   uint32_t uptime; // s, uptime of the previous run (2 s resolution)
+  uint32_t led;    // LED state of the previous run (led_control: led.disable + button level)
 } RESET_INFO;
 
 void reset_info_init(void);         // at boot, before watchdog_init()
@@ -45,5 +46,7 @@ const RESET_INFO *last_run(void);   // previous run
 uint32_t reset_count(void);         // resets since power-on
 uint32_t uptime_s(void);            // s since boot (does not wrap with millis())
 const char *event_name(uint32_t e); // "none", "hang", "fault"
+bool reset_unplanned(void);         // watchdog or crash (not power-on, reset command, upload, reset pin)
+void reset_record_led(uint32_t led);// stores the LED state for the next run
 
 #endif

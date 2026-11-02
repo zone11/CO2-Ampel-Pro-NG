@@ -50,7 +50,7 @@ void reset_mcu(void)
 
 typedef struct
 {
-  uint32_t magic, resets, uptime, event, phase, pc, lr, check;
+  uint32_t magic, resets, uptime, event, phase, pc, lr, led, check;
 } RESET_RECORD;
 
 static RESET_RECORD record __attribute__((section(".noinit")));
@@ -76,7 +76,7 @@ const char *event_name(uint32_t e)
 
 static uint32_t record_check(const RESET_RECORD *r)
 {
-  return r->magic ^ r->resets ^ r->uptime ^ r->event ^ r->phase ^ r->pc ^ r->lr ^ 0x5AA55AA5;
+  return r->magic ^ r->resets ^ r->uptime ^ r->event ^ r->phase ^ r->pc ^ r->lr ^ r->led ^ 0x5AA55AA5;
 }
 
 // Uptime in s, counted from millis() steps so it doesn't wrap after 49 days; called from the
@@ -111,6 +111,7 @@ void reset_info_init(void)
     last.pc     = record.pc;
     last.lr     = record.lr;
     last.uptime = record.uptime;
+    last.led    = record.led;
   }
   record.resets = last.valid ? record.resets + 1 : 0;
   record.magic  = RECORD_MAGIC;
@@ -119,7 +120,22 @@ void reset_info_init(void)
   record.phase  = PHASE_BOOT;
   record.pc     = 0;
   record.lr     = 0;
+  record.led    = 0;
   record.check  = record_check(&record);
+}
+
+bool reset_unplanned(void)
+{
+  uint8_t rc = PM->RCAUSE.reg;
+  return last.valid && ((rc & PM_RCAUSE_WDT) || ((rc & PM_RCAUSE_SYST) && (last.event == EVENT_FAULT)));
+}
+
+void reset_record_led(uint32_t led)
+{
+  __disable_irq(); //the WDT interrupt also writes the record
+  record.led = led;
+  record.check = record_check(&record);
+  __enable_irq();
 }
 
 const RESET_INFO *last_run(void)

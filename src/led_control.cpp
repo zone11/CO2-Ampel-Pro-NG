@@ -1,4 +1,5 @@
 #include "led_control.h"
+#include "system_control.h"
 
 void leds(uint32_t color)
 {
@@ -8,6 +9,23 @@ void leds(uint32_t color)
 
 static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
+
+// LED state in the reset record: bit 0 = led.disable, bits 8-15 = button level
+static void led_state_save(void)
+{
+  reset_record_led((settings.led_disable ? 1 : 0) | ((led_level & 0xFF) << 8));
+}
+
+void led_state_restore(void)
+{
+  if(reset_unplanned())
+  {
+    uint32_t led = last_run()->led;
+    settings.led_disable = (led & 1) != 0;
+    led_level = (led >> 8) & 0xFF;
+  }
+  led_state_save();
+}
 
 void led_brightness_update(void)
 {
@@ -36,6 +54,7 @@ void led_button_step(void)
   unsigned int min = settings.led_auto ? settings.brightness_dark : 1;
 
   led_level = ((level < min) || (level < 1)) ? 0 : level; //below the minimum: back to the maximum
+  led_state_save();
   led_brightness_update();
 }
 
@@ -43,6 +62,7 @@ bool apply_led_disable(void *user, const cfg_item_t *item)
 {
   (void)user;
   (void)item;
+  led_state_save();
   if(settings.led_disable)
   {
     leds(COLOR_OFF); //immediately, also with "enable"
