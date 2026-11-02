@@ -45,7 +45,7 @@ typedef struct
   // v5 ends here (392 bytes; bytes 389-391 are padding, so v6 starts with a 4-byte field)
   unsigned int brightness_dark; // LED brightness when the room is dark (added in settings v6)
   boolean led_auto;           // dim with the light sensor (v6)
-  boolean quiet;              // quiet mode: LEDs, status LED and buzzer off, e.g. at night (v6, was led.disable)
+  boolean quiet;              // Quiet: LEDs, status LED and buzzer off, e.g. at night (v6, was led.disable)
   char password[32+1];        // enable password, empty = none (v6)
   char name[32+1];            // system name, empty = DEFAULT_NAME + MAC id (v7)
 } SETTINGS;

@@ -38,7 +38,7 @@ typedef struct
   uint32_t phase;  // last phase of the previous run
   uint32_t pc, lr; // code address at the hang/fault (0 without event)
   uint32_t uptime; // s, uptime of the previous run (2 s resolution)
-  uint32_t led;    // LED state of the previous run (led_control: quiet mode + button level)
+  uint32_t led;    // LED state of the previous run (led_control: Quiet + button level)
 } RESET_INFO;
 
 void reset_info_init(void);         // at boot, before watchdog_init()

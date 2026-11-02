@@ -62,7 +62,7 @@ void get_chip_id(char *buffer, size_t buffer_size)
            (unsigned int)*id2, (unsigned int)*id3);
 }
 
-static int state_published = -1; //quiet mode last published on <base>/state, -1 = not yet
+static int state_published = -1; //Quiet last published on <base>/state, -1 = not yet
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -247,10 +247,10 @@ static void mqtt_publish_discovery(void)
   }
 
   //switches from <base>/state, commands on <base>/cmd (also with mqtt.config=0, RAM only)
-  //"Quiet mode": on = sys.quiet true
+  //"Quiet": on = sys.quiet true
   static const struct { const char *key, *name, *icon, *on, *off, *state; } switches[] =
   {
-    { "quiet", "Quiet mode", "mdi:sleep", "{\\\"sys.quiet\\\":true}", "{\\\"sys.quiet\\\":false}",
+    { "quiet", "Quiet", "mdi:sleep", "{\\\"sys.quiet\\\":true}", "{\\\"sys.quiet\\\":false}",
       "{{ 'ON' if value_json.quiet else 'OFF' }}" },
   };
   //switches of 0.6/0.7 development builds: remove them from Home Assistant
@@ -721,7 +721,7 @@ void mqtt_service(void)
     return;
   }
 
-  //control state (retained): on connect and right after every change of quiet mode
+  //control state (retained): on connect and right after every change of Quiet
   if(state_published != (int)settings.quiet)
   {
     char topic[96];

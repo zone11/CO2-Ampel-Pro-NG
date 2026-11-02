@@ -444,7 +444,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
     row(out, "Home Assistant", settings.mqtt_ha ? "on" : "off");
 #endif
 #if WITH_MQTT_CONFIG
-    row(out, "Remote config", settings.mqtt_config ? "on" : "off (quiet mode only)");
+    row(out, "Remote config", settings.mqtt_config ? "on" : "off (Quiet only)");
 #endif
   }
   out.print("</fieldset>\r\n");
@@ -454,7 +454,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   out.print("<fieldset><legend>System</legend>\r\n");
   row(out, "Firmware", VERSION);
   row(out, "Uptime", fmt_duration(v, sizeof(v), uptime_s()));
-  row(out, "Quiet mode", settings.quiet ? "on (LEDs and buzzer off)" : "off");
+  row(out, "Quiet", settings.quiet ? "on (LEDs and buzzer off)" : "off");
   row(out, "Reset cause", reset_cause());
   if(r->valid && (r->event != EVENT_NONE))
   {

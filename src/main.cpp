@@ -93,13 +93,13 @@ void setup()
 
   watchdog_init(); //fed by loop() and the long waits (menu, WiFi/MQTT connect, WINC bridge)
 
-  //settings, before the first LED output: quiet mode keeps the LEDs dark
+  //settings, before the first LED output: Quiet keeps the LEDs dark
   SETTINGS_LOAD load = settings_read(&settings);
   if((load == SETTINGS_MIGRATED) || (load == SETTINGS_DEFAULTS))
   {
     settings_write(&settings); //save defaults or migrated settings
   }
-  led_state_restore(); //after a watchdog reset or crash: quiet mode and button level of the previous run
+  led_state_restore(); //after a watchdog reset or crash: Quiet and button level of the previous run
 
   //WS2812
   ws2812.begin();

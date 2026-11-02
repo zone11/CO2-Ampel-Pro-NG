@@ -10,7 +10,7 @@ void leds(uint32_t color)
 static unsigned int led_level = 0; //current level (button), 0 = led.brightness
 static bool led_dark = false;
 
-// LED state in the reset record: bit 0 = quiet mode, bits 8-15 = button level
+// LED state in the reset record: bit 0 = Quiet, bits 8-15 = button level
 static void led_state_save(void)
 {
   reset_record_led((settings.quiet ? 1 : 0) | ((led_level & 0xFF) << 8));
@@ -106,7 +106,7 @@ void print_led_status(void)
   Serial.print("LEDs: ");
   if(settings.quiet)
   {
-    Serial.print("off (quiet mode)");
+    Serial.print("off (Quiet)");
   }
   else
   {
@@ -184,7 +184,7 @@ void traffic_light(unsigned int co2)
 {
   static unsigned int blink_on=0;
 
-  if(settings.quiet) //quiet mode: LEDs and buzzer off (e.g. at night)
+  if(settings.quiet) //Quiet: LEDs and buzzer off (e.g. at night)
   {
     leds(COLOR_OFF);
     buzzer(0);

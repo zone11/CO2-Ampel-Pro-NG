@@ -35,10 +35,12 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       without persistence.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 - [ ] Home Assistant: check the removal (`mqtt.ha=0`) and an HA restart (initial switch state from the retained
-      `<base>/state`) in a real HA; sensors and the LED switch work in HA 2026.10.4 (0.6.1).
+      `<base>/state`) in a real HA; sensors, diagnostics and the "Quiet" switch work in HA 2026.10.4 (0.7 dev).
 
 ## Not tested on hardware
 
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only).
 - [ ] Default `sys.name` `CO2-<MAC id>` at runtime (dev unit has a name; hostname, AP SSID, HA device name).
+- [ ] Dark start with Quiet on after a watchdog reset, watched on the device (code path and `status` checked).
+- [ ] Button brightness level kept over a watchdog reset (needs a button press before the test hang).
