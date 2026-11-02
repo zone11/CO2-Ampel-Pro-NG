@@ -568,49 +568,6 @@ void webserver_service(void)
           strcpy(buf + n, "\r\n");
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /cmk-agent", 14) == 0) //Checkmk agent
-        {
-          //This way CO2-Ampel devices can be added directly to the monitoring of checkmk.com
-          //without any plugins.
-          //As HTTP is the transport, use a "data source":
-          //wget -O - http://ip_address/cmk-agent
-          //See: https://docs.checkmk.com/latest/en/datasource_programs.html
-          int n = sprintf(buf,
-              "HTTP/1.1 200 OK\r\n" \
-              "Content-Type: text/plain\r\n" \
-              "Connection: close\r\n" \
-              "\r\n" \
-              //plain text in the format Checkmk expects
-              //See: https://docs.checkmk.com/latest/en/devel_check_plugins.html
-              "<<<check_mk>>>\r\n" \
-              "AgentOS: arduino\r\n" \
-              //needs a check plugin on the server to evaluate the metrics
-              "<<<watterott_co2ampel_plugin>>>\r\n");
-          if(co2_valid)
-          {
-            n += sprintf(buf + n, "co2 %u\r\ntemp %s\r\nhumidity %s\r\n", co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
-          }
-          n += sprintf(buf + n, "lighting %u\r\n", light_value);
-          if(pres_valid)
-          {
-            n += sprintf(buf + n, "pressure %s\r\ntemp2 %s\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
-          }
-          //ad-hoc check without a server plugin, uses the traffic light thresholds.
-          //Note: one line only - the Checkmk server rates the value itself based on
-          //the thresholds passed along, which we read from the device here:
-          if(co2_valid)
-          {
-            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
-                "P \"CO2 level (ppm)\" co2ppm=%u;%u;%u CO2/ventilation control with Watterott CO2-Ampel, thresholds taken from sensor board.\r\n",
-                co2_value, settings.range[1], settings.range[2]);
-          }
-          else
-          {
-            sprintf(buf + n, "<<<local:sep(0)>>>\r\n" \
-                "3 \"CO2 level (ppm)\" - CO2 sensor not found\r\n");
-          }
-          client.print(buf);
-        }
         else if(strncmp(req[0], "GET /config.json", 16) == 0) //settings, passwords masked
         {
           config_download(client, false);
@@ -752,7 +709,7 @@ void webserver_service(void)
           sprintf(buf,
               "<br/><br/>\r\n" \
               "%s" \
-              "<a href='/json'>JSON</a> - <a href='/cmk-agent'>Checkmk</a> - <a href='#' onclick='wifi();'>WiFi Login</a> - <a href='/config'>Config</a>\r\n" \
+              "<a href='/json'>JSON</a> - <a href='#' onclick='wifi();'>WiFi Login</a> - <a href='/config'>Config</a>\r\n" \
               "<br/><br/>\r\n" \
               "<div id=wifi>\r\n" \
               "<form method=post>\r\n" \

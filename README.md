@@ -67,7 +67,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/cmk-agent`, `/config`, WiFi form; AP mode then has no use) | ~10 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~10 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
@@ -365,7 +365,6 @@ Available endpoints:
 - `/` - Live readings, plus a WiFi form (SSID + password, saved to flash, applies after a reboot; with
   `sys.password` set the form asks for it and does not show the current SSID)
 - `/json` - JSON API with sensor readings
-- `/cmk-agent` - CheckMK monitoring agent format (plugin section + local check with the CO2 thresholds)
 - `/diag` - Diagnostics as JSON (same as serial `diag`, see [Diagnostics](#diagnostics))
 - `/config` - Configuration page: all settings as a form (grouped like the keys; passwords are never shown,
   an empty password field keeps the current one), "Save" stores immediately (all or nothing, like
@@ -380,7 +379,7 @@ Example JSON response:
 ```
 `c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `l` light sensor value; `p` pressure (hPa) and
 `u` pressure sensor temperature (°C) only with a pressure sensor, `c`/`t`/`h` only with a working CO2
-sensor (the same applies to `/cmk-agent`, and the page `/` shows `--`). The page `/` refreshes every 2 minutes.
+sensor (the page `/` then shows `--`). The page `/` refreshes every 2 minutes.
 
 ### Diagnostics
 
