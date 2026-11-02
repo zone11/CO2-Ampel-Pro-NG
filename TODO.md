@@ -34,7 +34,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
       whether the Mosquitto bridge echoes `<base>/status` back.
 - [ ] Both units: `loop_max_ms` ~5.1 s (2026-11-02: 5084 and 5108 ms, no failed MQTT connects), time of the block
-      not recorded, but already there 34 s after boot (second unit, 2026-11-02), so a boot/connect step; find it. First unit: two failed connects (error -3) on some boots.
+      not recorded, but already there 34 s after boot (second unit, 2026-11-02), so a boot/connect step. Not on every
+      boot: 57 ms on a later boot of the second unit, 205 s after start; find it. First unit: two failed connects (error -3) on some boots.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
