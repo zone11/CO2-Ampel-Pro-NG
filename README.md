@@ -42,7 +42,8 @@ Building your own variant, the code structure and the internals are described in
 ## What You Need
 
 - A Watterott CO2-Ampel Pro (CO2 sensor SCD30 or SCD4x, pressure sensor LPS22HB or BMP280, WiFi module).
-  The CO2-Ampel models without WiFi run the firmware too, but MQTT and the web interface need WiFi.
+  The firmware detects the fitted sensors and the WiFi module at start; it has been tested on the Pro with
+  SCD30 and LPS22HB.
 - A USB cable and a computer with [PlatformIO](https://platformio.org/install) (the command line tool or
   the VS Code extension)
 - For MQTT: an MQTT broker, e.g. the Mosquitto add-on of Home Assistant
