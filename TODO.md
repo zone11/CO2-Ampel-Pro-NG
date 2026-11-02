@@ -41,3 +41,4 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only).
+- [ ] Default `sys.name` `CO2-<MAC id>` at runtime (dev unit has a name; hostname, AP SSID, HA device name).

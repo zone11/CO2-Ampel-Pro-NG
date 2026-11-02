@@ -67,7 +67,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~10 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~11 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
@@ -553,7 +553,7 @@ continuous operation with at least 1 hour of fresh air exposure daily.
    password and JSON import, used by serial, web and MQTT), `serial_settings` (get/set/save/dump and
    JSON export), `json_parser` (JSON object parser), `serial_console` (serial commands), `wifi_manager`, `webserver`, `mqtt_service` (publish, HA discovery, commands),
    `tls_client` (TLS with hostname check), `winc_bridge` (WiFi module flash access), `ui_menu`/`diagnostics`
-   (service menu, self test), `i2c_utils`, `system_control` (reset, watchdog). Compile-time defaults and feature switches live
+   (service menu, self test), `i2c_utils`, `system_control` (reset, watchdog, reset record), `health` (diagnostics). Compile-time defaults and feature switches live
    in `include/app_config.h`, pins in `variants/co2ampel/variant.h`. PC tools are in `scripts/`
    (`upload_samba.py` upload with settings kept, `co2ampel_tool.py` provisioning and root certificates)
 2. New user settings: append the field to `SETTINGS` (`include/app_types.h`), set a default in
@@ -564,7 +564,9 @@ continuous operation with at least 1 hour of fresh air exposure daily.
 4. Build with `pio run`, upload with `pio run -t upload` (settings are kept; connect the device directly,
    not through a hub, and close any serial monitor first)
 5. Loops that may run longer than 2 minutes (waiting for the user, long connects) must call
-   `watchdog_feed()` (`include/system_control.h`), otherwise the watchdog restarts the device
+   `watchdog_feed()` (`include/system_control.h`), otherwise the watchdog restarts the device; mark new
+   blocking steps with `phase_set()` so `diag` shows where a hang happened (add the phase name in
+   `src/system_control.cpp`)
 6. Never use `%f` in printf formats: the build uses link time optimization without printf float support,
    format one-decimal values with `fmt1()` (`include/sensors.h`)
 
