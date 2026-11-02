@@ -17,7 +17,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
 
-
 ## Features (roadmap)
 
 - [ ] **OTA update triggered over MQTT** (pull): image ≤ ~123 KB, must not touch the settings area, version
