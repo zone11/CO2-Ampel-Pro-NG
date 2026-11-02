@@ -84,7 +84,7 @@ device and writes them back with the new firmware. Each upload also keeps a copy
 3. After the restart `status` shows the IP address. Open `http://<IP address>/` in a browser.
 
 Without a serial monitor: hold the button for more than 3 seconds. The device opens its own WiFi network
-(named like the device, e.g. `CO2-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
+(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
 
 MQTT and Home Assistant: see [MQTT and Home Assistant](#mqtt-and-home-assistant).
 
@@ -187,7 +187,7 @@ Without `save` a change lasts until the next restart.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `CO2-<MAC address>`, e.g. `CO2-F8F0056E78A2` |
+| `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `co2ampel-ng-<MAC address>`, e.g. `co2ampel-ng-F8F0056E78A2` |
 | `sys.serial_output` | 0 | print every measurement on the serial port |
 | `sys.password` | empty | password for changes, see [Password](#password) |
 | `sys.buzzer` | 1 | buzzer on (1) or off (0) |
@@ -290,7 +290,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"CO2-F8F0056E78A2","version":"0.7","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | every interval | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.8","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | every interval | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |
@@ -313,6 +313,10 @@ the diagnostic entities Pressure sensor temperature, WiFi signal, Uptime, Reset 
 Free RAM minimum and Longest loop. They show "unavailable" while the device is offline. `mqtt.ha=0` removes
 them again.
 
+- Moved a device? Just change `sys.name`: the device name in Home Assistant follows at once, and the entity
+  IDs stay the same (e.g. `sensor.co2ampel_ng_f8f0056e78a2_co2`), so dashboards and automations keep working.
+  If you named the device yourself in Home Assistant, your name stays until you reset it there.
+- Needs Home Assistant 2025.10 or newer. Devices added with an older firmware keep their entity IDs.
 - Any topic prefix works; renaming the prefix keeps the entities and their history.
 - If your broker uses access rules, the device needs write access to `<prefix>/#`,
   `homeassistant/sensor/<device ID>/#` and `homeassistant/switch/<device ID>/#`; Home Assistant needs read

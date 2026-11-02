@@ -152,8 +152,9 @@ watchdog, no address saved).
   `mqtt_service.cpp`.
 - The Home Assistant discovery configs go to `homeassistant/sensor/<device ID>/<value>/config` and
   `homeassistant/switch/<device ID>/quiet/config` and name the full state topics (the old `led`/`buzzer` switch
-  configs are cleared on every discovery publish); the entity IDs are based on
-  the device ID, so a prefix change keeps the entities.
+  configs are cleared on every discovery publish); `unique_id` and `default_entity_id` are based on the device
+  ID, so a prefix change or a new `sys.name` keeps the entities. HA reads `default_entity_id` (2025.10+) only
+  when it creates an entity; a `sys.name` change republishes the configs, HA updates only the device name.
 
 ## WiFi Module Root Certificates
 

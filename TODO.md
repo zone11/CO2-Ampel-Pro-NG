@@ -26,6 +26,12 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## MQTT / Home Assistant follow-ups
 
+- [ ] 0.7.1 candidate: MQTT keepalive 30 s (`mqttClient.setKeepAlive(30)`) if the drops repeat. Seen once on the
+      dev unit, 2026-11-02 10:52:36 UTC: broker `exceeded timeout` with the 10 s default, reconnect in the same
+      second, no readings lost, cause of the missed ping unknown. Trade-off: HA shows a hung device as offline
+      after up to 45 s instead of 15 s.
+- [ ] Same drop: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
+      whether the Mosquitto bridge echoes `<base>/status` back.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
@@ -42,6 +48,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only).
-- [ ] Default `sys.name` `CO2-<MAC id>` at runtime (dev unit has a name; hostname, AP SSID, HA device name).
+- [ ] AP SSID with the default `sys.name` `co2ampel-ng-<MAC id>` (hostname and HA device name checked on the second dev unit).
 - [ ] Dark start with Quiet on after a watchdog reset, watched on the device (code path and `status` checked).
 - [ ] Button brightness level kept over a watchdog reset (needs a button press before the test hang).

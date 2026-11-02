@@ -53,7 +53,7 @@ void system_hostname(char *buffer, size_t buffer_size)
   {
     char id[16];
     get_device_id(id, sizeof(id));
-    snprintf(buffer, buffer_size, "%s-%s", PRODUCT_NAME, id);
+    snprintf(buffer, buffer_size, DEFAULT_NAME "%s", id);
   }
 }
 

@@ -6,7 +6,7 @@
 #define VERSION "SET VERSION!"
 #endif
 #define PRODUCT_NAME       "CO2-Ampel-NG" //HA model, page title
-#define DEFAULT_NAME       "CO2-"         //default system name: + MAC id (sys.name empty)
+#define DEFAULT_NAME       "co2ampel-ng-" //default system name: + MAC id (sys.name empty)
 #define MANUFACTURER       "zone11"       //HA manufacturer
 
 // Optional features (compile time, override with -DWITH_...=0 in platformio.ini build_flags).

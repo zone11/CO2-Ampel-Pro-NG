@@ -1,4 +1,5 @@
 #include "mqtt_service.h"
+#include <ctype.h>
 #include "sensors.h"
 #include "settings_registry.h"
 #include "system_control.h"
@@ -212,9 +213,16 @@ static size_t ha_device(char *json, size_t size, size_t n, const char *device_id
 
 static void mqtt_publish_discovery(void)
 {
-  char device_id[16], topic[96], base[64], json[768], name[2*32+1];
+  char device_id[16], entity_id[16], topic[96], base[64], json[768], name[2*32+1];
 
   get_device_id(device_id, sizeof(device_id));
+  //entity IDs from the MAC id, so they stay the same when sys.name changes (HA uses them for new entities only)
+  size_t i = 0;
+  for(; device_id[i] != 0; i++)
+  {
+    entity_id[i] = tolower(device_id[i]);
+  }
+  entity_id[i] = 0;
   json_escape(name, sizeof(name), system_name());
   snprintf(base, sizeof(base), "%s/%s", used_prefix, device_id);
 
@@ -230,10 +238,10 @@ static void mqtt_publish_discovery(void)
     }
 
     size_t n = snprintf(json, sizeof(json),
-      "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\","
+      "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"default_entity_id\":\"sensor.co2ampel_ng_%s_%s\","
       "\"state_topic\":\"%s/%s\",\"value_template\":\"{{ value_json.%s }}\","
       "\"availability_topic\":\"%s/status\"%s",
-      e.name, device_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
+      e.name, device_id, e.key, entity_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
@@ -266,12 +274,12 @@ static void mqtt_publish_discovery(void)
     if(settings.mqtt_ha)
     {
       size_t n = snprintf(json, sizeof(json),
-        "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"icon\":\"%s\","
+        "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"default_entity_id\":\"switch.co2ampel_ng_%s_%s\",\"icon\":\"%s\","
         "\"command_topic\":\"%s/cmd\",\"payload_on\":\"%s\",\"payload_off\":\"%s\","
         "\"state_topic\":\"%s/state\",\"value_template\":\"%s\","
         "\"state_on\":\"ON\",\"state_off\":\"OFF\"," //without them HA compares the template result with payload_on/off
         "\"availability_topic\":\"%s/status\"",
-        sw.name, device_id, sw.key, sw.icon, base, sw.on, sw.off, base, sw.state, base);
+        sw.name, device_id, sw.key, entity_id, sw.key, sw.icon, base, sw.on, sw.off, base, sw.state, base);
       n = ha_device(json, sizeof(json), n, device_id, name);
       if(n < sizeof(json))
       {
