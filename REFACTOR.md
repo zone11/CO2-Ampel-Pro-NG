@@ -11,6 +11,9 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
       up to ~40 s (DNS 20 s + connect 20 s + 2 s retry); LEDs, button and serial stand still. One connection
       state machine (WiFi → MQTT) with backoff, called only from the loop; combine with the per-phase watchdog
       (TODO.md).
+      Same change: `webserver_service()` waits up to 5 s for a client that sends nothing and the loop stands still
+      (TODO.md `loop_max_ms`; user saw the red blinking on the first unit pause 2-3 s, cause not proven). Wait about
+      1 s for the first byte, keep 5 s once a request has started; or handle the client without blocking.
 
 ## Medium
 
