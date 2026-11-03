@@ -315,6 +315,7 @@ void setup()
           features &= ~FEATURE_WINC1500;
         }
       }
+      WiFi.setTimeout(WIFI_RECONNECT_TIMEOUT);
       delay(2000);
       if(features & FEATURE_USB)
       {
@@ -383,7 +384,7 @@ void loop()
 {
   static unsigned int dark=0, sw=0;
   static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
-  static unsigned long t_wifi=0;
+  static RETRY wifi_retry = { 0, RETRY_MIN };
   unsigned int overwrite=0;
 
   watchdog_feed();
@@ -406,19 +407,13 @@ void loop()
   {
     phase_set(PHASE_WIFI);
     int wifi_status = WiFi.status();
-    if((wifi_status != WL_CONNECTED) && (wifi_status != WL_AP_LISTENING))
+    if((wifi_status == WL_CONNECTED) || (wifi_status == WL_AP_LISTENING))
     {
-      if(settings.wifi_ssid[0] != 0)
-      {
-        if((millis() - t_wifi) > 30000)
-        {
-          t_wifi = millis();
-          if(wifi_start() == 0 && settings.mqtt_enabled)
-          {
-            mqtt_connect();
-          }
-        }
-      }
+      wifi_retry.wait = RETRY_MIN;
+    }
+    else if((settings.wifi_ssid[0] != 0) && retry_due(&wifi_retry))
+    {
+      wifi_start(); //MQTT follows in mqtt_service()
     }
   }
 

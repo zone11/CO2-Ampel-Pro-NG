@@ -5,6 +5,13 @@
 
 void print_wifi_status(void);
 void print_ip_address_line(const IPAddress &ip);
+// Spacing of connect attempts (they block the loop): RETRY_MIN, doubled per attempt up to RETRY_MAX
+typedef struct
+{
+  unsigned long last;
+  unsigned long wait;
+} RETRY;
+bool retry_due(RETRY *r);
 unsigned int wifi_start_ap(void);
 unsigned int wifi_start(void);
 

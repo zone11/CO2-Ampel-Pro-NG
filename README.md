@@ -400,7 +400,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 | Problem | What to do |
 |---|---|
 | No CO2 values, traffic light stays red | The CO2 sensor was not found at power-on (`status` / boot log: `Error: CO2 sensor not found`). Unplug the device for a few seconds. |
-| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried every 30 seconds. |
+| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
 | MQTT not connected | The MQTT section of the web page shows the last error (e.g. wrong password, broker not reachable). With TLS: is the root certificate installed, and does `mqtt.broker` match the certificate? |
 | Nothing appears in Home Assistant | `mqtt.ha=1`? Check the broker access rules (see [Home Assistant](#home-assistant)). |
 | Upload fails with "Resource busy" | A serial monitor still has the port open; close it. |

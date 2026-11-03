@@ -36,6 +36,9 @@
 
 //--- Watchdog ---
 #define WATCHDOG_TIMEOUT   120 //s without watchdog_feed() until reset (multiple of 2; WiFi/MQTT connects can block ~100 s)
+#define WIFI_RECONNECT_TIMEOUT 20000UL //ms a WiFi reconnect may block (at boot: 60 s)
+#define RETRY_MIN 30000UL  //ms between WiFi/MQTT connect attempts, doubled while they fail and block
+#define RETRY_MAX 300000UL
 #define NET_WRITE_TIMEOUT 5000UL  //ms a socket write waits for the WiFi module
 #define NET_WRITE_TIMEOUTS_MAX 3  //in a row without a successful send, then the watchdog takes over
 

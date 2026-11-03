@@ -578,23 +578,32 @@ void mqtt_connect(void)
   }
 }
 
+static RETRY mqtt_retry = { 0, RETRY_MIN };
+
 void mqtt_reconnect(void)
 {
-  static unsigned long last_attempt = 0;
-
   if(!settings.mqtt_enabled)
   {
     return;
   }
 
-  //retry every 30 seconds only
-  if((millis() - last_attempt) < 30000UL)
+  if(WiFi.status() != WL_CONNECTED) //the WiFi retry comes first, start over when it is back
+  {
+    mqtt_retry.wait = RETRY_MIN;
+    return;
+  }
+
+  if(!retry_due(&mqtt_retry))
   {
     return;
   }
 
-  last_attempt = millis();
+  unsigned long t = millis();
   mqtt_connect();
+  if((millis() - t) < 5000) //refused at once: no stall of the loop, keep retrying quickly
+  {
+    mqtt_retry.wait = RETRY_MIN;
+  }
 }
 
 void mqtt_publish_sensors(void)
@@ -717,6 +726,7 @@ void mqtt_service(void)
     mqtt_reconnect();
     return;
   }
+  mqtt_retry.wait = RETRY_MIN;
 
   //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
   if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))

@@ -36,6 +36,17 @@ extern "C" __attribute__((noinline)) sint16 guarded_send(SOCKET sock, void *buf,
   return err;
 }
 
+bool retry_due(RETRY *r)
+{
+  if((millis() - r->last) < r->wait)
+  {
+    return false;
+  }
+  r->last = millis();
+  r->wait = min(r->wait * 2, RETRY_MAX);
+  return true;
+}
+
 void get_device_id(char *buffer, size_t buffer_size)
 {
   byte mac[6];
@@ -239,16 +250,6 @@ unsigned int wifi_start(void)
   else
   {
     WiFi.begin(settings.wifi_ssid); //open network
-  }
-
-  //wait for the connection
-  for(unsigned int t=0; WiFi.status() == WL_IDLE_STATUS; t++)
-  {
-    if(t >= 6) //6s
-    {
-      break;
-    }
-    status_wait(1000);
   }
 
   if(!(WiFi.status() == WL_CONNECTED)) //connection failed

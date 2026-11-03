@@ -666,7 +666,6 @@ static void urldecode(char *src) //decode URL parameters
 
 void webserver_service(void)
 {
-  static unsigned long t_check=0;
   unsigned int status;
 
   if((features & FEATURE_WINC1500) == 0)
@@ -682,17 +681,10 @@ void webserver_service(void)
   }
   else if((status == WL_CONNECT_FAILED) ||
           (status == WL_CONNECTION_LOST) || 
-          (status == WL_DISCONNECTED)) //connection lost
+          (status == WL_DISCONNECTED)) //connection lost: loop() reconnects
   {
-    if((millis()-t_check) > (1*60000UL)) //1min
-    {
-      t_check = millis();
-      wifi_start();
-    }
     return;
   }
-
-  t_check = millis(); //for the reconnect after 1min
 
   WiFiClient client = server.available();
   if(!client) //no client
@@ -712,14 +704,18 @@ void webserver_service(void)
   char hline[24]; //current header line (only for Content-Length)
   size_t hlen = 0, content_length = 0;
   req[0][0] = 0;
+  unsigned long t_start = millis();
+  bool request_started = false;
   while(client.connected())
   {
-    if((millis()-t_check) > (5*1000UL)) //stop after 5s
+    //browsers open connections in advance and send nothing: don't stall the loop for those
+    if((millis()-t_start) > (request_started ? 5000UL : 1000UL))
     {
       break;
     }
     if(client.available())
     {
+      request_started = true;
       char c = client.read();
       if(c == '\n' && currentLineIsBlank) //end of header
       {

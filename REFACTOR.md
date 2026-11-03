@@ -6,14 +6,9 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
 
 ## High
 
-- [ ] **H3 Blocking, duplicated reconnects** (L): `wifi_start()` runs from `loop()` every 30 s (`main.cpp:405`)
-      and from `webserver_service()` every 60 s (`webserver.cpp:684`), each blocks ≥ 6 s, then `mqtt_connect()`
-      up to ~40 s (DNS 20 s + connect 20 s + 2 s retry); LEDs, button and serial stand still. One connection
-      state machine (WiFi → MQTT) with backoff, called only from the loop; combine with the per-phase watchdog
-      (TODO.md).
-      Same change: `webserver_service()` waits up to 5 s for a client that sends nothing and the loop stands still
-      (TODO.md `loop_max_ms`; user saw the red blinking on the first unit pause 2-3 s, cause not proven). Wait about
-      1 s for the first byte, keep 5 s once a request has started; or handle the client without blocking.
+- [ ] **H3 rest** (S–M): one reconnect path with backoff and the 1 s web wait are done (DEVELOPMENT.md "Reconnects"). Left:
+      the per-phase watchdog (TODO.md), and MQTT connects still block up to ~40 s (fixed waits in WiFi101, needs a patched
+      library).
 
 ## Medium
 
@@ -39,8 +34,8 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
       already there (commented out). `i2c_utils.cpp:39-82` (S).
 - [ ] **L2** `settings_set()` formats "set key=value" to reuse the serial parser; call `cfg_find_item()` +
       `cfg_set_value()` directly. `settings_registry.cpp:180` (S).
-- [ ] **L3** 25 globals in `include/app_globals.h`; a `readings` struct for the measurement values. Only together
-      with H3 (M).
+- [ ] **L3** 25 globals in `include/app_globals.h`; a `readings` struct for the measurement values. Only with a larger
+      rework (M).
 - [ ] **L4** Busy main loop without `__WFI()` sleep (less MCU self-heating). `main.cpp` `loop()` (S).
 - [ ] **L5** Hygiene: initialize `ReplyBuffer::buf` / `ChunkPrint::buf` (cppcheck), explicit `flags` in the key
       table (-Wextra, 19×); cppcheck `json_parser.cpp:223` is a false positive (S).

@@ -153,6 +153,16 @@ when a read fails. Out-of-range pressure readings are dropped.
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
 
+## Reconnects
+
+`loop()` is the only caller of `wifi_start()` after boot; `mqtt_service()` follows with MQTT once WiFi is back. Both
+use `retry_due()`: RETRY_MIN, doubled per attempt up to RETRY_MAX. An MQTT connect refused within 5 s does not count,
+it doesn't stall the loop, so a restarted broker is found again quickly.
+
+The connects still block the loop, because WiFi101 offers no non-blocking way: after `setTimeout()` runs out
+`startConnect()` resets its mode and ignores the late DHCP reply, so a timeout of 0 never connects. The limits are 60 s
+at boot, `WIFI_RECONNECT_TIMEOUT` after it, and for MQTT up to ~40 s (DNS 20 s + TCP 20 s, fixed in the library).
+
 ## Socket Write Deadline
 
 `WiFiSocket::write()` retries `send()` forever while it returns `SOCK_ERR_BUFFER_FULL`, which also covers any failed

@@ -33,10 +33,7 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
       whether the Mosquitto bridge echoes `<base>/status` back.
-- [ ] `loop_max_ms` ~5.1 s on both units is most likely the web server: `webserver_service()` waits up to 5 s for a
-      client that connects and sends nothing, and the whole loop stands still (idle connection delays a request by
-      4.8 s, measured 2026-11-03; a request 1 s after that connection closed still took 4.1 s, not explained). Not
-      boot related (second unit: 57 ms at 205 s, 5110 ms later, no reconnects). Which client does it is unknown (user had device pages open in browser windows, `/` reloads every 30 s). Fix with H3 in REFACTOR.md. First unit: two failed connects (error -3) on some boots.
+- [ ] First unit: two failed connects (error -3) on some boots.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
