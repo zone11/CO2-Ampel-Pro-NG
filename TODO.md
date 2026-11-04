@@ -21,9 +21,9 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Long WiFi outage (10 minutes or more): retry delay up to its 5 minute maximum and failed attempts up to the 20 s limit
       (`loop_max_ms`). Needs a separate SSID for the devices, so only they lose WiFi. Short outage (about a minute) passed on
       both units 2026-11-04.
-- [ ] Clock drift: `uptime` of the first unit runs 1.5 % slow against a PC clock, the second unit about 0 % (measured
-      2026-11-04 over 10 minutes, same gap over 12.6 hours). Flash the same build on both to separate chip from firmware;
-      the board has no crystal and only the second unit is on a USB host, so check whether that explains it. Timers and intervals run long by the same amount.
+- [ ] Clock drift: `uptime` of the first unit ran 1.5 % slow on a charger with the older 0.8 build (2026-11-04); both units are
+      about 0 % on a USB host with the same build. Measure the first unit on the charger again to separate USB from firmware.
+      The board has no crystal. Timers and intervals run long by the same amount.
 
 ## Features (roadmap)
 
