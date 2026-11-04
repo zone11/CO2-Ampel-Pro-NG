@@ -21,14 +21,11 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Long WiFi outage (10 minutes or more): retry delay up to its 5 minute maximum and failed attempts up to the 20 s limit
       (`loop_max_ms`). Needs a separate SSID for the devices, so only they lose WiFi. Short outage (about a minute) passed on
       both units 2026-11-04.
-- [ ] Clock drift: `uptime` of the first unit ran 1.5 % slow on a charger with the older 0.8 build (2026-11-04); both units are
-      about 0 % on a USB host with the same build. Measure the first unit on the charger again to separate USB from firmware.
-      The board has no crystal. Timers and intervals run long by the same amount.
 
 ## Features (roadmap)
 
 - [ ] **OTA update triggered over MQTT** (pull): image ≤ ~123 KB, must not touch the settings area, version
-      compare must handle `0.4` / `0.4.1`.
+      compare must handle `0.4` / `0.4.1`, a repeated trigger must do nothing.
 - [ ] **LoRaWAN/TTN** with MCCI LMIC: one image with a runtime `net.mode` only if it stays within the OTA
       limit, otherwise a separate env. Dev unit has an RFM9x and TTN coverage.
 - [ ] Web interface with charts (listed as planned in the README, not prioritized yet).
