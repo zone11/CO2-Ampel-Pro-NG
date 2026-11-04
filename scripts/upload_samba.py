@@ -35,20 +35,24 @@ WAIT_S = 20
 APP_START = 0x2000       # bossac 1.7 addresses flash from the end of the bootloader
 SETTINGS_ADDR = 0x3F800
 SETTINGS_SIZE = 0x800
+SETTINGS_SLOT = 0x400    # two slots, the firmware loads the valid one with the highest save counter
 FLASH_END = 0x40000
 SETTINGS_MAGIC = 0x434F3241  # "CO2A" (record layout: src/settings_storage.cpp)
 BACKUP = os.path.join(env.subst("$PROJECT_DIR"), ".pio", "settings-backup.bin")
 
 
-def settings_valid(area):
+def slot_valid(slot):
     """Checks magic, size and CRC32 of a settings record."""
-    if len(area) != SETTINGS_SIZE:
+    magic, _version, size = struct.unpack_from("<IHH", slot, 0)
+    if magic != SETTINGS_MAGIC or 8 + size + 4 > SETTINGS_SLOT:
         return False
-    magic, _version, size = struct.unpack_from("<IHH", area, 0)
-    if magic != SETTINGS_MAGIC or 8 + size + 4 > SETTINGS_SIZE:
-        return False
-    crc = struct.unpack_from("<I", area, 8 + size)[0]
-    return zlib.crc32(area[:8 + size]) & 0xFFFFFFFF == crc
+    crc = struct.unpack_from("<I", slot, 8 + size)[0]
+    return zlib.crc32(slot[:8 + size]) & 0xFFFFFFFF == crc
+
+
+def settings_valid(area):
+    """True if at least one slot holds a valid record."""
+    return len(area) == SETTINGS_SIZE and (slot_valid(area[:SETTINGS_SLOT]) or slot_valid(area[SETTINGS_SLOT:]))
 
 
 def save_backup(area):

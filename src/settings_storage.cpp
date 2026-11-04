@@ -8,7 +8,10 @@
 // Settings live in the last 2KB of flash (0x3F800-0x3FFFF). The linker script
 // reserves this area, and scripts/upload_samba.py reads it before the erase and
 // writes it back with the firmware, so settings survive firmware updates.
+// Two slots: a save goes to the older one, so a power loss during it keeps the previous settings.
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
+#define SETTINGS_SLOT_SIZE   1024
+#define SETTINGS_SLOTS       2
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
 #define SETTINGS_VERSION     7            // bump on any SETTINGS change and add a migration in settings_read()
 
@@ -22,6 +25,8 @@ typedef struct
   uint16_t size;      // sizeof(SETTINGS) when written
   SETTINGS data;
   uint32_t crc;       // CRC32 over magic..data
+  uint32_t seq;       // save counter, the highest valid one is the current record
+  uint32_t seq_inv;   // ~seq; doesn't match in records from before the slots (seq counts as 0)
 } SETTINGS_RECORD;
 
 #define RECORD_HEADER     offsetof(SETTINGS_RECORD, data)
@@ -35,6 +40,7 @@ static_assert(offsetof(SETTINGS, name) == 431, "v7 name starts in the last paddi
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
+static_assert(RECORD_BYTES <= SETTINGS_SLOT_SIZE, "record must fit a slot");
 
 static uint32_t crc32(const uint8_t *data, size_t len)
 {
@@ -202,38 +208,73 @@ static void default_padding_fields(SETTINGS *data, uint16_t version)
   if(version < 7) { data->name[0]     = 0; } //byte 431 was padding in v6
 }
 
+// True if the slot holds a complete record that this firmware can load or must keep (newer version)
+static bool slot_read(int slot, uint16_t *version, uint16_t *size, uint32_t *seq)
+{
+  const uint8_t *flash = (const uint8_t *)(SETTINGS_FLASH_ADDR + (slot * SETTINGS_SLOT_SIZE));
+  uint32_t magic, crc, trailer[2];
+
+  memcpy(&magic, flash, sizeof(magic));
+  memcpy(version, flash + 4, sizeof(*version));
+  memcpy(size, flash + 6, sizeof(*size));
+
+  if((magic != SETTINGS_MAGIC) || (*version < 1) || (*size < SETTINGS_V1_SIZE) || ((*size % 4) != 0) ||
+     ((RECORD_HEADER + *size + sizeof(crc) + sizeof(trailer)) > SETTINGS_SLOT_SIZE) ||
+     ((*version <= SETTINGS_VERSION) && (*size > sizeof(SETTINGS))))
+  {
+    return false;
+  }
+  memcpy(&crc, flash + RECORD_HEADER + *size, sizeof(crc));
+  if(crc != crc32(flash, RECORD_HEADER + *size))
+  {
+    return false;
+  }
+  memcpy(trailer, flash + RECORD_HEADER + *size + sizeof(crc), sizeof(trailer));
+  *seq = (trailer[1] == ~trailer[0]) ? trailer[0] : 0;
+  return true;
+}
+
+// Slot with the current record, -1 if none is valid
+static int newest_slot(uint16_t *version, uint16_t *size, uint32_t *seq)
+{
+  int newest = -1;
+  for(int slot = 0; slot < SETTINGS_SLOTS; slot++)
+  {
+    uint16_t v, s;
+    uint32_t n;
+    if(slot_read(slot, &v, &s, &n) && ((newest < 0) || (n > *seq)))
+    {
+      newest = slot;
+      *version = v;
+      *size = s;
+      *seq = n;
+    }
+  }
+  return newest;
+}
+
 SETTINGS_LOAD settings_read(SETTINGS *data)
 {
   const uint8_t *flash = (const uint8_t *)SETTINGS_FLASH_ADDR;
-  uint32_t magic;
   uint16_t version, size;
+  uint32_t seq, magic;
+  int slot = newest_slot(&version, &size, &seq);
 
-  memcpy(&magic, flash, sizeof(magic));
-  memcpy(&version, flash + 4, sizeof(version));
-  memcpy(&size, flash + 6, sizeof(size));
-
-  if(magic == SETTINGS_MAGIC)
+  if(slot >= 0)
   {
+    settings_defaults(data);                           //fields missing in shorter records
     if(version > SETTINGS_VERSION) //after a downgrade: don't overwrite, so the newer firmware finds them again
     {
-      settings_defaults(data);
       return SETTINGS_NEWER;
     }
-    if((version >= 1) && (size >= SETTINGS_V1_SIZE) && (size <= sizeof(SETTINGS)) && ((size % 4) == 0))
-    {
-      uint32_t crc;
-      memcpy(&crc, flash + RECORD_HEADER + size, sizeof(crc));
-      if(crc == crc32(flash, RECORD_HEADER + size))
-      {
-        settings_defaults(data);                       //fields missing in shorter records
-        memcpy(data, flash + RECORD_HEADER, size);
-        default_padding_fields(data, version);
-        settings_validate(data);
-        return (version == SETTINGS_VERSION) ? SETTINGS_LOADED : SETTINGS_MIGRATED;
-      }
-    }
+    memcpy(data, flash + (slot * SETTINGS_SLOT_SIZE) + RECORD_HEADER, size);
+    default_padding_fields(data, version);
+    settings_validate(data);
+    return (version == SETTINGS_VERSION) ? SETTINGS_LOADED : SETTINGS_MIGRATED;
   }
-  else
+
+  memcpy(&magic, flash, sizeof(magic));
+  if(magic != SETTINGS_MAGIC)
   {
     // Pre-versioning firmware stored the raw v1 layout at the same address
     SETTINGS old;
@@ -267,6 +308,13 @@ void settings_write(const SETTINGS *data)
   memcpy(&rec->data, data, sizeof(SETTINGS));
   rec->crc     = record_crc(rec);
 
+  uint16_t version, size;
+  uint32_t seq = 0;
+  int newest = newest_slot(&version, &size, &seq);
+  rec->seq     = seq + 1;
+  rec->seq_inv = ~rec->seq;
+  const uint32_t addr = SETTINGS_FLASH_ADDR + (((newest + 1) % SETTINGS_SLOTS) * SETTINGS_SLOT_SIZE);
+
   const uint32_t num_rows  = (RECORD_BYTES + FLASH_ROW_SIZE - 1) / FLASH_ROW_SIZE;
   const uint32_t num_pages = RECORD_BYTES / FLASH_PAGE_SIZE;
   const uint32_t *src = buf;
@@ -277,7 +325,7 @@ void settings_write(const SETTINGS *data)
   // Erase rows first
   for(uint32_t i = 0; i < num_rows; i++)
   {
-    NVMCTRL->ADDR.reg = (SETTINGS_FLASH_ADDR + (i * FLASH_ROW_SIZE)) / 2; // Address must be divided by 2
+    NVMCTRL->ADDR.reg = (addr + (i * FLASH_ROW_SIZE)) / 2; // Address must be divided by 2
     NVMCTRL->CTRLA.reg = NVMCTRL_CTRLA_CMDEX_KEY | NVMCTRL_CTRLA_CMD_ER;
     while(!NVMCTRL->INTFLAG.bit.READY);
   }
@@ -290,7 +338,7 @@ void settings_write(const SETTINGS *data)
     while(!NVMCTRL->INTFLAG.bit.READY);
 
     // Fill page buffer (16 words = 64 bytes per page)
-    volatile uint32_t *dst = (volatile uint32_t *)(SETTINGS_FLASH_ADDR + (page * FLASH_PAGE_SIZE));
+    volatile uint32_t *dst = (volatile uint32_t *)(addr + (page * FLASH_PAGE_SIZE));
     for(uint32_t i = 0; i < (FLASH_PAGE_SIZE / 4); i++)
     {
       dst[i] = *src++;
