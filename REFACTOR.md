@@ -12,18 +12,11 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
 
 ## Medium
 
-- [ ] **M1 Power-fail safe settings write** (M): one record, rows erased then written; power loss in between =
-      CRC error = defaults (WiFi/MQTT lost). Two slots with a sequence counter in the existing 2 KB area (read
-      the newest valid, write the other); keeps the upload backup/restore of the whole area. Check the BOD33
-      fuse. `settings_storage.cpp` `settings_write()` / `settings_read()`.
 - [ ] **M3 SCD4x path** (S): a pressure change stops/starts the measurement with 1.5 s `delay()`;
       `set_ambient_pressure` is allowed during periodic measurement. `readMeasurement()` is polled every second
       (data every 5 s): use `getDataReadyStatus()`. Untested on hardware. `sensors.cpp:241-255`.
 - [ ] **M4 Double soft float, 6.1 KB flash** (S + measure): `Print::println(float, n)` (`sensors.cpp:27,29,60,77`)
       → `fmt1()`; then check whether the LPS22HB/BMP280 code still pulls `__aeabi_d*`. Only worth it if both go.
-- [ ] **M5 RAM for LoRaWAN/OTA** (S–M): unused `Serial1` in `variants/co2ampel/variant.cpp:129` (580 B RAM,
-      ~1 KB flash); MQTT `reply` (1.4 KB static) as a local in `mqtt_handle_command()` or sharing `cmd_pending`;
-      retained `device` only once per connect instead of every interval (`mqtt_service.cpp:15,49,663`).
 
 ## Low
 

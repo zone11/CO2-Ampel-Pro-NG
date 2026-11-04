@@ -33,12 +33,12 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 99 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
 | `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~11 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
 Compile-time defaults of the settings (thresholds, colors, brightness, `CO2_ASC`, MQTT defaults) are in
@@ -94,8 +94,16 @@ settings export/import, WiFi module root certificates), `link_debug.py` (build h
 
 ## Settings Storage
 
-The settings live in the last 2 KB of the flash (0x3F800): magic, version, size, the `SETTINGS` struct and
-a CRC32. Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware
+The settings live in the last 2 KB of the flash, in two 1 KB slots (0x3F800, 0x3FC00). A record holds magic,
+version, size, the `SETTINGS` struct, a CRC32, then a save counter and its inverse. The valid record with the
+highest counter is loaded and a save goes to the other slot, so a power loss during a save leaves the previous
+settings. Records from before the slots have no valid counter and count as 0, so they load without a migration.
+
+The previous values, including passwords, stay in the other slot until the next save; a factory reset erases
+both. Firmware before 0.8 reads only the first slot: after a downgrade it may find settings one save behind, or
+defaults, and its saves are ignored after upgrading again while the second slot holds a higher counter.
+
+Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware
 runs with defaults until you `save`, and going back to the newer firmware finds the original settings
 again. The default `sys.name` is resolved at runtime and not stored, so an exported settings file doesn't
 carry one device's MAC address to another. The hostname keeps only letters, digits and `-` (other characters
@@ -111,6 +119,7 @@ touch), reads the flash, and writes the firmware together with the stored settin
 - The upload erases the whole flash before writing, so an upload that breaks off loses the settings. The
   next upload then prints a note; `CO2AMPEL_RESTORE_SETTINGS=1 pio run -e co2ampel_pro -t upload` writes the
   backup back (`CO2AMPEL_RESTORE_SETTINGS=<file>` for another one, e.g. the `.prev` file).
+- The settings area counts as valid if either slot is valid.
 - `CO2AMPEL_FACTORY_RESET=1` flashes without the settings. The firmware saves its defaults at boot, so after a
   factory reset the next upload rotates the backup to `.prev`.
 - If the device no longer shows up on USB after a broken upload, press the red reset button twice quickly

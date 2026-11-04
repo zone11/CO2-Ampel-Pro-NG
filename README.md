@@ -33,7 +33,7 @@ Building your own variant, the code structure and the internals are described in
 - MQTT with optional TLS (certificate and hostname checked)
 - Home Assistant discovery: the device, its sensors and a "Quiet" switch appear automatically
 - Quiet for the night: LEDs and buzzer off with one switch in Home Assistant or over MQTT
-- Settings survive firmware updates; backup and restore as a JSON file
+- Settings survive firmware updates, and a power loss while saving keeps the previous settings; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
 - Calibration and self test from the built-in service menu
@@ -290,7 +290,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.8","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | every interval | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.8","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |

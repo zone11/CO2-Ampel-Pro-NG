@@ -32,8 +32,9 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## MQTT / Home Assistant follow-ups
 
-- [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
-      whether the Mosquitto bridge echoes `<base>/status` back.
+- [ ] Every message arrives twice on the dev broker (2026-11-04: `sensors` 6 times in 75 s at a 30 s interval, `cmd` handled
+      twice, so `resp` 4 times and `"save":true` writes the flash twice). Most likely the Mosquitto bridge echoes
+      them, not checked in its config; it would also explain the HA entities flickering unavailable on 2026-11-02.
 - [ ] Failed MQTT connects (error -3) on some boots, seen on both units; the retry connects.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
@@ -49,6 +50,7 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## Not tested on hardware
 
+- [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only).
 - [ ] AP SSID with the default `sys.name` `co2ampel-ng-<MAC id>` (hostname and HA device name checked on the second dev unit).
