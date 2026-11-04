@@ -33,7 +33,7 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 99 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|

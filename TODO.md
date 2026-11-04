@@ -20,6 +20,9 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Watchdog per phase (short limit for the normal loop, long only for connects) for shorter outages.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
+- [ ] Clock drift: `uptime` of the first unit runs 1.5 % slow against a PC clock, the second unit about 0 % (measured
+      2026-11-04 over 10 minutes, same gap over 12.6 hours). Flash the same build on both to separate chip from firmware;
+      the board has no crystal, so check whether a USB host connection changes it. Timers and intervals run long by the same amount.
 
 ## Features (roadmap)
 
