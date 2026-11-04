@@ -12,8 +12,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       build, `workfiles/elf/`) and fix the cause.
 - [ ] I2C timeout with a real stuck bus: tested only with the MCU itself holding SCL (2026-11-02); short SCL to GND
       on a dev unit and watch `i2c_errors`, also the recursion in `startTransmissionWIRE()` (DEVELOPMENT.md).
-- [ ] SCD30 bus clock: `Wire.setClock(50000)` in `setup()` is undone by the `Wire.begin()` in the SCD30 init, the
-      bus runs at 100 kHz. Decide on one and remove the other (test: the SCD30 is the device that hung before).
 - [ ] Socket write deadline with real MQTT and web traffic: tested only with a raw test socket against a peer that
       stops reading (2026-11-02); needs a fake broker that stops reading after CONNACK, and a stalled browser.
 - [ ] WiFi101: find the other calls that can block forever (SPI) and reset the WINC1500 instead of the MCU.
@@ -22,7 +20,7 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Soak test with web/MQTT load and a router/WiFi restart.
 - [ ] Clock drift: `uptime` of the first unit runs 1.5 % slow against a PC clock, the second unit about 0 % (measured
       2026-11-04 over 10 minutes, same gap over 12.6 hours). Flash the same build on both to separate chip from firmware;
-      the board has no crystal, so check whether a USB host connection changes it. Timers and intervals run long by the same amount.
+      the board has no crystal and only the second unit is on a USB host, so check whether that explains it. Timers and intervals run long by the same amount.
 
 ## Features (roadmap)
 
@@ -36,7 +34,7 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] MQTT drop on 2026-11-02: HA entities flickered unavailable twice in 80 ms with one reconnect in the broker log; check
       whether the Mosquitto bridge echoes `<base>/status` back.
-- [ ] First unit: two failed connects (error -3) on some boots.
+- [ ] Failed MQTT connects (error -3) on some boots, seen on both units; the retry connects.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
 - [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`

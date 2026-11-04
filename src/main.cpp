@@ -115,7 +115,6 @@ void setup()
   bool bus0_stuck = i2c_bus_recover(PIN_WIRE_SDA, PIN_WIRE_SCL);
   bool bus1_stuck = i2c_bus_recover(PIN_WIRE1_SDA, PIN_WIRE1_SCL);
   Wire.begin();
-  Wire.setClock(50000); //50kHz, recommended for the SCD30
   Wire1.begin();
   Wire1.setClock(100000); //100kHz ATECC+LPS22HB+BMP280
 
