@@ -12,7 +12,7 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
 
 - [ ] **M3 SCD4x path** (S): a pressure change stops/starts the measurement with 1.5 s `delay()`;
       `set_ambient_pressure` is allowed during periodic measurement. `readMeasurement()` is polled every second
-      (data every 5 s): use `getDataReadyStatus()`. Untested on hardware. `sensors.cpp:241-255`.
+      (data every 5 s): use `getDataReadyStatus()`. Untested on hardware. `sensors.cpp`, SCD4x branch of the sensor read.
 
 ## Low
 

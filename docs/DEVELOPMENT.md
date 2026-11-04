@@ -95,9 +95,8 @@ Python's `json` on random objects.
 2. Update `platformio.ini` if new dependencies are needed.
 3. Loops that may run longer than 30 seconds (waiting for the user) must call `watchdog_feed()`, and a call that
    blocks longer (long connects) `watchdog_long()` (`include/system_control.h`), otherwise the watchdog restarts
-   the device. Mark new
-   blocking steps with `phase_set()` so `diag` shows where a hang happened (add the phase name in
-   `src/system_control.cpp`).
+   the device. Mark new blocking steps with `phase_set()` so `diag` shows where a hang happened (add the phase
+   name in `src/system_control.cpp`).
 4. Document user-facing behavior in the README (written for users, not developers) and internals here.
 
 ## Settings Storage

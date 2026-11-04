@@ -35,9 +35,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 ## MQTT / Home Assistant follow-ups
 
 - [ ] Failed first MQTT connect (error -3) on some boots, the retry connects. Seen on both units while they shared a subnet
-      with the broker; 7 of 7 restarts clean on a routed network (2026-11-04). After a prefix change it still happens once.
-- [ ] Discovery prefix: configurable `mqtt.ha_prefix` (settings v8) or keep it fixed to `homeassistant`
-      (README note is in place).
+      with the broker; 7 of 7 restarts clean on a routed network (2026-11-04), then once more there on the second unit, after a software
+      restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once.
 - [ ] HA birth message (`homeassistant/status` = `online`): republish discovery, only matters for brokers
       without persistence.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
