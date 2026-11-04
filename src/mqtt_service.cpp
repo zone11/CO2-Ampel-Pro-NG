@@ -45,8 +45,6 @@ private:
   size_t len = 0;
   bool overflow = false;
 };
-
-static ReplyBuffer reply;
 #endif //WITH_MQTT_CONFIG
 
 // Unique chip ID of the SAMD21
@@ -64,6 +62,8 @@ void get_chip_id(char *buffer, size_t buffer_size)
 }
 
 static int state_published = -1; //Quiet last published on <base>/state, -1 = not yet
+static bool device_pending = true; //<base>/device: on connect and when sys.name changes
+static char device_name[sizeof(settings.name)]; //sys.name in the last <base>/device
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -128,6 +128,7 @@ static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int len
 static void mqtt_handle_command(void)
 {
   char topic[96];
+  ReplyBuffer reply;
 
   //clear the retained command so it doesn't run again on every connect
   mqtt_topic(topic, sizeof(topic), "cmd");
@@ -530,6 +531,7 @@ void mqtt_connect(void)
     health.mqtt_connects++;
     mqttClient.publish(topic, "online", true, 1);
     state_published = -1; //publish <base>/state again
+    device_pending = true;
 #if WITH_HA
     ha_published = false;
     if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
@@ -642,27 +644,6 @@ void mqtt_publish_sensors(void)
     last_publish_ms = millis() | 1; //never 0
   }
 
-  //device: firmware version and detected sensors (retained, so always available)
-  char name[2*32+1];
-  json_escape(name, sizeof(name), system_name());
-  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
-  const struct { unsigned int feature; const char *name; } sensor_names[] =
-  {
-    { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
-  };
-  bool first = true;
-  for(const auto &s : sensor_names)
-  {
-    if(features & s.feature)
-    {
-      n += snprintf(json + n, sizeof(json) - n, "%s\"%s\"", first ? "" : ",", s.name);
-      first = false;
-    }
-  }
-  snprintf(json + n, sizeof(json) - n, "]}");
-  mqtt_topic(topic, sizeof(topic), "device");
-  mqttClient.publish(topic, json, true, 0);
-
   //WiFi
   char ssid[2*32+1];
   IPAddress ip = WiFi.localIP();
@@ -683,6 +664,37 @@ void mqtt_publish_sensors(void)
     mqtt_topic(topic, sizeof(topic), "sensors");
     Serial.print("MQTT published to ");
     Serial.println(topic);
+  }
+}
+
+// Firmware version and detected sensors (retained, so always available)
+static void mqtt_publish_device(void)
+{
+  char topic[96];
+  char json[192];
+  size_t n;
+  char name[2*32+1];
+  json_escape(name, sizeof(name), system_name());
+  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
+  const struct { unsigned int feature; const char *name; } sensor_names[] =
+  {
+    { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
+  };
+  bool first = true;
+  for(const auto &s : sensor_names)
+  {
+    if(features & s.feature)
+    {
+      n += snprintf(json + n, sizeof(json) - n, "%s\"%s\"", first ? "" : ",", s.name);
+      first = false;
+    }
+  }
+  snprintf(json + n, sizeof(json) - n, "]}");
+  mqtt_topic(topic, sizeof(topic), "device");
+  if(mqttClient.publish(topic, json, true, 0))
+  {
+    device_pending = false;
+    strcpy(device_name, settings.name);
   }
 }
 
@@ -747,6 +759,12 @@ void mqtt_service(void)
     state_published = settings.quiet;
     mqtt_topic(topic, sizeof(topic), "state");
     mqttClient.publish(topic, settings.quiet ? "{\"quiet\":true}" : "{\"quiet\":false}", true, 0);
+  }
+
+  if(device_pending || strcmp(device_name, settings.name))
+  {
+    phase_set(PHASE_MQTT_PUBLISH);
+    mqtt_publish_device();
   }
 
   //periodic publishing
