@@ -16,9 +16,6 @@ Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. h
       CRC error = defaults (WiFi/MQTT lost). Two slots with a sequence counter in the existing 2 KB area (read
       the newest valid, write the other); keeps the upload backup/restore of the whole area. Check the BOD33
       fuse. `settings_storage.cpp` `settings_write()` / `settings_read()`.
-- [ ] **M2 WiFi form on `/`** (S): reads the POST body only while `client.available()`, without Content-Length;
-      a body split over TCP segments saves a truncated SSID/password. Use `read_body()` + `form_parse()` like
-      `/config/save`, or drop the form and link to `/config`. `webserver.cpp:798-850`.
 - [ ] **M3 SCD4x path** (S): a pressure change stops/starts the measurement with 1.5 s `delay()`;
       `set_ambient_pressure` is allowed during periodic measurement. `readMeasurement()` is polled every second
       (data every 5 s): use `getDataReadyStatus()`. Untested on hardware. `sensors.cpp:241-255`.
