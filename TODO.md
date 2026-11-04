@@ -32,9 +32,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## MQTT / Home Assistant follow-ups
 
-- [ ] Every message arrives twice on the dev broker (2026-11-04: `sensors` 6 times in 75 s at a 30 s interval, `cmd` handled
-      twice, so `resp` 4 times and `"save":true` writes the flash twice). Most likely the Mosquitto bridge echoes
-      them, not checked in its config; it would also explain the HA entities flickering unavailable on 2026-11-02.
 - [ ] Failed MQTT connects (error -3) on some boots, seen on both units; the retry connects.
 - [ ] Clear the old retained `device` and `status` messages after a prefix change (empty retained message
       before the reconnect).
