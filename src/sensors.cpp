@@ -187,6 +187,18 @@ static void store_pressure(float pressure, float temperature)
   }
 }
 
+// Own read: the library's conversion uses double (soft double code)
+static int lps22_reg(uint8_t reg)
+{
+  Wire1.beginTransmission(ADDR_LPS22HB);
+  Wire1.write(reg);
+  if((Wire1.endTransmission(false) != 0) || (Wire1.requestFrom(ADDR_LPS22HB, 1) != 1))
+  {
+    return -1;
+  }
+  return Wire1.read();
+}
+
 static void read_pressure(void)
 {
   uint8_t phase = sys_phase;
@@ -195,13 +207,15 @@ static void read_pressure(void)
   {
     if(features & FEATURE_LPS22HB)
     {
-      //own read: the library's conversion uses double (6 KB soft double code)
-      Wire1.beginTransmission(ADDR_LPS22HB);
-      Wire1.write(0x28); //PRESS_OUT_XL, then H/L and TEMP_OUT L/H (auto increment)
-      if((Wire1.endTransmission(false) == 0) && (Wire1.requestFrom(ADDR_LPS22HB, 5) == 5))
+      int b[5];
+      bool ok = true;
+      for(int i = 0; ok && (i < 5); i++)
       {
-        uint8_t b[5];
-        Wire1.readBytes(b, sizeof(b));
+        b[i] = lps22_reg(0x28 + i); //PRESS_OUT_XL, L, H, TEMP_OUT_L, H
+        ok = (b[i] >= 0);
+      }
+      if(ok)
+      {
         store_pressure((b[0] | (b[1] << 8) | ((uint32_t)b[2] << 16)) / 4096.0f, (int16_t)(b[3] | (b[4] << 8)) / 100.0f);
       }
     }

@@ -33,7 +33,7 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 94 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
@@ -78,6 +78,13 @@ The code is split into modules under `src/` (headers in `include/`):
 
 PC tools in `scripts/`: `upload_samba.py` (upload with settings kept), `co2ampel_tool.py` (provisioning,
 settings export/import, WiFi module root certificates), `link_debug.py` (build helper).
+
+## Tests
+
+`pio test -e native` runs the host tests in `test/test_host/` without hardware: JSON parser, settings import, the
+settings slots in a fake flash (including a power loss after every page of a save) and the SCD4x conversions. `test/stubs/`
+holds just enough of Arduino for that code. `python3 test/fuzz/json_fuzz.py [count] [seed]` compares the JSON parser with
+Python's `json` on random objects.
 
 ## Adding Features
 
@@ -126,6 +133,12 @@ touch), reads the flash, and writes the firmware together with the stored settin
 - If the device no longer shows up on USB after a broken upload, press the red reset button twice quickly
   to start the bootloader.
 
+## Watchdog
+
+A hung main loop restarts after `WATCHDOG_LOOP` (30 s). From boot until the first pass of `loop()` and after
+`watchdog_long()` the limit is `WATCHDOG_LONG` (120 s), for WiFi and MQTT connects; the next pass of `loop()` sets it back.
+Stuck interrupts restart after 4 s.
+
 ## Diagnostics Internals
 
 The reset record is a small RAM area (`.noinit` section in the linker script) that is not initialized at
@@ -157,8 +170,13 @@ stretching. The SCD30 may stretch up to 150 ms in rare cases, which now ends as 
 idle or a low line they count `i2c_errors` and re-init the bus; if a line stays low the read is skipped. The flags
 only show the last transfer, so `i2c_errors` can miss a timeout in an earlier one.
 
-The LPS22HB runs in continuous mode (1 Hz, BDU): in one-shot mode the library's `readPressure()` loops forever
-when a read fails. Out-of-range pressure readings are dropped.
+The LPS22HB runs in continuous mode (1 Hz, BDU) and `read_pressure()` reads its registers itself, one at a time: in
+one-shot mode the library's `readPressure()` loops forever when a read fails, and its conversion uses double. A
+5-byte block read returned no valid pressure in a test, cause not checked. Out-of-range pressure readings are dropped.
+
+Sensor conversions stay in `float`, because double arithmetic pulls in about 6 KB of soft double code: the SCD4x is
+read through the library's raw functions and `include/scd4x_convert.h`. The rest of that code (about 3 KB) remains
+because of a 64-bit to float conversion in the BMP280 library.
 
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
