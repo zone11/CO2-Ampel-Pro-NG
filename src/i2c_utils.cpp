@@ -1,4 +1,5 @@
 #include "i2c_utils.h"
+#include "health.h"
 
 static void line_low(uint8_t pin)
 {
@@ -34,6 +35,53 @@ bool i2c_bus_recover(uint8_t sda, uint8_t scl)
   delayMicroseconds(20);
 
   return stuck;
+}
+
+static void bus_timeout_enable(Sercom *sercom)
+{
+  //no INACTOUT: its ~200 us would also end the SCD30 clock stretching (12 ms)
+  sercom->I2CM.CTRLA.bit.ENABLE = 0; //LOWTOUTEN is enable-protected
+  while(sercom->I2CM.SYNCBUSY.bit.ENABLE);
+  sercom->I2CM.CTRLA.bit.LOWTOUTEN = 1;
+  sercom->I2CM.CTRLA.bit.ENABLE = 1;
+  while(sercom->I2CM.SYNCBUSY.bit.ENABLE);
+  sercom->I2CM.STATUS.bit.BUSSTATE = 1; //idle
+  while(sercom->I2CM.SYNCBUSY.bit.SYSOP);
+}
+
+void i2c_timeouts_enable(void)
+{
+  //the timeout counts on the SERCOM slow clock, which the core leaves off: GCLK1 = 32 kHz
+  GCLK->CLKCTRL.reg = GCLK_CLKCTRL_ID(GCM_SERCOMx_SLOW) | GCLK_CLKCTRL_GEN_GCLK1 | GCLK_CLKCTRL_CLKEN;
+  while(GCLK->STATUS.bit.SYNCBUSY);
+  bus_timeout_enable(SERCOM0);
+  bus_timeout_enable(SERCOM2);
+}
+
+// shortcut: a device that starts holding SCL during an address write still makes the core's
+// startTransmissionWIRE() retry recursively until the stack overflows and the fault handler resets; needs a patched core
+static bool bus_ok(TwoWire &wire, Sercom *sercom, uint8_t sda, uint8_t scl)
+{
+  bool idle = (sercom->I2CM.STATUS.bit.BUSSTATE == 1) && !sercom->I2CM.STATUS.bit.BUSERR && !sercom->I2CM.STATUS.bit.LOWTOUT;
+  if(idle && digitalRead(sda) && digitalRead(scl))
+  {
+    return true;
+  }
+  health.i2c_errors++;
+  i2c_bus_recover(sda, scl);
+  wire.begin();
+  bus_timeout_enable(sercom);
+  return digitalRead(sda) && digitalRead(scl);
+}
+
+bool i2c_wire_ok(void)
+{
+  return bus_ok(Wire, SERCOM0, PIN_WIRE_SDA, PIN_WIRE_SCL);
+}
+
+bool i2c_wire1_ok(void)
+{
+  return bus_ok(Wire1, SERCOM2, PIN_WIRE1_SDA, PIN_WIRE1_SCL);
 }
 
 int check_i2c(Sercom *sercom, byte addr) //1=okay

@@ -1,0 +1,33 @@
+# Refactor
+
+Accepted refactor items from the code audit of 0.7 (2026-11-02). Decision: no rewrite, targeted fixes.
+Order: high first.
+Done items are removed. Effort: S < 1 h, M = half a day, L = 1–2 days (incl. hardware test).
+
+## High
+
+- [ ] **H3 rest** (S–M): one reconnect path with backoff and the 1 s web wait are done (DEVELOPMENT.md "Reconnects"). Left:
+      the per-phase watchdog (TODO.md), and MQTT connects still block up to ~40 s (fixed waits in WiFi101, needs a patched
+      library).
+
+## Medium
+
+- [ ] **M3 SCD4x path** (S): a pressure change stops/starts the measurement with 1.5 s `delay()`;
+      `set_ambient_pressure` is allowed during periodic measurement. `readMeasurement()` is polled every second
+      (data every 5 s): use `getDataReadyStatus()`. Untested on hardware. `sensors.cpp:241-255`.
+- [ ] **M4 Double soft float, 6.1 KB flash** (S + measure): `Print::println(float, n)` (`sensors.cpp:27,29,60,77`)
+      → `fmt1()`; then check whether the LPS22HB/BMP280 code still pulls `__aeabi_d*`. Only worth it if both go.
+
+## Low
+
+- [ ] **L1** `check_i2c()` pokes SERCOM registers and leaves without a STOP; use the Wire version that is
+      already there (commented out). `i2c_utils.cpp:87-130` (S).
+- [ ] **L2** `settings_set()` formats "set key=value" to reuse the serial parser; call `cfg_find_item()` +
+      `cfg_set_value()` directly. `settings_registry.cpp:180` (S).
+- [ ] **L3** 25 globals in `include/app_globals.h`; a `readings` struct for the measurement values. Only with a larger
+      rework (M).
+- [ ] **L4** Busy main loop without `__WFI()` sleep (less MCU self-heating). `main.cpp` `loop()` (S).
+- [ ] **L5** Hygiene: initialize `ReplyBuffer::buf` / `ChunkPrint::buf` (cppcheck), explicit `flags` in the key
+      table (-Wextra, 19×); cppcheck `json_parser.cpp:223` is a false positive (S).
+- [ ] **L6** Host unit tests (`pio test -e native`) for `json_parser` and the settings import/validation, incl. a
+      repeatable fuzz test against Python json (M).

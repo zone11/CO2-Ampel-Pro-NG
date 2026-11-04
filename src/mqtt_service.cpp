@@ -1,4 +1,5 @@
 #include "mqtt_service.h"
+#include <ctype.h>
 #include "sensors.h"
 #include "settings_registry.h"
 #include "system_control.h"
@@ -44,8 +45,6 @@ private:
   size_t len = 0;
   bool overflow = false;
 };
-
-static ReplyBuffer reply;
 #endif //WITH_MQTT_CONFIG
 
 // Unique chip ID of the SAMD21
@@ -63,6 +62,8 @@ void get_chip_id(char *buffer, size_t buffer_size)
 }
 
 static int state_published = -1; //Quiet last published on <base>/state, -1 = not yet
+static bool device_pending = true; //<base>/device: on connect and when sys.name changes
+static char device_name[sizeof(settings.name)]; //sys.name in the last <base>/device
 
 // Prefix and client id of the current connection: all topics use them until the next connect,
 // a change of the settings reconnects (mqtt_service)
@@ -127,6 +128,7 @@ static void mqtt_message(MQTTClient *client, char topic[], char bytes[], int len
 static void mqtt_handle_command(void)
 {
   char topic[96];
+  ReplyBuffer reply;
 
   //clear the retained command so it doesn't run again on every connect
   mqtt_topic(topic, sizeof(topic), "cmd");
@@ -212,9 +214,16 @@ static size_t ha_device(char *json, size_t size, size_t n, const char *device_id
 
 static void mqtt_publish_discovery(void)
 {
-  char device_id[16], topic[96], base[64], json[768], name[2*32+1];
+  char device_id[16], entity_id[16], topic[96], base[64], json[768], name[2*32+1];
 
   get_device_id(device_id, sizeof(device_id));
+  //entity IDs from the MAC id, so they stay the same when sys.name changes (HA uses them for new entities only)
+  size_t i = 0;
+  for(; device_id[i] != 0; i++)
+  {
+    entity_id[i] = tolower(device_id[i]);
+  }
+  entity_id[i] = 0;
   json_escape(name, sizeof(name), system_name());
   snprintf(base, sizeof(base), "%s/%s", used_prefix, device_id);
 
@@ -230,10 +239,10 @@ static void mqtt_publish_discovery(void)
     }
 
     size_t n = snprintf(json, sizeof(json),
-      "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\","
+      "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"default_entity_id\":\"sensor.co2ampel_ng_%s_%s\","
       "\"state_topic\":\"%s/%s\",\"value_template\":\"{{ value_json.%s }}\","
       "\"availability_topic\":\"%s/status\"%s",
-      e.name, device_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
+      e.name, device_id, e.key, entity_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
@@ -266,12 +275,12 @@ static void mqtt_publish_discovery(void)
     if(settings.mqtt_ha)
     {
       size_t n = snprintf(json, sizeof(json),
-        "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"icon\":\"%s\","
+        "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"default_entity_id\":\"switch.co2ampel_ng_%s_%s\",\"icon\":\"%s\","
         "\"command_topic\":\"%s/cmd\",\"payload_on\":\"%s\",\"payload_off\":\"%s\","
         "\"state_topic\":\"%s/state\",\"value_template\":\"%s\","
         "\"state_on\":\"ON\",\"state_off\":\"OFF\"," //without them HA compares the template result with payload_on/off
         "\"availability_topic\":\"%s/status\"",
-        sw.name, device_id, sw.key, sw.icon, base, sw.on, sw.off, base, sw.state, base);
+        sw.name, device_id, sw.key, entity_id, sw.key, sw.icon, base, sw.on, sw.off, base, sw.state, base);
       n = ha_device(json, sizeof(json), n, device_id, name);
       if(n < sizeof(json))
       {
@@ -493,6 +502,7 @@ void mqtt_connect(void)
   mqttClient.begin(settings.mqtt_broker, settings.mqtt_port, net);
   mqtt_topic(topic, sizeof(topic), "status");
   mqttClient.setWill(topic, "offline", true, 1); //broker reports "offline" when the connection drops
+  mqttClient.setKeepAlive(30); //10 s default: one late ping (broker limit 15 s) dropped the connection
 
   //connect (DNS, TCP and TLS can block up to ~40 s)
   watchdog_feed();
@@ -521,6 +531,7 @@ void mqtt_connect(void)
     health.mqtt_connects++;
     mqttClient.publish(topic, "online", true, 1);
     state_published = -1; //publish <base>/state again
+    device_pending = true;
 #if WITH_HA
     ha_published = false;
     if(settings.mqtt_ha) //off: send nothing (removal only when switched off, see mqtt_ha_update)
@@ -569,23 +580,32 @@ void mqtt_connect(void)
   }
 }
 
+static RETRY mqtt_retry = { 0, RETRY_MIN };
+
 void mqtt_reconnect(void)
 {
-  static unsigned long last_attempt = 0;
-
   if(!settings.mqtt_enabled)
   {
     return;
   }
 
-  //retry every 30 seconds only
-  if((millis() - last_attempt) < 30000UL)
+  if(WiFi.status() != WL_CONNECTED) //the WiFi retry comes first, start over when it is back
+  {
+    mqtt_retry.wait = RETRY_MIN;
+    return;
+  }
+
+  if(!retry_due(&mqtt_retry))
   {
     return;
   }
 
-  last_attempt = millis();
+  unsigned long t = millis();
   mqtt_connect();
+  if((millis() - t) < 5000) //refused at once: no stall of the loop, keep retrying quickly
+  {
+    mqtt_retry.wait = RETRY_MIN;
+  }
 }
 
 void mqtt_publish_sensors(void)
@@ -624,27 +644,6 @@ void mqtt_publish_sensors(void)
     last_publish_ms = millis() | 1; //never 0
   }
 
-  //device: firmware version and detected sensors (retained, so always available)
-  char name[2*32+1];
-  json_escape(name, sizeof(name), system_name());
-  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
-  const struct { unsigned int feature; const char *name; } sensor_names[] =
-  {
-    { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
-  };
-  bool first = true;
-  for(const auto &s : sensor_names)
-  {
-    if(features & s.feature)
-    {
-      n += snprintf(json + n, sizeof(json) - n, "%s\"%s\"", first ? "" : ",", s.name);
-      first = false;
-    }
-  }
-  snprintf(json + n, sizeof(json) - n, "]}");
-  mqtt_topic(topic, sizeof(topic), "device");
-  mqttClient.publish(topic, json, true, 0);
-
   //WiFi
   char ssid[2*32+1];
   IPAddress ip = WiFi.localIP();
@@ -665,6 +664,37 @@ void mqtt_publish_sensors(void)
     mqtt_topic(topic, sizeof(topic), "sensors");
     Serial.print("MQTT published to ");
     Serial.println(topic);
+  }
+}
+
+// Firmware version and detected sensors (retained, so always available)
+static void mqtt_publish_device(void)
+{
+  char topic[96];
+  char json[192];
+  size_t n;
+  char name[2*32+1];
+  json_escape(name, sizeof(name), system_name());
+  n = snprintf(json, sizeof(json), "{\"name\":\"%s\",\"version\":\"%s\",\"reset\":\"%s\",\"sensors\":[", name, VERSION, reset_cause());
+  const struct { unsigned int feature; const char *name; } sensor_names[] =
+  {
+    { FEATURE_SCD30, "SCD30" }, { FEATURE_SCD4X, "SCD4X" }, { FEATURE_LPS22HB, "LPS22HB" }, { FEATURE_BMP280, "BMP280" },
+  };
+  bool first = true;
+  for(const auto &s : sensor_names)
+  {
+    if(features & s.feature)
+    {
+      n += snprintf(json + n, sizeof(json) - n, "%s\"%s\"", first ? "" : ",", s.name);
+      first = false;
+    }
+  }
+  snprintf(json + n, sizeof(json) - n, "]}");
+  mqtt_topic(topic, sizeof(topic), "device");
+  if(mqttClient.publish(topic, json, true, 0))
+  {
+    device_pending = false;
+    strcpy(device_name, settings.name);
   }
 }
 
@@ -708,6 +738,7 @@ void mqtt_service(void)
     mqtt_reconnect();
     return;
   }
+  mqtt_retry.wait = RETRY_MIN;
 
   //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
   if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))
@@ -728,6 +759,12 @@ void mqtt_service(void)
     state_published = settings.quiet;
     mqtt_topic(topic, sizeof(topic), "state");
     mqttClient.publish(topic, settings.quiet ? "{\"quiet\":true}" : "{\"quiet\":false}", true, 0);
+  }
+
+  if(device_pending || strcmp(device_name, settings.name))
+  {
+    phase_set(PHASE_MQTT_PUBLISH);
+    mqtt_publish_device();
   }
 
   //periodic publishing

@@ -159,13 +159,6 @@ extern SERCOM sercom3;
 extern SERCOM sercom4;
 extern SERCOM sercom5;
 
-// SERCOM3 or SERCOM5 Serial1 UART RXTX1
-extern Uart Serial1;
-#define PIN_SERIAL1_RX (19u)
-#define PIN_SERIAL1_TX (18u)
-#define PAD_SERIAL1_TX (UART_TX_PAD_0)
-#define PAD_SERIAL1_RX (SERCOM_RX_PAD_1)
-
 #endif // __cplusplus
 
 #ifdef __cplusplus
@@ -193,8 +186,6 @@ unsigned int PINCOUNT_fn();
 //                            pins are NOT connected to anything by default.
 #define SERIAL_PORT_USBVIRTUAL      SerialUSB
 #define SERIAL_PORT_MONITOR         SerialUSB
-#define SERIAL_PORT_HARDWARE        Serial1
-#define SERIAL_PORT_HARDWARE_OPEN   Serial1
 
 // Alias Serial to SerialUSB
 #define Serial                      SerialUSB

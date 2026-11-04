@@ -38,7 +38,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
 | `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~11 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 3.3 KB RAM |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
 Compile-time defaults of the settings (thresholds, colors, brightness, `CO2_ASC`, MQTT defaults) are in
@@ -94,8 +94,16 @@ settings export/import, WiFi module root certificates), `link_debug.py` (build h
 
 ## Settings Storage
 
-The settings live in the last 2 KB of the flash (0x3F800): magic, version, size, the `SETTINGS` struct and
-a CRC32. Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware
+The settings live in the last 2 KB of the flash, in two 1 KB slots (0x3F800, 0x3FC00). A record holds magic,
+version, size, the `SETTINGS` struct, a CRC32, then a save counter and its inverse. The valid record with the
+highest counter is loaded and a save goes to the other slot, so a power loss during a save leaves the previous
+settings. Records from before the slots have no valid counter and count as 0, so they load without a migration.
+
+The previous values, including passwords, stay in the other slot until the next save; a factory reset erases
+both. Firmware before 0.8 reads only the first slot: after a downgrade it may find settings one save behind, or
+defaults, and its saves are ignored after upgrading again while the second slot holds a higher counter.
+
+Settings written by a newer firmware (after a downgrade) are not overwritten: the older firmware
 runs with defaults until you `save`, and going back to the newer firmware finds the original settings
 again. The default `sys.name` is resolved at runtime and not stored, so an exported settings file doesn't
 carry one device's MAC address to another. The hostname keeps only letters, digits and `-` (other characters
@@ -111,6 +119,7 @@ touch), reads the flash, and writes the firmware together with the stored settin
 - The upload erases the whole flash before writing, so an upload that breaks off loses the settings. The
   next upload then prints a note; `CO2AMPEL_RESTORE_SETTINGS=1 pio run -e co2ampel_pro -t upload` writes the
   backup back (`CO2AMPEL_RESTORE_SETTINGS=<file>` for another one, e.g. the `.prev` file).
+- The settings area counts as valid if either slot is valid.
 - `CO2AMPEL_FACTORY_RESET=1` flashes without the settings. The firmware saves its defaults at boot, so after a
   factory reset the next upload rotates the backup to `.prev`.
 - If the device no longer shows up on USB after a broken upload, press the red reset button twice quickly
@@ -135,6 +144,46 @@ never touched since boot (the closest the stack came to the heap; filled with a 
 the free bytes inside the heap. `last_event` `none` with `reset` `watchdog` means interrupts stopped (4 s
 watchdog, no address saved).
 
+## I2C Hangs
+
+The Wire library waits for the bus without a limit, so a device holding SCL low would hang the loop until the
+watchdog restarts. `i2c_timeouts_enable()` turns on the SERCOM SCL low timeout (25-35 ms) after the sensor init,
+because `Wire.begin()` clears it. It counts on `GCM_SERCOMx_SLOW`, which the core leaves off (GCLK1, 32 kHz);
+without that clock the timeout never fires. `INACTOUT` stays off: its ~200 us would also end normal clock
+stretching. The SCD30 may stretch up to 150 ms in rare cases, which now ends as one failed read.
+
+`i2c_wire_ok()` / `i2c_wire1_ok()` run before the sensor reads: on a timeout, a bus error, a bus state other than
+idle or a low line they count `i2c_errors` and re-init the bus; if a line stays low the read is skipped. The flags
+only show the last transfer, so `i2c_errors` can miss a timeout in an earlier one.
+
+The LPS22HB runs in continuous mode (1 Hz, BDU): in one-shot mode the library's `readPressure()` loops forever
+when a read fails. Out-of-range pressure readings are dropped.
+
+Known limit: a device that starts holding SCL during an address write makes the core's
+`startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
+
+## Reconnects
+
+`loop()` is the only caller of `wifi_start()` after boot; `mqtt_service()` follows with MQTT once WiFi is back. Both
+use `retry_due()`: RETRY_MIN, doubled per attempt up to RETRY_MAX. An MQTT connect refused within 5 s does not count,
+it doesn't stall the loop, so a restarted broker is found again quickly.
+
+The connects still block the loop, because WiFi101 offers no non-blocking way: after `setTimeout()` runs out
+`startConnect()` resets its mode and ignores the late DHCP reply, so a timeout of 0 never connects. The limits are 60 s
+at boot, `WIFI_RECONNECT_TIMEOUT` after it, and for MQTT up to ~40 s (DNS 20 s + TCP 20 s, fixed in the library).
+
+## Socket Write Deadline
+
+`WiFiSocket::write()` retries `send()` forever while it returns `SOCK_ERR_BUFFER_FULL`, which also covers any failed
+request to the WiFi module. `scripts/wifi_send_guard.py` compiles that one library file with `send` renamed to
+`guarded_send()` (`wifi_manager.cpp`), which returns `SOCK_ERR_TIMEOUT` after `NET_WRITE_TIMEOUT`; the library then
+reports a failed write. MQTT closes and reconnects, the web page drops the rest of its output. After
+`NET_WRITE_TIMEOUTS_MAX` timeouts without a successful send the guard stops giving up: the module is probably stuck
+and only the watchdog restart recovers it.
+
+After a library update check that `nm firmware.elf` still lists `guarded_send`: LTO drops it if the rename no
+longer applies.
+
 ## MQTT Internals
 
 - After handling a command the device clears `<base>/cmd` with an empty retained message, so a command
@@ -152,8 +201,11 @@ watchdog, no address saved).
   `mqtt_service.cpp`.
 - The Home Assistant discovery configs go to `homeassistant/sensor/<device ID>/<value>/config` and
   `homeassistant/switch/<device ID>/quiet/config` and name the full state topics (the old `led`/`buzzer` switch
-  configs are cleared on every discovery publish); the entity IDs are based on
-  the device ID, so a prefix change keeps the entities.
+  configs are cleared on every discovery publish); `unique_id` and `default_entity_id` are based on the device
+  ID, so a prefix change or a new `sys.name` keeps the entities. HA reads `default_entity_id` (2025.10+) only
+  when it creates an entity; a `sys.name` change republishes the configs, HA updates only the device name.
+- MQTT keepalive 30 s (the library default of 10 s dropped connections after one late ping): the broker reports
+  a dead device after up to 45 s.
 
 ## WiFi Module Root Certificates
 

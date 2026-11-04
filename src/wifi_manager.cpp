@@ -1,7 +1,51 @@
+#include <utility/WiFiSocket.h>
 #include "wifi_manager.h"
 #include "led_control.h"
 #include "system_control.h"
 #include "health.h"
+
+// Replaces the send() in WiFiSocket::write() (scripts/wifi_send_guard.py), which retries forever on a full buffer
+// noinline: lets nm prove the redirect is in the image (LTO drops it otherwise)
+extern "C" __attribute__((noinline)) sint16 guarded_send(SOCKET sock, void *buf, uint16 size, uint16 flags)
+{
+  static uint32_t full_since = 0;
+  static uint8_t timeouts = 0;
+
+  sint16 err = send(sock, buf, size, flags);
+  if(err != SOCK_ERR_BUFFER_FULL)
+  {
+    full_since = 0;
+    if(err == SOCK_ERR_NO_ERROR)
+    {
+      timeouts = 0;
+    }
+    return err;
+  }
+  if(full_since == 0)
+  {
+    full_since = millis();
+  }
+  //several in a row, even after a reconnect: the module is stuck, keep waiting so the watchdog restarts the device
+  if(((millis() - full_since) > NET_WRITE_TIMEOUT) && (timeouts < NET_WRITE_TIMEOUTS_MAX))
+  {
+    full_since = 0;
+    timeouts++;
+    health.net_write_timeouts++;
+    return SOCK_ERR_TIMEOUT;
+  }
+  return err;
+}
+
+bool retry_due(RETRY *r)
+{
+  if((millis() - r->last) < r->wait)
+  {
+    return false;
+  }
+  r->last = millis();
+  r->wait = min(r->wait * 2, RETRY_MAX);
+  return true;
+}
 
 void get_device_id(char *buffer, size_t buffer_size)
 {
@@ -53,7 +97,7 @@ void system_hostname(char *buffer, size_t buffer_size)
   {
     char id[16];
     get_device_id(id, sizeof(id));
-    snprintf(buffer, buffer_size, "%s-%s", PRODUCT_NAME, id);
+    snprintf(buffer, buffer_size, DEFAULT_NAME "%s", id);
   }
 }
 
@@ -206,16 +250,6 @@ unsigned int wifi_start(void)
   else
   {
     WiFi.begin(settings.wifi_ssid); //open network
-  }
-
-  //wait for the connection
-  for(unsigned int t=0; WiFi.status() == WL_IDLE_STATUS; t++)
-  {
-    if(t >= 6) //6s
-    {
-      break;
-    }
-    status_wait(1000);
   }
 
   if(!(WiFi.status() == WL_CONNECTED)) //connection failed

@@ -56,7 +56,10 @@ public:
   {
     if(len > 0)
     {
-      client.write((const uint8_t *)buf, len);
+      if(!client.getWriteError()) //after a write timeout: don't wait again for every block of the page
+      {
+        client.write((const uint8_t *)buf, len);
+      }
       len = 0;
     }
   }
@@ -99,6 +102,11 @@ static char *read_body(WiFiClient &client, size_t content_length)
     {
       body[n++] = client.read();
     }
+  }
+  if(n < content_length) //never act on a partial form
+  {
+    free(body);
+    return NULL;
   }
   body[n] = 0;
   return body;
@@ -149,6 +157,41 @@ static const char *form_value(const form_t *form, const char *name)
     }
   }
   return NULL;
+}
+
+// POST of the "Change WiFi" form (fields 1 = SSID, 2 = password, 3 = sys.password). Returns the message for the page.
+static const char *wifi_form(WiFiClient &client, size_t content_length)
+{
+  char *body = read_body(client, content_length);
+  if(body == NULL)
+  {
+    return "<b>Not saved: incomplete or too long</b><br/>\r\n";
+  }
+  form_t form;
+  form_parse(body, &form);
+  const char *ssid = form_value(&form, "1");
+  const char *code = form_value(&form, "2");
+  const char *pw = form_value(&form, "3");
+  const char *msg = "";
+  if(!settings_enable(pw ? pw : "", NULL)) //with sys.password: password required
+  {
+    msg = "<b>Wrong password</b><br/>\r\n";
+  }
+  else if((ssid == NULL) || (code == NULL) ||
+          (strlen(ssid) >= sizeof(settings.wifi_ssid)) || (strlen(code) >= sizeof(settings.wifi_code)))
+  {
+    msg = "<b>Not saved: incomplete or too long</b><br/>\r\n";
+  }
+  else if(strcmp(ssid, settings.wifi_ssid) || strcmp(code, settings.wifi_code))
+  {
+    if(settings_set("wifi.ssid", ssid) && settings_set("wifi.pass", code))
+    {
+      settings_save();
+      msg = "<b>Saved</b><br/>\r\n";
+    }
+  }
+  free(body);
+  return msg;
 }
 
 static void print_field(Print &out, const cfg_item_t *item)
@@ -508,7 +551,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
   char *body = read_body(client, content_length);
   if(body == NULL)
   {
-    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"empty or too long (max 3 KB)\"}}");
+    res.print("{\"result\":\"ERROR\",\"errors\":{\"form\":\"empty, incomplete or too long (max 3 KB)\"}}");
     return false;
   }
 
@@ -663,7 +706,6 @@ static void urldecode(char *src) //decode URL parameters
 
 void webserver_service(void)
 {
-  static unsigned long t_check=0;
   unsigned int status;
 
   if((features & FEATURE_WINC1500) == 0)
@@ -679,17 +721,10 @@ void webserver_service(void)
   }
   else if((status == WL_CONNECT_FAILED) ||
           (status == WL_CONNECTION_LOST) || 
-          (status == WL_DISCONNECTED)) //connection lost
+          (status == WL_DISCONNECTED)) //connection lost: loop() reconnects
   {
-    if((millis()-t_check) > (1*60000UL)) //1min
-    {
-      t_check = millis();
-      wifi_start();
-    }
     return;
   }
-
-  t_check = millis(); //for the reconnect after 1min
 
   WiFiClient client = server.available();
   if(!client) //no client
@@ -703,24 +738,28 @@ void webserver_service(void)
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
   char buf[640]; //replies of /json, /diag and errors (the pages use ChunkPrint)
-  char req[3][3*64+1]; //HTTP request / POST values SSID, code, password (URL-encoded, up to 3 chars per byte)
+  char req[3*64+1]; //HTTP request
   const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
   char hline[24]; //current header line (only for Content-Length)
   size_t hlen = 0, content_length = 0;
-  req[0][0] = 0;
+  req[0] = 0;
+  unsigned long t_start = millis();
+  bool request_started = false;
   while(client.connected())
   {
-    if((millis()-t_check) > (5*1000UL)) //stop after 5s
+    //browsers open connections in advance and send nothing: don't stall the loop for those
+    if((millis()-t_start) > (request_started ? 5000UL : 1000UL))
     {
       break;
     }
     if(client.available())
     {
+      request_started = true;
       char c = client.read();
       if(c == '\n' && currentLineIsBlank) //end of header
       {
-        if(strncmp(req[0], "GET ", 4) && strncmp(req[0], "POST ", 5)) //not GET or POST
+        if(strncmp(req, "GET ", 4) && strncmp(req, "POST ", 5)) //not GET or POST
         {
           sprintf(buf, 
               "HTTP/1.1 400 Bad Request\r\n" \
@@ -731,7 +770,7 @@ void webserver_service(void)
           );
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /json", 9) == 0) //JSON
+        else if(strncmp(req, "GET /json", 9) == 0) //JSON
         {
           //only real readings (no c/t/h without a CO2 sensor, no p/u without a pressure sensor)
           int n = sprintf(buf,
@@ -752,7 +791,7 @@ void webserver_service(void)
           sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /diag", 9) == 0) //health JSON
+        else if(strncmp(req, "GET /diag", 9) == 0) //health JSON
         {
           int n = sprintf(buf,
               "HTTP/1.1 200 OK\r\n" \
@@ -763,18 +802,18 @@ void webserver_service(void)
           strcpy(buf + n, "\r\n");
           client.print(buf);
         }
-        else if(strncmp(req[0], "GET /config.json", 16) == 0) //settings, passwords masked
+        else if(strncmp(req, "GET /config.json", 16) == 0) //settings, passwords masked
         {
           config_download(client, false);
         }
-        else if(strncmp(req[0], "GET /config", 11) == 0)
+        else if(strncmp(req, "GET /config", 11) == 0)
         {
           config_page(client, NULL);
         }
-        else if((strncmp(req[0], "POST /config/", 13) == 0) || (strncmp(req[0], "POST /restart", 13) == 0))
+        else if((strncmp(req, "POST /config/", 13) == 0) || (strncmp(req, "POST /restart", 13) == 0))
         {
           char result[400], path[8];
-          const char *p = (req[0][6] == 'r') ? "restart" : req[0] + 13; //save, import, export
+          const char *p = (req[6] == 'r') ? "restart" : req + 13; //save, import, export
           size_t n = strcspn(p, " ?");
           snprintf(path, sizeof(path), "%.*s", (int)((n < sizeof(path)) ? n : sizeof(path) - 1), p);
           if(!config_post(client, path, content_length, result, sizeof(result)))
@@ -782,7 +821,7 @@ void webserver_service(void)
             config_page(client, result);
           }
         }
-        else if(strncmp(req[0], "GET /favicon", 12) == 0) //favicon
+        else if(strncmp(req, "GET /favicon", 12) == 0) //favicon
         {
           sprintf(buf, 
               "HTTP/1.1 404 Not Found\r\n" \
@@ -795,58 +834,9 @@ void webserver_service(void)
         }
         else
         {
-          //HTTP POST data
-          if((strncmp(req[0], "POST ", 5) == 0) && client.available())
+          if(strncmp(req, "POST ", 5) == 0)
           {
-            bool too_long = false;
-            req[0][0] = 0; //SSID
-            req[1][0] = 0; //Code
-            req[2][0] = 0; //password (sys.password)
-            for(unsigned int r=0, i=0, last_c=0; client.available();)
-            {
-              c = client.read();
-              if(c == '&') //format: 1=xxx&2=yyy
-              {
-                r = 0;
-              }
-              else if((c == '=') && isdigit(last_c)) //1=xxx
-              {
-                r = last_c-'0';
-                i = 0;
-              }
-              else if((r > 0) && (r < 4)) //1 to 3
-              {
-                if(i < (sizeof(req[0]) - 1))
-                {
-                  req[r-1][i++] = c;
-                  req[r-1][i] = 0;
-                }
-                else
-                {
-                  too_long = true; //value too long, not saved
-                }
-              }
-              last_c = c;
-            }
-            urldecode(req[0]); //Serial.println(req[0]);
-            urldecode(req[1]); //Serial.println(req[1]);
-            urldecode(req[2]);
-            if((strlen(req[0]) >= sizeof(settings.wifi_ssid)) || (strlen(req[1]) >= sizeof(settings.wifi_code)))
-            {
-              too_long = true;
-            }
-            if(!settings_enable(req[2], NULL)) //with sys.password: password required
-            {
-              form_msg = "<b>Wrong password</b><br/>\r\n";
-            }
-            else if(!too_long && (strcmp(req[0], settings.wifi_ssid) || strcmp(req[1], settings.wifi_code)))
-            {
-              if(settings_set("wifi.ssid", req[0]) && settings_set("wifi.pass", req[1]))
-              {
-                settings_save();
-                form_msg = "<b>Saved</b><br/>\r\n";
-              }
-            }
+            form_msg = wifi_form(client, content_length);
           }
           main_page(client, form_msg);
         }
@@ -854,10 +844,10 @@ void webserver_service(void)
       }
       else //save request
       {
-        if(pos < (sizeof(req[0])-1))
+        if(pos < (sizeof(req)-1))
         {
-          req[0][pos++] = c;
-          req[0][pos] = 0;
+          req[pos++] = c;
+          req[pos] = 0;
         }
       }
       if(c == '\n')

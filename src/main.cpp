@@ -115,7 +115,6 @@ void setup()
   bool bus0_stuck = i2c_bus_recover(PIN_WIRE_SDA, PIN_WIRE_SCL);
   bool bus1_stuck = i2c_bus_recover(PIN_WIRE1_SDA, PIN_WIRE1_SCL);
   Wire.begin();
-  Wire.setClock(50000); //50kHz, recommended for the SCD30
   Wire1.begin();
   Wire1.setClock(100000); //100kHz ATECC+LPS22HB+BMP280
 
@@ -136,6 +135,12 @@ void setup()
     if(lps22.begin())
     {
       features |= FEATURE_LPS22HB;
+      //continuous mode: readPressure() in one-shot mode loops forever when a read fails
+      lps22.setOutputRate(RATE_1_HZ);
+      Wire1.beginTransmission(ADDR_LPS22HB);
+      Wire1.write(0x10); //CTRL_REG1
+      Wire1.write((RATE_1_HZ << 4) | 0x02); //+ BDU: no torn values
+      Wire1.endTransmission();
     }
   }
 
@@ -188,6 +193,8 @@ void setup()
       status_wait(1000);
     }
   }
+
+  i2c_timeouts_enable();
 
   //temperature offset
   if(features & FEATURE_SCD30)
@@ -307,6 +314,7 @@ void setup()
           features &= ~FEATURE_WINC1500;
         }
       }
+      WiFi.setTimeout(WIFI_RECONNECT_TIMEOUT);
       delay(2000);
       if(features & FEATURE_USB)
       {
@@ -375,7 +383,7 @@ void loop()
 {
   static unsigned int dark=0, sw=0;
   static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
-  static unsigned long t_wifi=0;
+  static RETRY wifi_retry = { 0, RETRY_MIN };
   unsigned int overwrite=0;
 
   watchdog_feed();
@@ -398,19 +406,13 @@ void loop()
   {
     phase_set(PHASE_WIFI);
     int wifi_status = WiFi.status();
-    if((wifi_status != WL_CONNECTED) && (wifi_status != WL_AP_LISTENING))
+    if((wifi_status == WL_CONNECTED) || (wifi_status == WL_AP_LISTENING))
     {
-      if(settings.wifi_ssid[0] != 0)
-      {
-        if((millis() - t_wifi) > 30000)
-        {
-          t_wifi = millis();
-          if(wifi_start() == 0 && settings.mqtt_enabled)
-          {
-            mqtt_connect();
-          }
-        }
-      }
+      wifi_retry.wait = RETRY_MIN;
+    }
+    else if((settings.wifi_ssid[0] != 0) && retry_due(&wifi_retry))
+    {
+      wifi_start(); //MQTT follows in mqtt_service()
     }
   }
 

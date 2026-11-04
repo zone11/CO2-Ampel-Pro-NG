@@ -8,7 +8,7 @@
 
 extern "C" char *sbrk(int incr);
 
-HEALTH_COUNTERS health = { 0, 0, 0, 0 };
+HEALTH_COUNTERS health = { 0, 0, 0, 0, 0, 0 };
 
 static uint32_t loop_last = 0, loop_max = 0; //ms
 
@@ -64,13 +64,14 @@ size_t health_json(char *buf, size_t size)
     "{\"uptime\":%lu,\"resets\":%lu,\"reset\":\"%s\","
     "\"last_event\":\"%s\",\"last_phase\":\"%s\",\"last_pc\":\"0x%08lX\",\"last_lr\":\"0x%08lX\",\"last_uptime\":%lu,"
     "\"ram_free\":%lu,\"ram_free_min\":%lu,\"heap_free\":%lu,\"loop_max_ms\":%lu,"
-    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d}",
+    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d,\"i2c_errors\":%lu,\"net_write_timeouts\":%lu}",
     (unsigned long)uptime_s(), (unsigned long)reset_count(), reset_cause(),
     r->valid ? event_name(r->event) : "none", r->valid ? phase_name(r->phase) : "none",
     (unsigned long)(r->valid ? r->pc : 0), (unsigned long)(r->valid ? r->lr : 0),
     (unsigned long)(r->valid ? r->uptime : 0),
     (unsigned long)ram_free, (unsigned long)ram_free_min(), (unsigned long)mi.fordblks, (unsigned long)loop_max,
     (unsigned long)health.wifi_connects, (unsigned long)health.mqtt_connects,
-    (unsigned long)health.mqtt_failures, health.mqtt_error);
+    (unsigned long)health.mqtt_failures, health.mqtt_error, (unsigned long)health.i2c_errors,
+    (unsigned long)health.net_write_timeouts);
   return (n < 0) ? 0 : ((size_t)n < size) ? (size_t)n : size - 1;
 }

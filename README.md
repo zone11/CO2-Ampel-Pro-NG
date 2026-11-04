@@ -2,8 +2,9 @@
 
 Alternative firmware for the **Watterott CO2-Ampel Pro**: a CO2 traffic light that shows the air quality
 with four LEDs, warns with a buzzer when it is time to ventilate, and sends its readings to your network
-(web page, MQTT, Home Assistant). It is based on version 24 of the
-[original firmware](https://github.com/watterott/CO2-Ampel) and runs on the unchanged hardware.
+(web page, MQTT, Home Assistant). It started as a port of version 24 of the
+[original firmware](https://github.com/watterott/CO2-Ampel) by Watterott electronic and has since been
+largely rewritten. It runs on the unmodified hardware.
 
 ✅ **Status**: in daily use and tested on hardware
 
@@ -32,7 +33,7 @@ Building your own variant, the code structure and the internals are described in
 - MQTT with optional TLS (certificate and hostname checked)
 - Home Assistant discovery: the device, its sensors and a "Quiet" switch appear automatically
 - Quiet for the night: LEDs and buzzer off with one switch in Home Assistant or over MQTT
-- Settings survive firmware updates; backup and restore as a JSON file
+- Settings survive firmware updates, and a power loss while saving keeps the previous settings; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
 - Calibration and self test from the built-in service menu
@@ -83,7 +84,7 @@ device and writes them back with the new firmware. Each upload also keeps a copy
 3. After the restart `status` shows the IP address. Open `http://<IP address>/` in a browser.
 
 Without a serial monitor: hold the button for more than 3 seconds. The device opens its own WiFi network
-(named like the device, e.g. `CO2-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
+(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
 
 MQTT and Home Assistant: see [MQTT and Home Assistant](#mqtt-and-home-assistant).
 
@@ -186,7 +187,7 @@ Without `save` a change lasts until the next restart.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `CO2-<MAC address>`, e.g. `CO2-F8F0056E78A2` |
+| `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `co2ampel-ng-<MAC address>`, e.g. `co2ampel-ng-F8F0056E78A2` |
 | `sys.serial_output` | 0 | print every measurement on the serial port |
 | `sys.password` | empty | password for changes, see [Password](#password) |
 | `sys.buzzer` | 1 | buzzer on (1) or off (0) |
@@ -289,7 +290,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"CO2-F8F0056E78A2","version":"0.7","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | every interval | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.8","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |
@@ -309,9 +310,13 @@ retained messages stay on the broker; delete them there if you want.
 With `mqtt.ha=1` Home Assistant (with the MQTT integration) creates a device named like `sys.name` with
 the entities CO2, Temperature, Humidity, Light and (with a pressure sensor) Pressure, a switch "Quiet", and
 the diagnostic entities Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase,
-Free RAM minimum and Longest loop. They show "unavailable" while the device is offline. `mqtt.ha=0` removes
+Free RAM minimum and Longest loop. They show "unavailable" while the device is offline (up to 45 seconds later if it loses power or hangs). `mqtt.ha=0` removes
 them again.
 
+- Moved a device? Just change `sys.name`: the device name in Home Assistant follows at once, and the entity
+  IDs stay the same (e.g. `sensor.co2ampel_ng_f8f0056e78a2_co2`), so dashboards and automations keep working.
+  If you named the device yourself in Home Assistant, your name stays until you reset it there.
+- Needs Home Assistant 2025.10 or newer. Devices added with an older firmware keep their entity IDs.
 - Any topic prefix works; renaming the prefix keeps the entities and their history.
 - If your broker uses access rules, the device needs write access to `<prefix>/#`,
   `homeassistant/sensor/<device ID>/#` and `homeassistant/switch/<device ID>/#`; Home Assistant needs read
@@ -395,7 +400,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 | Problem | What to do |
 |---|---|
 | No CO2 values, traffic light stays red | The CO2 sensor was not found at power-on (`status` / boot log: `Error: CO2 sensor not found`). Unplug the device for a few seconds. |
-| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried every 30 seconds. |
+| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
 | MQTT not connected | The MQTT section of the web page shows the last error (e.g. wrong password, broker not reachable). With TLS: is the root certificate installed, and does `mqtt.broker` match the certificate? |
 | Nothing appears in Home Assistant | `mqtt.ha=1`? Check the broker access rules (see [Home Assistant](#home-assistant)). |
 | Upload fails with "Resource busy" | A serial monitor still has the port open; close it. |
@@ -421,6 +426,8 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `ram_free`, `ram_free_min`, `heap_free` | free memory now / lowest since start / inside the heap (bytes) |
 | `loop_max_ms` | longest pause of the main loop (ms) |
 | `wifi_connects`, `mqtt_connects`, `mqtt_failures`, `mqtt_error` | connection counters since start |
+| `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
+| `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
 
 These values survive restarts, but not a power loss: read them before unplugging the device. If the device
 restarts repeatedly, please open an issue with the `diag` output and the firmware version (`last_pc` and
