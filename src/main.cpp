@@ -207,12 +207,12 @@ void setup()
   }
   else if(features & FEATURE_SCD4X)
   {
-    float offset;
+    uint16_t offset;
     scd4x.stopPeriodicMeasurement();
     delay(500);
-    if(scd4x.getTemperatureOffset(offset) == 0)
+    if(scd4x.getTemperatureOffsetRaw(offset) == 0)
     {
-      temp_offset = offset;
+      temp_offset = scd4x_offset(offset);
     }
     delay(500);
     scd4x.startPeriodicMeasurement();
@@ -238,11 +238,12 @@ void setup()
     }
     else if(features & FEATURE_SCD4X)
     {
-      float offset;
-      scd4x.getTemperatureOffset(offset);
+      uint16_t raw;
+      scd4x.getTemperatureOffsetRaw(raw);
+      float offset = scd4x_offset(raw);
       if((offset == 0) || (offset > 12))
       {
-        scd4x.setTemperatureOffset(temp_offset);
+        scd4x.setTemperatureOffsetRaw(scd4x_offset_raw(temp_offset));
       }
     }
   }
@@ -386,7 +387,7 @@ void loop()
   static RETRY wifi_retry = { 0, RETRY_MIN };
   unsigned int overwrite=0;
 
-  watchdog_feed();
+  watchdog_loop();
   health_loop();
 
   //serial commands

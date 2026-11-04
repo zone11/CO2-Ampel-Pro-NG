@@ -65,7 +65,7 @@ public:
   }
 private:
   WiFiClient &client;
-  char buf[512];
+  char buf[512] = {};
   size_t len = 0;
 };
 

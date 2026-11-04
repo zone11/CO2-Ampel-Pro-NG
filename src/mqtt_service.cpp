@@ -41,7 +41,7 @@ public:
     return 1;
   }
 private:
-  char buf[MQTT_REPLY_MAX + 1];
+  char buf[MQTT_REPLY_MAX + 1] = {};
   size_t len = 0;
   bool overflow = false;
 };
@@ -505,7 +505,7 @@ void mqtt_connect(void)
   mqttClient.setKeepAlive(30); //10 s default: one late ping (broker limit 15 s) dropped the connection
 
   //connect (DNS, TCP and TLS can block up to ~40 s)
-  watchdog_feed();
+  watchdog_long();
   phase_set(PHASE_MQTT_CONNECT);
   unsigned long t_connect = millis();
   boolean connected = mqtt_try_connect(client_id);
@@ -522,7 +522,7 @@ void mqtt_connect(void)
       Serial.println("MQTT connection refused, retrying in 2 s");
     }
     delay(2000);
-    watchdog_feed();
+    watchdog_long();
     connected = mqtt_try_connect(client_id);
   }
 
@@ -698,6 +698,17 @@ static void mqtt_publish_device(void)
   }
 }
 
+// After a prefix change: nothing of this device stays behind under the old prefix
+static void mqtt_clear_retained(void)
+{
+  char topic[96];
+  for(const char *suffix : { "device", "diag", "state", "status" })
+  {
+    mqtt_topic(topic, sizeof(topic), suffix);
+    mqttClient.publish(topic, "", true, 0);
+  }
+}
+
 void mqtt_service(void)
 {
   static unsigned long last_publish = 0;
@@ -747,7 +758,15 @@ void mqtt_service(void)
     {
       Serial.println("MQTT topic prefix or client ID changed, reconnecting");
     }
-    mqtt_shutdown(); //"offline" on the old status topic
+    if(strcmp(used_prefix, settings.mqtt_topic_prefix) != 0)
+    {
+      mqtt_clear_retained();
+      mqttClient.disconnect();
+    }
+    else
+    {
+      mqtt_shutdown(); //"offline" on the status topic
+    }
     mqtt_connect();
     return;
   }

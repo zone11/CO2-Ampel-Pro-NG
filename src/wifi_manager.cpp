@@ -188,6 +188,7 @@ unsigned int wifi_start_ap(void)
   {
     Serial.println("WiFi AP start...");
   }
+  watchdog_long();
 
   system_hostname(hostname, sizeof(hostname));
 
@@ -239,7 +240,7 @@ unsigned int wifi_start(void)
     //reset_mcu();
   }
 
-  watchdog_feed(); //WiFi.begin() blocks up to 60 s
+  watchdog_long(); //WiFi.begin() blocks up to 60 s
   phase_set(PHASE_WIFI_CONNECT);
   health.wifi_connects++;
   WiFi.hostname(hostname);

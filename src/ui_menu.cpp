@@ -118,9 +118,9 @@ void altitude_toffset(void) //altitude and temperature offset
   }
   else if(features & FEATURE_SCD4X)
   {
-    float offset;
-    scd4x.getTemperatureOffset(offset); //degC
-    value = offset / 2;
+    uint16_t offset;
+    scd4x.getTemperatureOffsetRaw(offset);
+    value = scd4x_offset(offset) / 2; //degC
   }
 
   value = select_value(value, 0, 4, 1, COLOR_YELLOW, COLOR_BLUE) * 2;
@@ -131,7 +131,7 @@ void altitude_toffset(void) //altitude and temperature offset
   }
   else if(features & FEATURE_SCD4X)
   {
-    scd4x.setTemperatureOffset(value);
+    scd4x.setTemperatureOffsetRaw(scd4x_offset_raw(value));
     delay(500);
     scd4x.startPeriodicMeasurement();
   }

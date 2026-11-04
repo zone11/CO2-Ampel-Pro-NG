@@ -17,25 +17,36 @@ const char *fmt1(char *buf, float value)
   return buf;
 }
 
+// Two decimals, same reason as fmt1()
+static void print2(float value)
+{
+  char buf[16];
+  long t = (long)(value * 100.0f + ((value < 0) ? -0.5f : 0.5f));
+  unsigned long a = (t < 0) ? -t : t;
+  sprintf(buf, "%s%lu.%02lu", (t < 0) ? "-" : "", a / 100, a % 100);
+  Serial.println(buf);
+}
+
 void print_measurements(void)
 {
+  char f[16];
   if(co2_valid) //only real readings (none without a CO2 sensor or before the first reading)
   {
     Serial.print("c: ");           //CO2
     Serial.println(co2_value);     //ppm
     Serial.print("t: ");           //temperature
-    Serial.println(temp_value, 1); //°C
+    Serial.println(fmt1(f, temp_value)); //°C
     Serial.print("h: ");           //humidity
-    Serial.println(humi_value, 1); //%
+    Serial.println(fmt1(f, humi_value)); //%
   }
   Serial.print("l: ");           //light
   Serial.println(light_value);
   if(pres_valid)
   {
     Serial.print("p: ");         //pressure
-    Serial.println(pres_value);  //hPa
+    Serial.println(fmt1(f, pres_value)); //hPa
     Serial.print("u: ");         //temperature
-    Serial.println(temp2_value); //°C
+    Serial.println(fmt1(f, temp2_value)); //°C
   }
   Serial.println();
 }
@@ -57,7 +68,7 @@ void print_sensor_info(void) //print the sensor configuration
     }
     Serial.println();
     Serial.print("  Temp Offset (C): ");
-    if(scd30.getTemperatureOffset(offset) == 0) { Serial.println(offset / 100.0f, 2); } else { Serial.println("error"); }
+    if(scd30.getTemperatureOffset(offset) == 0) { print2(offset / 100.0f); } else { Serial.println("error"); }
     Serial.print("  Altitude (m): ");
     if(scd30.getAltitudeCompensation(altitude) == 0) { Serial.println(altitude); } else { Serial.println("error"); }
     Serial.print("  ASC: ");
@@ -74,7 +85,7 @@ void print_sensor_info(void) //print the sensor configuration
     Serial.println("none");
   }
   Serial.print("Firmware Temp Offset (C): ");
-  Serial.println(temp_offset, 2);
+  print2(temp_offset);
 }
 
 void show_data(void) //show the data
@@ -184,7 +195,15 @@ static void read_pressure(void)
   {
     if(features & FEATURE_LPS22HB)
     {
-      store_pressure(lps22.readPressure()*10, lps22.readTemperature()); //kPa -> hPa
+      //own read: the library's conversion uses double (6 KB soft double code)
+      Wire1.beginTransmission(ADDR_LPS22HB);
+      Wire1.write(0x28); //PRESS_OUT_XL, then H/L and TEMP_OUT L/H (auto increment)
+      if((Wire1.endTransmission(false) == 0) && (Wire1.requestFrom(ADDR_LPS22HB, 5) == 5))
+      {
+        uint8_t b[5];
+        Wire1.readBytes(b, sizeof(b));
+        store_pressure((b[0] | (b[1] << 8) | ((uint32_t)b[2] << 16)) / 4096.0f, (int16_t)(b[3] | (b[4] << 8)) / 100.0f);
+      }
     }
     if(features & FEATURE_BMP280)
     {
@@ -236,20 +255,20 @@ unsigned int check_sensors(void) //read the sensors
   else if(features & FEATURE_SCD4X)
   {
     uint16_t v_co2;
-    float v_temp;
-    float v_humi;
-    if(scd4x.readMeasurement(v_co2, v_temp, v_humi) == 0)
+    uint16_t v_temp;
+    uint16_t v_humi;
+    if(scd4x.readMeasurementRaw(v_co2, v_temp, v_humi) == 0)
     {
       co2_value  = v_co2;
-      temp_value = v_temp;
-      humi_value = v_humi;
+      temp_value = scd4x_temperature(v_temp);
+      humi_value = scd4x_humidity(v_humi);
       read_pressure();
       if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
       {
         pres_last = pres_value;
         scd4x.stopPeriodicMeasurement();
         delay(1000);
-        scd4x.setAmbientPressure((uint32_t)(pres_value * 100)); //hPa -> Pa
+        scd4x.setAmbientPressureRaw((uint16_t)(pres_value + 0.5f)); //hPa
         delay(500);
         scd4x.startPeriodicMeasurement();
       }

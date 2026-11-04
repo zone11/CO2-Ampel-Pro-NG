@@ -6,10 +6,13 @@
 void reset_mcu(void);
 
 // Watchdog: the hardware WDT (4 s) is cleared from its early warning interrupt as long as
-// watchdog_feed() was called within WATCHDOG_TIMEOUT s; a hung main loop resets after that time,
+// watchdog_feed() was called within the current limit; a hung main loop resets after that time,
 // stuck interrupts after 4 s. Before the reset the hung code address is saved (reset record).
+// The limit is WATCHDOG_LONG from boot and after watchdog_long(), and WATCHDOG_LOOP after watchdog_loop().
 void watchdog_init(void);
 void watchdog_feed(void);
+void watchdog_long(void); // feed, the next blocking call may take up to WATCHDOG_LONG
+void watchdog_loop(void); // feed, back to WATCHDOG_LOOP: once per pass of loop()
 
 // Cause of the last reset: "power-on", "watchdog", "fault" (HardFault), "software", "reset pin",
 // "brown-out" or "unknown"
