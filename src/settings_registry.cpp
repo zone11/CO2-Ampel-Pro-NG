@@ -52,7 +52,7 @@ static bool on_save_settings(void *user)
 static const cfg_item_t settings_items[] =
 {
   { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name, 0 },
-  { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL, 0 },
+  { "sys.serialout",    CFG_BOOL,  &settings.serial_output,  0, 0, 0, NULL, 0 },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, apply_buzzer, 0 },
   { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },

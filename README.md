@@ -196,7 +196,7 @@ Without `save` a change lasts until the next restart.
 | Key | Default | Meaning |
 |---|---|---|
 | `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `co2ampel-ng-<MAC address>`, e.g. `co2ampel-ng-F8F0056E78A2` |
-| `sys.serial_output` | 0 | print every measurement on the serial port |
+| `sys.serialout` | 0 | print every measurement on the serial port |
 | `sys.password` | empty | password for changes, see [Password](#password) |
 | `sys.buzzer` | 1 | buzzer on (1) or off (0) |
 | `sys.quiet` | 0 | Quiet: LEDs, status LED and buzzer off, see [Quiet](#quiet-night) |
@@ -463,7 +463,7 @@ calibrate          fresh air calibration, needs enable; any input aborts, restar
 reset              restart the device
 ```
 
-With `sys.serial_output=1` every measurement is printed:
+With `sys.serialout=1` every measurement is printed:
 ```
 c: 812        CO2 (ppm)
 t: 23.4       temperature (°C)
