@@ -399,7 +399,7 @@ static void main_page(WiFiClient &client)
   byte mac[6];
   WiFi.macAddress(mac);
   out.print("<fieldset><legend>WiFi</legend>\r\n");
-  row(out, "Status", (status == WL_CONNECTED) ? "connected" : (status == WL_AP_LISTENING) ? "access point" : "disconnected");
+  row(out, "Status", (status == WL_CONNECTED) ? "connected" : ((status == WL_AP_LISTENING) || (status == WL_AP_CONNECTED)) ? "access point" : "disconnected");
   if(!pw && (status == WL_CONNECTED))
   {
     row(out, "SSID", WiFi.SSID());

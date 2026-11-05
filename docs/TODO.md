@@ -39,7 +39,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Complete calibration started from the service menu (complete runs passed outdoors over web or serial and over MQTT on 2026-11-05; the menu
       uses the same code, only start and abort were tested there).
-- [ ] WiFi setup in the device's own network over `/config` (the "Change WiFi" form was removed in 0.9).
 - [ ] Calibration on an SCD4x (the recalibration stops its measurement for about 2 s).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.9 over a long run (only short test sessions so far), and on a USB charger.

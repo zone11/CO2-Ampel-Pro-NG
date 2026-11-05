@@ -142,7 +142,7 @@ running. Switch it with the Home Assistant switch "Quiet", over MQTT (see
 | short (0.1–3 s) | halve the LED brightness; below `led.brightness_dark` it jumps back to the maximum (not saved) |
 | any press | mute the buzzer, start its 5-minute delay again |
 | during a calibration | abort it (nothing else happens) |
-| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet; restart to leave) |
+| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet for a moment, then the normal colors again; restart to leave) |
 | hold while plugging in | service menu |
 
 For devices in public areas, set `sys.nobuttons=1`. All of the above then does nothing, including aborting a calibration. The

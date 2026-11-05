@@ -162,6 +162,7 @@ void print_wifi_status(void)
         Serial.println("Disconnected");
         break;
       case WL_AP_LISTENING:
+      case WL_AP_CONNECTED:
         Serial.print("Access Point Mode - SSID: ");
         Serial.println(WiFi.SSID());
         Serial.print("AP IP Address: ");
