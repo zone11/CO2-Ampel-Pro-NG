@@ -508,7 +508,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   row(out, "Free RAM", v);
   out.print("</fieldset>\r\n");
 
-  out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a>\r\n"
+  out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a> - <a href='https://github.com/zone11/CO2-Ampel-Pro-NG'>GitHub</a>\r\n"
             "</body></html>\r\n");
 }
 
