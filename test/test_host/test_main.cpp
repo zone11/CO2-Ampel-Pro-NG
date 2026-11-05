@@ -243,6 +243,37 @@ void test_old_record_without_counter(void)
   TEST_ASSERT_EQUAL_STRING("old", (const char *)SLOT(0) + HEADER + NAME_OFF);
   TEST_ASSERT_EQUAL_STRING("new", flash_name(&s));
 }
+void test_v7_record_gets_nobuttons_default(void)
+{
+  SETTINGS s;
+  settings_defaults(&s);
+  strcpy(s.name, "v7");
+  s.buzzer = false;
+  uint8_t data[464]; //the v7 layout ends with name, the size-aware read must not take the next bytes for nobuttons
+  memcpy(data, &s, sizeof(data));
+  memset(fake_flash, 0xFF, sizeof(fake_flash));
+  const uint32_t magic = 0x434F3241UL; //"CO2A"
+  const uint16_t version = 7, size = sizeof(data);
+  memcpy(SLOT(0), &magic, 4);
+  memcpy(SLOT(0) + 4, &version, 2);
+  memcpy(SLOT(0) + 6, &size, 2);
+  memcpy(SLOT(0) + HEADER, data, sizeof(data));
+  uint32_t crc = crc_of(SLOT(0), HEADER + sizeof(data));
+  memcpy(SLOT(0) + HEADER + sizeof(data), &crc, 4);
+  TEST_ASSERT_EQUAL(SETTINGS_MIGRATED, settings_read(&s));
+  TEST_ASSERT_EQUAL_STRING("v7", s.name);
+  TEST_ASSERT_FALSE(s.buzzer);
+  TEST_ASSERT_FALSE(s.nobuttons);
+}
+void test_nobuttons_not_over_mqtt(void)
+{
+  Out out;
+  settings.nobuttons = true;
+  settings_json_import("{\"sys.nobuttons\":false}", &out, true, false); //remote, config allowed
+  TEST_ASSERT_TRUE(settings.nobuttons);
+  settings_json_import("{\"sys.nobuttons\":false}", &out, true, true); //serial, web
+  TEST_ASSERT_FALSE(settings.nobuttons);
+}
 void test_bad_crc_falls_back(void)
 {
   SETTINGS s;
@@ -351,6 +382,8 @@ int main(void)
   RUN_TEST(test_topic_prefix);
   RUN_TEST(test_slots_alternate);
   RUN_TEST(test_old_record_without_counter);
+  RUN_TEST(test_v7_record_gets_nobuttons_default);
+  RUN_TEST(test_nobuttons_not_over_mqtt);
   RUN_TEST(test_bad_crc_falls_back);
   RUN_TEST(test_every_cut_of_a_save_keeps_settings);
   RUN_TEST(test_erased_slot_a);

@@ -180,7 +180,6 @@ void print_wifi_status(void)
   }
 }
 
-#if WITH_DEVICE_UI
 unsigned int wifi_start_ap(void)
 {
   char hostname[33];
@@ -214,7 +213,6 @@ unsigned int wifi_start_ap(void)
 
   return 0;
 }
-#endif
 
 unsigned int wifi_start(void)
 {

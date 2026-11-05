@@ -15,7 +15,7 @@
 #define SETTINGS_SLOT_SIZE   1024
 #define SETTINGS_SLOTS       2
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     7            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     8            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -111,6 +111,7 @@ void settings_defaults(SETTINGS *data)
   data->quiet   = false;
   data->password[0]   = 0;
   data->name[0]       = 0;
+  data->nobuttons     = false;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -147,6 +148,7 @@ static bool settings_validate(SETTINGS *data)
   data->led_auto      = to_bool(&data->led_auto);
   data->quiet   = to_bool(&data->quiet);
   data->buzzer  = to_bool(&data->buzzer);
+  data->nobuttons = to_bool(&data->nobuttons);
 
   if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
   if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }

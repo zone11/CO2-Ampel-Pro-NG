@@ -17,9 +17,6 @@
 #ifndef WITH_HA
 #define WITH_HA            1 //Home Assistant MQTT discovery (mqtt.ha)
 #endif
-#ifndef WITH_DEVICE_UI
-#define WITH_DEVICE_UI     1 //button: service menu, brightness, buzzer mute, WiFi setup
-#endif
 #ifndef WITH_MQTT_CONFIG
 #define WITH_MQTT_CONFIG   1 //configuration over MQTT (mqtt.config)
 #endif

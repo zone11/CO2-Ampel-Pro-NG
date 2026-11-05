@@ -18,10 +18,10 @@ static void urldecode(char *src);
 static bool restart_pending = false; //restart after the reply has been sent
 static bool calibrate_pending = false; //calibration after the reply has been sent
 
-// Public-area builds: falsified readings must need a password
+// sys.nobuttons (public areas): falsified readings must need a password
 static bool calibration_allowed(void)
 {
-  return WITH_DEVICE_UI || (settings.password[0] != 0);
+  return !settings.nobuttons || (settings.password[0] != 0);
 }
 
 // Writes text into a fixed buffer (for the JSON import reply on the page)
@@ -531,8 +531,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   }
   snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
   row(out, "Free RAM", v);
-  snprintf(v, sizeof(v), "HA %s, MQTT config %s, device UI %s", WITH_HA ? "on" : "off",
-           WITH_MQTT_CONFIG ? "on" : "off", WITH_DEVICE_UI ? "on" : "off");
+  snprintf(v, sizeof(v), "HA %s, MQTT config %s", WITH_HA ? "on" : "off", WITH_MQTT_CONFIG ? "on" : "off");
   row(out, "Build options", v);
   out.print("</fieldset>\r\n");
 

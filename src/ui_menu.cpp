@@ -10,7 +10,6 @@
 
 #define CALIBRATION_RUNS 3 //a run that stays unstable starts again, up to this many runs
 
-#if WITH_DEVICE_UI
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off)
 {
   unsigned int timeout, sw;
@@ -163,7 +162,6 @@ void altitude_toffset(void) //altitude and temperature offset
   return;
 }
 
-#endif //WITH_DEVICE_UI
 
 CAL_RESULT calibration(void) //calibration
 {
@@ -191,13 +189,11 @@ CAL_RESULT calibration(void) //calibration
   for(again=0, cycle=0; cycle < (180/interval);)
   {
     watchdog_feed(); //calibration takes several minutes
-#if WITH_DEVICE_UI
-    if(digitalRead(PIN_SWITCH) == 0) //button pressed?
+    if(!settings.nobuttons && (digitalRead(PIN_SWITCH) == 0)) //button pressed?
     {
       abort = 1;
       break; //abort
     }
-#endif
     if(Serial.available()) //any input on the serial port
     {
       abort = 1;
@@ -321,7 +317,6 @@ void calibration_run(void)
   while(1);
 }
 
-#if WITH_DEVICE_UI
 
 void menu(void)
 {
@@ -348,4 +343,3 @@ void menu(void)
 
   return;
 }
-#endif //WITH_DEVICE_UI
