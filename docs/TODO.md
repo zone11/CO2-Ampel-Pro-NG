@@ -32,8 +32,14 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 - [ ] Failed first MQTT connect (error -3) on some boots, the retry connects. Seen on both units while they shared a subnet
       with the broker; 7 of 7 restarts clean on a routed network (2026-11-04), then once more there on the second unit, after a software
       restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once. On 2026-11-05 it followed software restarts and
-      flashes on both units, but no power-on (small sample), so look at the WiFi module keeping its power or the old connection on the broker.
+      flashes on both units, and one power-on too, so a kept WiFi module power can't be the whole explanation.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
+
+## Sensors
+
+- [ ] What set the LPS22HB pressure offset (`RPDS_H` = 0x01, -16 hPa) on one device on 2026-11-05, between its last good reading and the
+      first one after a flash. It stayed over a power cycle. The firmware clears the offset at boot since then, the cause is unknown. It
+      never writes these registers otherwise.
 
 ## Not tested on hardware
 
