@@ -2,6 +2,7 @@
 #include "led_control.h"
 #include "system_control.h"
 #include "i2c_utils.h"
+#include "health.h"
 
 // Formats like "%.1f" without printf float support (not linked: saves the libc float/dtoa code)
 const char *fmt1(char *buf, float value)
@@ -217,6 +218,29 @@ static int lps22_reg(uint8_t reg)
   return Wire1.read();
 }
 
+// Pressure offset RPDS_L/H: never set here, but found at 0x0100 (-16 hPa) on a device, also after a power cycle; cause unknown
+void lps22_offset_check(void)
+{
+  int low = lps22_reg(0x18), high = lps22_reg(0x19);
+  if((low <= 0) && (high <= 0)) //0 or a failed read
+  {
+    return;
+  }
+  health.pressure_offset = (((high > 0) ? high : 0) << 8) | ((low > 0) ? low : 0);
+  for(uint8_t reg = 0x18; reg <= 0x19; reg++)
+  {
+    Wire1.beginTransmission(ADDR_LPS22HB);
+    Wire1.write(reg);
+    Wire1.write((uint8_t)0);
+    Wire1.endTransmission();
+  }
+  if(features & FEATURE_USB)
+  {
+    Serial.print("WARNING: pressure offset was set, cleared: 0x");
+    Serial.println(health.pressure_offset, HEX);
+  }
+}
+
 static void read_pressure(void)
 {
   uint8_t phase = sys_phase;
@@ -225,6 +249,7 @@ static void read_pressure(void)
   {
     if(features & FEATURE_LPS22HB)
     {
+      lps22_offset_check();
       int b[5];
       bool ok = true;
       for(int i = 0; ok && (i < 5); i++)

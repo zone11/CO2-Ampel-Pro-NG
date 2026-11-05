@@ -455,6 +455,7 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `wifi_connects`, `mqtt_connects`, `mqtt_failures`, `mqtt_error` | connection counters since start |
 | `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
 | `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
+| `pressure_offset` | normally 0. Otherwise the pressure sensor had an offset set that shifted its reading, and the device cleared it (256 = 16 hPa); please open an issue |
 
 These values survive restarts, but not a power loss: read them before unplugging the device. If the device
 restarts repeatedly, please open an issue with the `diag` output and the firmware version (`last_pc` and

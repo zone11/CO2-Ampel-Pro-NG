@@ -70,7 +70,7 @@ size_t health_json(char *buf, size_t size)
     "{\"uptime\":%lu,\"resets\":%lu,\"reset\":\"%s\","
     "\"last_event\":\"%s\",\"last_phase\":\"%s\",\"last_pc\":\"0x%08lX\",\"last_lr\":\"0x%08lX\",\"last_uptime\":%lu,"
     "\"ram_free\":%lu,\"ram_free_min\":%lu,\"heap_free\":%lu,\"loop_max_ms\":%lu,"
-    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d,\"i2c_errors\":%lu,\"net_write_timeouts\":%lu,\"calibration\":\"%s\"}",
+    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d,\"i2c_errors\":%lu,\"net_write_timeouts\":%lu,\"pressure_offset\":%lu,\"calibration\":\"%s\"}",
     (unsigned long)uptime_s(), (unsigned long)reset_count(), reset_cause(),
     r->valid ? event_name(r->event) : "none", r->valid ? phase_name(r->phase) : "none",
     (unsigned long)(r->valid ? r->pc : 0), (unsigned long)(r->valid ? r->lr : 0),
@@ -78,6 +78,6 @@ size_t health_json(char *buf, size_t size)
     (unsigned long)ram_free, (unsigned long)ram_free_min(), (unsigned long)mi.fordblks, (unsigned long)loop_max,
     (unsigned long)health.wifi_connects, (unsigned long)health.mqtt_connects,
     (unsigned long)health.mqtt_failures, health.mqtt_error, (unsigned long)health.i2c_errors,
-    (unsigned long)health.net_write_timeouts, cal);
+    (unsigned long)health.net_write_timeouts, (unsigned long)health.pressure_offset, cal);
   return (n < 0) ? 0 : ((size_t)n < size) ? (size_t)n : size - 1;
 }

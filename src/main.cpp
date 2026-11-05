@@ -142,14 +142,7 @@ void setup()
       Wire1.write(0x10); //CTRL_REG1
       Wire1.write((RATE_1_HZ << 4) | 0x02); //+ BDU: no torn values
       Wire1.endTransmission();
-      //pressure offset RPDS_L/H: not used here, but found set on a device (0x0100 = -16 hPa), also after a power cycle
-      for(uint8_t reg = 0x18; reg <= 0x19; reg++)
-      {
-        Wire1.beginTransmission(ADDR_LPS22HB);
-        Wire1.write(reg);
-        Wire1.write((uint8_t)0);
-        Wire1.endTransmission();
-      }
+      lps22_offset_check();
     }
   }
 

@@ -38,8 +38,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 ## Sensors
 
 - [ ] What set the LPS22HB pressure offset (`RPDS_H` = 0x01, -16 hPa) on one device on 2026-11-05, between its last good reading and the
-      first one after a flash. It stayed over a power cycle. The firmware clears the offset at boot since then, the cause is unknown. It
-      never writes these registers otherwise.
+      first one after a flash. It stayed over a power cycle. The firmware now checks the offset at boot and before every pressure read, clears it
+      and reports it in `pressure_offset` (`diag`). The cause is unknown; it never writes these registers otherwise. A nonzero value is the evidence to look at.
 
 ## Not tested on hardware
 
