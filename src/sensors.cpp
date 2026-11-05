@@ -153,22 +153,25 @@ float pres_sensor(void)
   return pres_value;
 }
 
-void co2_force_recalibration(void)
+bool co2_force_recalibration(void)
 {
+  bool ok = false;
+
   if(features & FEATURE_SCD30)
   {
-    scd30.forceRecalibration(400); //400ppm = fresh air
+    ok = (scd30.forceRecalibration(400) == 0); //400ppm = fresh air
     delay(500);
   }
   else if(features & FEATURE_SCD4X)
   {
-    uint16_t corr;
+    uint16_t corr = 0xFFFF;
     scd4x.stopPeriodicMeasurement();
     delay(1000);
-    scd4x.performForcedRecalibration(400, corr); //400ppm = fresh air
+    ok = (scd4x.performForcedRecalibration(400, corr) == 0) && (corr != 0xFFFF); //400ppm = fresh air; 0xFFFF = failed
     delay(1000);
     scd4x.startPeriodicMeasurement();
   }
+  return ok;
 }
 
 // Set automatic self calibration (ASC), only if it differs

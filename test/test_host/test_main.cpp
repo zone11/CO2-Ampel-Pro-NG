@@ -28,8 +28,9 @@ unsigned long millis(void) { return now_ms; }
 FakeSerial Serial;
 unsigned int features = FEATURE_SCD30, remote_on = 0, co2_value = 420;
 static int recals = 0, led_draws = 0, beeps = 0;
+static bool recal_ok = true;
 float co2_sensor(void) { return co2_value; }
-void co2_force_recalibration(void) { recals++; }
+bool co2_force_recalibration(void) { recals++; return recal_ok; }
 void leds(uint32_t) { led_draws++; }
 void led_calibration(unsigned int) { led_draws++; }
 void buzzer(unsigned int on) { if(on) { beeps++; } }
@@ -464,6 +465,18 @@ void test_cal_leds_respect_quiet_and_enable(void)
   settings.quiet = false;
   settings.buzzer = true;
 }
+void test_cal_refused_by_the_sensor(void)
+{
+  cal_begin();
+  recal_ok = false;
+  cal_readings(36, 420, 420);
+  recal_ok = true;
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(1, recals);
+  TEST_ASSERT_EQUAL_STRING("failed, sensor refused the new value", cal_text().c_str());
+  TEST_ASSERT_TRUE(calibration_leds()); //result shown
+  now_ms += 3001;
+}
 void test_cal_over_mqtt(void)
 {
   Out out;
@@ -536,6 +549,7 @@ int main(void)
   RUN_TEST(test_cal_unstable_gives_up_after_three_runs);
   RUN_TEST(test_cal_stable_second_run_is_ok);
   RUN_TEST(test_cal_leds_respect_quiet_and_enable);
+  RUN_TEST(test_cal_refused_by_the_sensor);
   RUN_TEST(test_cal_over_mqtt);
   RUN_TEST(test_scd4x_conversions);
   return UNITY_END();

@@ -8,7 +8,7 @@
 #define CALIBRATION_SECONDS 180
 #define RESULT_SHOW_MS      3000
 
-typedef enum { CAL_NONE, CAL_OK, CAL_FAILED, CAL_ABORTED } CAL_RESULT;
+typedef enum { CAL_NONE, CAL_OK, CAL_FAILED, CAL_REFUSED, CAL_ABORTED } CAL_RESULT;
 
 static bool running = false, from_menu = false;
 static CAL_RESULT result = CAL_NONE;
@@ -123,8 +123,11 @@ void calibration_reading(void)
     return;
   }
 
-  co2_force_recalibration(); //an unstable run applies it too, as in the original firmware
-  if(again == 0)
+  if(!co2_force_recalibration()) //an unstable run applies it too, as in the original firmware
+  {
+    finish(CAL_REFUSED, COLOR_RED, "Calibration failed: the sensor refused the new value");
+  }
+  else if(again == 0)
   {
     finish(CAL_OK, COLOR_BLUE, "Calibration OK");
   }
@@ -145,7 +148,7 @@ void calibration_reading(void)
 
 bool calibration_leds(void)
 {
-  return running || (((result == CAL_OK) || (result == CAL_FAILED)) && ((millis() - t_result) < RESULT_SHOW_MS));
+  return running || ((result != CAL_NONE) && (result != CAL_ABORTED) && ((millis() - t_result) < RESULT_SHOW_MS));
 }
 
 bool calibration_status(char *buf, size_t len)
@@ -159,6 +162,7 @@ bool calibration_status(char *buf, size_t len)
   {
     return false;
   }
-  snprintf(buf, len, "%s", (result == CAL_OK) ? "OK" : (result == CAL_FAILED) ? "failed, readings not stable" : "aborted");
+  snprintf(buf, len, "%s", (result == CAL_OK) ? "OK" : (result == CAL_FAILED) ? "failed, readings not stable" :
+           (result == CAL_REFUSED) ? "failed, sensor refused the new value" : "aborted");
   return true;
 }
