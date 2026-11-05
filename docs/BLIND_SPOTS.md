@@ -6,6 +6,9 @@ Open work is tracked in [TODO.md](TODO.md); this document keeps the reasoning.
 
 ## Could Stop the Device Working as Planned
 
+Items 1 to 3 are changed in the 0.9 code, as described under CO2 Sensor Failure and Reconnects in [DEVELOPMENT.md](DEVELOPMENT.md). Items 1 and
+2 still need a test on hardware, item 3 has a host test. The text below describes the state before those changes.
+
 1. **A dead CO2 sensor looks healthy.** After the first reading, `co2_valid` was never cleared, and a failed read kept the old
    value. If the sensor stopped, the LEDs stayed on the last color, possibly green; web and MQTT kept sending the frozen number,
    and Home Assistant showed the device as available. Failed reads weren't counted.

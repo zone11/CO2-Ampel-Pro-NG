@@ -5,6 +5,17 @@ Done items are removed (the GitHub releases list what was done).
 Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). On hold, not planned: firmware updates over the network
 ([OTA.md](OTA.md)) and root certificate upload in the web interface ([ROOT_CERT_UPLOAD.md](ROOT_CERT_UPLOAD.md)).
 
+## Blind spots (review of 2026-11-05, details in [BLIND_SPOTS.md](BLIND_SPOTS.md))
+
+- [ ] Test on hardware: CO2 sensor stops delivering (LEDs blink white, value withheld, recovery, Home Assistant state) and the setup network
+      giving way to the normal WiFi after 5 minutes with no client, also when that fails.
+- [ ] A calibration started indoors still sets the sensor; refuse out-of-range readings, with an override for a badly drifted sensor.
+- [ ] Drift: no reminder and no calibration date on the device.
+- [ ] Tests still missing: buzzer alarm at 1600 ppm, default settings incl. full brightness over a long run, TLS on the current firmware,
+      first setup from empty settings.
+- [ ] CO2 accuracy away from 400 ppm; temperature and humidity against a reference.
+- [ ] Pressure sensor or SCD4x that loses power briefly: setup only runs at boot.
+
 ## Stability (watchdog resets on the dev unit, 2026-11-01/02)
 
 Three watchdog resets in one night (21:37, 02:34, 03:32 UTC): main loop hung for 2 minutes with interrupts
