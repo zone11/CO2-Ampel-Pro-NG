@@ -37,7 +37,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~11 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~12 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 | `-DWITH_DEVICE_UI=0` | every button function: service menu with self test, air test and configuration, brightness, buzzer mute, opening the WiFi setup network | ~2 KB |
