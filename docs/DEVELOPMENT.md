@@ -197,6 +197,17 @@ because of a 64-bit to float conversion in the BMP280 library.
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
 
+## Errors List
+
+`errors.cpp` keeps a 32-bit mask of the current problems. `error_set()` is for conditions, `error_event()` for one-offs, listed for
+`ERROR_HOLD` (1 hour) after the event, so a tool can't miss them between messages. There is no history on the device on purpose, that
+belongs in the monitoring tool; the counters in `diag` stay as they are. `errors_json()` writes the array into `health_json()`, and a change
+publishes `<base>/diag` at once. If the array doesn't fit, it ends with `"truncated"`; all errors together fit the 1 KB buffers.
+The checks run where the data is: `co2_reading_check()` and `sensors_error_check()` in `sensors`, `wifi_error_check()` in `wifi_manager`,
+`health_error_check()` in `health`, the boot findings at the end of `setup()`. An SCD4x has no `co2_read_failed`, because its read also
+fails while no data is ready (REFACTOR M3); `co2_stale` covers it. New error: add it to `ERROR_CODE` and `error_names` in the same order,
+and to the README table. The thresholds are starting values that need the long run to confirm them.
+
 ## CO2 Sensor Failure
 
 `co2_failed()` runs once per second after `check_sensors()`: without a new reading for `CO2_TIMEOUT` (60 s) it clears `co2_valid`, so web

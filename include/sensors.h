@@ -10,6 +10,7 @@ float temp_sensor(void);
 float humi_sensor(void);
 float pres_sensor(void);
 unsigned int check_sensors(void);
+void sensors_error_check(void); // once per second: values that stopped changing
 bool co2_failed(void); // the sensor found at boot delivers no new readings (clears co2_valid until it does)
 void co2_set_asc(bool on);
 void lps22_offset_check(void); // clears the pressure offset register if it is set, and reports it

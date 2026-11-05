@@ -751,7 +751,7 @@ void webserver_service(void)
   //}
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
-  char buf[640]; //replies of /json, /diag and errors (the pages use ChunkPrint)
+  char buf[1152]; //replies of /json, /diag and errors (the pages use ChunkPrint)
   char req[3*64+1]; //HTTP request
   char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
   char hline[24]; //current header line (only for Content-Length)

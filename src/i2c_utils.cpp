@@ -1,5 +1,6 @@
 #include "i2c_utils.h"
 #include "health.h"
+#include "errors.h"
 
 static void line_low(uint8_t pin)
 {
@@ -63,15 +64,20 @@ void i2c_timeouts_enable(void)
 static bool bus_ok(TwoWire &wire, Sercom *sercom, uint8_t sda, uint8_t scl)
 {
   bool idle = (sercom->I2CM.STATUS.bit.BUSSTATE == 1) && !sercom->I2CM.STATUS.bit.BUSERR && !sercom->I2CM.STATUS.bit.LOWTOUT;
-  if(idle && digitalRead(sda) && digitalRead(scl))
+  bool ok = idle && digitalRead(sda) && digitalRead(scl);
+  if(!ok)
   {
-    return true;
+    health.i2c_errors++;
+    i2c_bus_recover(sda, scl);
+    wire.begin();
+    bus_timeout_enable(sercom);
+    ok = digitalRead(sda) && digitalRead(scl);
   }
-  health.i2c_errors++;
-  i2c_bus_recover(sda, scl);
-  wire.begin();
-  bus_timeout_enable(sercom);
-  return digitalRead(sda) && digitalRead(scl);
+  static uint8_t stuck = 0; //one bit per bus
+  uint8_t bit = (sercom == SERCOM0) ? 1 : 2;
+  stuck = ok ? (stuck & ~bit) : (stuck | bit);
+  error_set(ERR_I2C_STUCK, stuck != 0);
+  return ok;
 }
 
 bool i2c_wire_ok(void)

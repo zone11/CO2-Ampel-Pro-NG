@@ -5,6 +5,7 @@
 
 #include "app_globals.h"
 #include "calibration.h"
+#include "errors.h"
 #include "json_parser.h"
 #include "scd4x_convert.h"
 #include "settings_registry.h"
@@ -26,6 +27,8 @@ SETTINGS settings;
 static unsigned long now_ms = 0;
 unsigned long millis(void) { return now_ms; }
 FakeSerial Serial;
+static uint32_t now_s = 0;
+uint32_t uptime_s(void) { return now_s; }
 unsigned int features = FEATURE_SCD30, remote_on = 0, co2_value = 420;
 static int recals = 0, led_draws = 0, beeps = 0;
 static bool recal_ok = true;
@@ -505,6 +508,62 @@ void test_cal_over_mqtt(void)
   features = f;
   TEST_ASSERT_FALSE(calibration_running());
 }
+// --- errors list ---
+static std::string errors_text(size_t size = 700)
+{
+  std::string b(size, 0);
+  errors_json(&b[0], size);
+  return b.c_str();
+}
+void test_errors_conditions_and_events(void)
+{
+  now_s += 3700; //events of the calibration tests are over
+  TEST_ASSERT_EQUAL_STRING("[]", errors_text().c_str());
+  TEST_ASSERT_FALSE(errors_changed());
+  error_set(ERR_CO2_STALE, true);
+  error_event(ERR_RESET_HANG);
+  TEST_ASSERT_TRUE(errors_changed());
+  TEST_ASSERT_EQUAL_STRING("[\"co2_stale\",\"reset_hang\"]", errors_text().c_str());
+  TEST_ASSERT_FALSE(errors_changed());
+  error_set(ERR_CO2_STALE, false);
+  TEST_ASSERT_TRUE(errors_changed());
+  TEST_ASSERT_EQUAL_STRING("[\"reset_hang\"]", errors_text().c_str());
+  now_s += 3598;
+  TEST_ASSERT_EQUAL_STRING("[\"reset_hang\"]", errors_text().c_str()); //an event stays for an hour
+  now_s += 2;
+  TEST_ASSERT_TRUE(errors_changed());
+  TEST_ASSERT_EQUAL_STRING("[]", errors_text().c_str());
+}
+void test_errors_truncated_when_short(void)
+{
+  for(int i = 0; i < ERR_COUNT; i++) { error_set((ERROR_CODE)i, true); }
+  std::string all = errors_text(); //everything fits the diag buffers
+  TEST_ASSERT_TRUE(all.find("truncated") == std::string::npos);
+  TEST_ASSERT_TRUE(all.find("cal_failed") != std::string::npos);
+  TEST_ASSERT_TRUE(all.size() < 600);
+  std::string cut = errors_text(60);
+  TEST_ASSERT_TRUE(cut.size() < 60);
+  TEST_ASSERT_TRUE(cut.find("\"truncated\"]") != std::string::npos);
+  TEST_ASSERT_EQUAL_CHAR('[', cut[0]);
+  for(int i = 0; i < ERR_COUNT; i++) { error_set((ERROR_CODE)i, false); }
+  errors_text();
+}
+void test_errors_from_calibration(void)
+{
+  cal_begin();
+  recal_ok = false;
+  cal_readings(36, 420, 420);
+  recal_ok = true;
+  TEST_ASSERT_EQUAL_STRING("[\"cal_refused\"]", errors_text().c_str());
+  now_s += 3700;
+  now_ms += 3001;
+  cal_begin();
+  cal_readings(1000, 420, 900);
+  TEST_ASSERT_EQUAL_STRING("[\"cal_failed\"]", errors_text().c_str());
+  now_s += 3700;
+  now_ms += 3001;
+  errors_text();
+}
 void test_scd4x_conversions(void)
 {
   for(uint32_t raw = 0; raw <= 65535; raw += 257)
@@ -551,6 +610,9 @@ int main(void)
   RUN_TEST(test_cal_leds_respect_quiet_and_enable);
   RUN_TEST(test_cal_refused_by_the_sensor);
   RUN_TEST(test_cal_over_mqtt);
+  RUN_TEST(test_errors_conditions_and_events);
+  RUN_TEST(test_errors_truncated_when_short);
+  RUN_TEST(test_errors_from_calibration);
   RUN_TEST(test_scd4x_conversions);
   return UNITY_END();
 }

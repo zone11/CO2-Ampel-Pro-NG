@@ -30,6 +30,7 @@
 #include "serial_console.h"
 #include "i2c_utils.h"
 #include "calibration.h"
+#include "errors.h"
 #include "ui_menu.h"
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
@@ -378,6 +379,20 @@ void setup()
     co2_value = co2_average = settings.range[2]; //set to red threshold
   }
 
+  //what the boot found, for the errors list in diag
+  error_set(ERR_CO2_MISSING, (features & (FEATURE_SCD30|FEATURE_SCD4X)) == 0);
+  error_set(ERR_PRESSURE_MISSING, (features & (FEATURE_LPS22HB|FEATURE_BMP280)) == 0);
+  error_set(ERR_WIFI_MODULE_MISSING, (features & FEATURE_WINC1500) == 0);
+  error_set(ERR_SETTINGS_NEWER, load == SETTINGS_NEWER);
+  if(load == SETTINGS_DEFAULTS)
+  {
+    error_event(ERR_SETTINGS_LOST);
+  }
+  const char *cause = reset_cause();
+  if(strcmp(cause, "watchdog") == 0)  { error_event(ERR_RESET_HANG); }
+  if(strcmp(cause, "fault") == 0)     { error_event(ERR_RESET_FAULT); }
+  if(strcmp(cause, "brown-out") == 0) { error_event(ERR_RESET_BROWNOUT); }
+
   return;
 }
 
@@ -497,6 +512,13 @@ void loop()
     }
 
     co2_average = (co2_average + co2_sensor()) / 2; //average, once per second
+
+    sensors_error_check();
+    health_error_check();
+    if(features & FEATURE_WINC1500)
+    {
+      wifi_error_check(WiFi.status());
+    }
   }
   else if(overwrite == 0)
   {

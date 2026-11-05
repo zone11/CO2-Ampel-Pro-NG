@@ -440,7 +440,7 @@ A watchdog restarts the device if the firmware hangs for 30 seconds (2 minutes w
 in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `power-on`,
 `watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `reset pin`, `brown-out`.
 
-Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details:
+Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details. On MQTT a change of `errors` is sent at once, the rest every `mqtt.interval`:
 
 | Key | Meaning |
 |---|---|
@@ -457,11 +457,45 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
 | `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
 | `co2_failures` | times the CO2 sensor stopped delivering readings since start |
+| `errors` | what is wrong right now, see below. `[]` = nothing |
 | `pressure_offset` | normally 0. Otherwise the pressure sensor had an offset set that shifted its reading, and the device cleared it (256 = 16 hPa); please open an issue |
 
-These values survive restarts, but not a power loss: read them before unplugging the device. If the device
+The `last_*` values survive restarts, but not a power loss: read them before unplugging the device. If the device
 restarts repeatedly, please open an issue with the `diag` output and the firmware version (`last_pc` and
 `last_lr` tell the developer where it happened).
+
+### Errors
+
+`errors` lists problems as a JSON array, e.g. `"errors":["co2_stale","wifi_weak"]`, for your monitoring tool. It only shows the current
+state, so the tool keeps the history. Home Assistant shows the number of entries as "Errors", with the list as an attribute. A
+device that is offline can't report: watch `<base>/status` for that. Conditions are listed while they last; **events** are one-offs,
+listed for one hour, or until a restart.
+
+| Error | Meaning |
+|---|---|
+| `co2_missing`, `pressure_missing`, `wifi_module_missing` | not found at power-on |
+| `co2_stale` | no new CO2 reading for 60 seconds; values withheld, LEDs blink white |
+| `co2_read_failed` | 3 failed CO2 reads in a row (SCD30) |
+| `co2_range`, `temp_range`, `humidity_range` | 3 readings in a row outside what is possible (CO2 above 0 up to 40000 ppm, -10 to 60 °C, 0 to 100 %) |
+| `co2_frozen` | exactly the same CO2 value for 30 minutes |
+| `pressure_stale` | exactly the same pressure for 10 minutes |
+| `pressure_range` | outside 800–1100 hPa; not passed on to the CO2 sensor |
+| `pressure_offset` | event: the pressure sensor had an offset set, cleared (see `pressure_offset`) |
+| `i2c_bus` | event: 3 or more sensor bus faults within 10 minutes |
+| `i2c_stuck` | a sensor bus line stays low |
+| `reset_hang`, `reset_fault`, `reset_brownout` | event: the last restart came from the watchdog, a crash or a power dip |
+| `settings_lost` | event: no valid settings at start (also on a new device), defaults in use |
+| `settings_newer` | settings from newer firmware, defaults in use |
+| `ram_low` | less than 4 KB of RAM has stayed free |
+| `loop_slow` | event: the device was blocked for over 20 seconds, usually by a connect |
+| `wifi_lost` | not connected to your WiFi |
+| `wifi_weak` | signal below -80 dBm for 10 minutes |
+| `setup_network` | the device's own open WiFi network is on |
+| `wifi_reconnects`, `mqtt_reconnects` | event: 3 or more connects within an hour |
+| `mqtt_connect` | 2 failed MQTT connects in a row |
+| `mqtt_publish` | event: a message could not be sent |
+| `net_write_timeout` | event: a network send was given up |
+| `cal_refused`, `cal_failed` | event: the sensor refused the new value, or the readings stayed unstable for 3 runs |
 
 ## Serial Command Reference
 

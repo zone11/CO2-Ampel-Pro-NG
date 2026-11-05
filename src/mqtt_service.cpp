@@ -4,6 +4,7 @@
 #include "settings_registry.h"
 #include "system_control.h"
 #include "health.h"
+#include "errors.h"
 #include "wifi_manager.h"
 
 #if WITH_MQTT_CONFIG
@@ -181,6 +182,7 @@ typedef struct
   bool diagnostic;
   unsigned int needs;       // required feature bits, 0 = always
   bool text;                // text sensor (no state_class)
+  const char *value;        // value_template instead of value_json.<key>, may hold %s for the base topic; NULL = default
 } HA_ENTITY;
 
 static const HA_ENTITY ha_entities[] =
@@ -196,6 +198,8 @@ static const HA_ENTITY ha_entities[] =
   { "reset",         "Reset cause",                 "diag",    NULL,                   NULL,  true,  0, true  },
   { "last_phase",    "Last reset phase",            "diag",    NULL,                   NULL,  true,  0, true  },
   { "ram_free_min",  "Free RAM minimum",            "diag",    "data_size",            "B",   true,  0, false },
+  { "errors",        "Errors",                      "diag",    NULL,                   NULL,  true,  0, true,
+    "{{ value_json.errors|length }}\",\"json_attributes_topic\":\"%s/diag\",\"json_attributes_template\":\"{{ {'errors': value_json.errors}|tojson }}" },
   { "loop_max_ms",   "Longest loop",                "diag",    "duration",             "ms",  true,  0, false },
 };
 
@@ -238,11 +242,20 @@ static void mqtt_publish_discovery(void)
       continue;
     }
 
+    char value[256];
+    if(e.value)
+    {
+      snprintf(value, sizeof(value), e.value, base);
+    }
+    else
+    {
+      snprintf(value, sizeof(value), "{{ value_json.%s }}", e.key);
+    }
     size_t n = snprintf(json, sizeof(json),
       "{\"name\":\"%s\",\"unique_id\":\"co2ampel_%s_%s\",\"default_entity_id\":\"sensor.co2ampel_ng_%s_%s\","
-      "\"state_topic\":\"%s/%s\",\"value_template\":\"{{ value_json.%s }}\","
+      "\"state_topic\":\"%s/%s\",\"value_template\":\"%s\","
       "\"availability_topic\":\"%s/status\"%s",
-      e.name, device_id, e.key, entity_id, e.key, base, e.state, e.key, base, e.text ? "" : ",\"state_class\":\"measurement\"");
+      e.name, device_id, e.key, entity_id, e.key, base, e.state, value, base, e.text ? "" : ",\"state_class\":\"measurement\"");
     if(e.device_class) { n += snprintf(json + n, sizeof(json) - n, ",\"device_class\":\"%s\"", e.device_class); }
     if(e.unit)         { n += snprintf(json + n, sizeof(json) - n, ",\"unit_of_measurement\":\"%s\"", e.unit); }
     if(e.diagnostic)   { n += snprintf(json + n, sizeof(json) - n, ",\"entity_category\":\"diagnostic\""); }
@@ -526,6 +539,9 @@ void mqtt_connect(void)
     connected = mqtt_try_connect(client_id);
   }
 
+  static uint8_t connect_fails = 0;
+  connect_fails = connected ? 0 : (uint8_t)min(connect_fails + 1, 100);
+  error_set(ERR_MQTT_CONNECT, connect_fails >= 2);
   if(connected)
   {
     health.mqtt_connects++;
@@ -608,6 +624,16 @@ void mqtt_reconnect(void)
   }
 }
 
+// Retained: the last state before a hang stays on the broker
+static void mqtt_publish_diag(void)
+{
+  char topic[96];
+  char diag[1024];
+  health_json(diag, sizeof(diag));
+  mqtt_topic(topic, sizeof(topic), "diag");
+  mqttClient.publish(topic, diag, true, 0);
+}
+
 void mqtt_publish_sensors(void)
 {
   char topic[96];
@@ -643,6 +669,10 @@ void mqtt_publish_sensors(void)
   {
     last_publish_ms = millis() | 1; //never 0
   }
+  else
+  {
+    error_event(ERR_MQTT_PUBLISH);
+  }
 
   //WiFi
   char ssid[2*32+1];
@@ -653,11 +683,8 @@ void mqtt_publish_sensors(void)
            ssid, ip[0], ip[1], ip[2], ip[3], (long)WiFi.RSSI());
   mqttClient.publish(topic, json, false, 0);
 
-  //health (retained: the last state before a hang stays on the broker)
-  char diag[512];
-  health_json(diag, sizeof(diag));
-  mqtt_topic(topic, sizeof(topic), "diag");
-  mqttClient.publish(topic, diag, true, 0);
+  //health
+  mqtt_publish_diag();
 
   if(features & FEATURE_USB)
   {
@@ -784,6 +811,13 @@ void mqtt_service(void)
   {
     phase_set(PHASE_MQTT_PUBLISH);
     mqtt_publish_device();
+  }
+
+  //errors: right away, a monitoring tool shouldn't wait for the next interval
+  if(errors_changed())
+  {
+    phase_set(PHASE_MQTT_PUBLISH);
+    mqtt_publish_diag();
   }
 
   //periodic publishing

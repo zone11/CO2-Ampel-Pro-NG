@@ -223,7 +223,7 @@ void serial_service(void)
   }
   if(strcasecmp(line, "diag") == 0)
   {
-    char diag[512];
+    char diag[1024];
     health_json(diag, sizeof(diag));
     Serial.println(diag);
     return;

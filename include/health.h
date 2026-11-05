@@ -20,6 +20,7 @@ typedef struct
 extern HEALTH_COUNTERS health;
 
 void health_init(void); // fills the free RAM with a pattern (early in setup), for the lowest free RAM
+void health_error_check(void); // once per second: RAM, repeats of connects and bus errors
 void health_loop(void); // at the start of loop(): loop time
 
 uint32_t health_ram_free(void); // free RAM between heap and stack now (bytes)

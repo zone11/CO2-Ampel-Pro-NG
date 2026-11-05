@@ -1,6 +1,7 @@
 #include "calibration.h"
 
 #include "app_globals.h"
+#include "errors.h"
 #include "led_control.h"
 #include "sensors.h"
 
@@ -125,6 +126,7 @@ void calibration_reading(void)
 
   if(!co2_force_recalibration()) //an unstable run applies it too, as in the original firmware
   {
+    error_event(ERR_CAL_REFUSED);
     finish(CAL_REFUSED, COLOR_RED, "Calibration failed: the sensor refused the new value");
   }
   else if(again == 0)
@@ -133,6 +135,7 @@ void calibration_reading(void)
   }
   else if(++runs >= CALIBRATION_RUNS)
   {
+    error_event(ERR_CAL_FAILED);
     finish(CAL_FAILED, COLOR_RED, "Calibration failed: readings not stable");
   }
   else

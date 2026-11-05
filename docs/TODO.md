@@ -7,6 +7,7 @@ Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). On hold
 
 ## Blind spots (review of 2026-11-05, details in [BLIND_SPOTS.md](BLIND_SPOTS.md))
 
+- [ ] Test on hardware: `errors` in `diag` and the Home Assistant "Errors" entity; thresholds checked for false alarms over a long run; CO2 limits against the datasheets.
 - [ ] Test on hardware: CO2 sensor stops delivering (LEDs blink white, value withheld, recovery, Home Assistant state) and the setup network
       giving way to the normal WiFi after 5 minutes with no client, also when that fails.
 - [ ] A calibration started indoors still sets the sensor; refuse out-of-range readings, with an override for a badly drifted sensor.
