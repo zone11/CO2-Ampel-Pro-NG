@@ -255,6 +255,6 @@ const char *reset_cause(void)
   if(rc & PM_RCAUSE_SYST)                    { return (last.valid && (last.event == EVENT_FAULT)) ? "fault" : "software"; }
   if(rc & PM_RCAUSE_EXT)                     { return "reset pin"; }
   if(rc & (PM_RCAUSE_BOD12 | PM_RCAUSE_BOD33)) { return "brown-out"; }
-  if(rc & PM_RCAUSE_POR)                     { return "power-on"; }
+  if(rc & PM_RCAUSE_POR)                     { return "poweron"; }
   return "unknown";
 }

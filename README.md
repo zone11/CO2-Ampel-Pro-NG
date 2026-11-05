@@ -311,7 +311,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.9","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.9","reset":"poweron","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |
@@ -437,7 +437,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 ### Restarts and Diagnostics
 
 A watchdog restarts the device if the firmware hangs for 30 seconds (2 minutes while it connects to the network). The cause of the last restart is shown
-in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `power-on`,
+in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `poweron`,
 `watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `reset pin`, `brown-out`.
 
 Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details. On MQTT a change of `errors` is sent at once, the rest every `mqtt.interval`:

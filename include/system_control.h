@@ -14,7 +14,7 @@ void watchdog_feed(void);
 void watchdog_long(void); // feed, the next blocking call may take up to WATCHDOG_LONG
 void watchdog_loop(void); // feed, back to WATCHDOG_LOOP: once per pass of loop()
 
-// Cause of the last reset: "power-on", "watchdog", "fault" (HardFault), "software", "reset pin",
+// Cause of the last reset: "poweron", "watchdog", "fault" (HardFault), "software", "reset pin",
 // "brown-out" or "unknown"
 const char *reset_cause(void);
 
