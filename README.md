@@ -38,7 +38,7 @@ Building your own variant, the code structure and the internals are described in
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
 - Calibration and self test from the built-in service menu
 
-**Planned:** firmware updates over the network (OTA), LoRaWAN/TTN, charts on the web page.
+**Planned:** LoRaWAN/TTN, charts on the web page.
 
 ## What You Need
 

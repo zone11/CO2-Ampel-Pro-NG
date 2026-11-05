@@ -2,7 +2,8 @@
 
 Open changes and features for CO2-Ampel Pro NG. Order: roadmap features top down; follow-ups when convenient.
 Done items are removed (the GitHub releases list what was done).
-Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md).
+Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). Firmware updates over the network are on hold, not
+planned: [OTA.md](OTA.md).
 
 ## Stability (watchdog resets on the dev unit, 2026-11-01/02)
 
@@ -23,13 +24,7 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## Features (roadmap)
 
-- [ ] **OTA update triggered over MQTT** (pull), version 0.9, decided 2026-11-04:
-      small fixed loader that finishes an interrupted copy (app moves, one more USB flash, image limit about 119 KB);
-      signed images from the start; images on the user's webspace. First a spike on the device: download from that
-      webspace (TLS or HTTP, speed, RAM), and whether the ATECC608 can verify signatures on all units.
-      Must not touch the settings area, version compare must handle `0.4` / `0.4.1`, a repeated trigger must do nothing.
-- [ ] **LoRaWAN/TTN** with MCCI LMIC: one image with a runtime `net.mode` only if it stays within the OTA
-      limit, otherwise a separate env. Dev unit has an RFM9x and TTN coverage.
+- [ ] **LoRaWAN/TTN** with MCCI LMIC: one image with a runtime `net.mode` if it fits, otherwise a separate env. Dev unit has an RFM9x and TTN coverage.
 - [ ] Web interface with charts (listed as planned in the README, not prioritized yet).
 
 ## MQTT / Home Assistant follow-ups
