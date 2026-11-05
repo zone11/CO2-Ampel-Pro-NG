@@ -36,7 +36,9 @@ Building your own variant, the code structure and the internals are described in
 - Settings survive firmware updates, and a power loss while saving keeps the previous settings; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
-- Calibration and self test from the built-in service menu
+- Fresh air calibration from the web page, USB serial or the service menu; the device stays online during a run started over the web or serial
+- Self test in the built-in service menu
+- For devices in public areas: all button functions can be turned off
 
 **Planned:** LoRaWAN/TTN, charts on the web page.
 
@@ -139,6 +141,7 @@ running. Switch it with the Home Assistant switch "Quiet", over MQTT (see
 |---|---|
 | short (0.1–3 s) | halve the LED brightness; below `led.brightness_dark` it jumps back to the maximum (not saved) |
 | any press | mute the buzzer, start its 5-minute delay again |
+| during a calibration | abort it (nothing else happens) |
 | long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet; restart to leave) |
 | hold while plugging in | service menu |
 
@@ -458,7 +461,7 @@ USB serial, 9600 baud. Lines may end with CR, LF or CRLF.
 ```
 enable [password]  allow changes (LEDs violet, traffic light paused until exit)
 exit               leave enable mode
-status             measurements, sensors, LEDs, WiFi and MQTT status
+status             measurements, sensors, LEDs, calibration, WiFi and MQTT status
 diag               diagnostics as JSON
 version            firmware version
 get <key>          read a setting (get co2.* reads a group)

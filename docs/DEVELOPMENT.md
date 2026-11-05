@@ -33,13 +33,13 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 95 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 96 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~12 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~12.5 KB |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.4 KB, 1.9 KB RAM |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.4 KB |
 
 The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
 
@@ -77,6 +77,7 @@ The code is split into modules under `src/` (headers in `include/`):
 | `mqtt_service` | MQTT publish, Home Assistant discovery, commands |
 | `tls_client` | TLS client with hostname check |
 | `winc_bridge` | WiFi module flash access for the PC tool |
+| `calibration` | fresh air calibration in the background |
 | `ui_menu`, `diagnostics` | service menu, self test |
 | `i2c_utils` | I2C scan and bus recovery |
 | `system_control` | reset, watchdog, reset record, HardFault handler |

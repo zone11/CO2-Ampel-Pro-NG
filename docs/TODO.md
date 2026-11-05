@@ -31,16 +31,17 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Failed first MQTT connect (error -3) on some boots, the retry connects. Seen on both units while they shared a subnet
       with the broker; 7 of 7 restarts clean on a routed network (2026-11-04), then once more there on the second unit, after a software
-      restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once.
+      restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once. On 2026-11-05 it followed most software
+      restarts and flashes on the second unit, but not the one power-on checked.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 
 ## Not tested on hardware
 
 - [ ] Complete calibration started from the service menu (one complete background run passed outdoors on 2026-11-05; the menu uses
       the same code, only start and abort were tested there).
-- [ ] Calibration on an SCD4x.
+- [ ] Calibration on an SCD4x (the recalibration stops its measurement for about 2 s).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
-- [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).
+- [ ] 0.9 over a long run (only short test sessions so far), and on a USB charger.
 - [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only). SCD4x uses raw values with own float conversions since
