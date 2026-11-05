@@ -36,8 +36,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## Not tested on hardware
 
-- [ ] Complete calibration on a device, in fresh air, started from serial, web and the service menu (start and abort were tested on
-      hardware, complete runs only in host tests).
+- [ ] Complete calibration started from the service menu (one complete background run passed outdoors on 2026-11-05; the menu uses
+      the same code, only start and abort were tested there).
 - [ ] Calibration on an SCD4x.
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).
