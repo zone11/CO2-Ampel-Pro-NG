@@ -18,6 +18,12 @@ static void urldecode(char *src);
 static bool restart_pending = false; //restart after the reply has been sent
 static bool calibrate_pending = false; //calibration after the reply has been sent
 
+// Public-area builds: falsified readings must need a password
+static bool calibration_allowed(void)
+{
+  return WITH_DEVICE_UI || (settings.password[0] != 0);
+}
+
 // Writes text into a fixed buffer (for the JSON import reply on the page)
 class BufPrint : public Print
 {
@@ -341,7 +347,11 @@ static void config_page(WiFiClient &client, const char *result)
             "<input type=submit value='Import'> (all or nothing, saved)</form>\r\n");
 
   //calibration
-  if(calibration_available())
+  if(calibration_available() && !calibration_allowed())
+  {
+    out.print("<h3>Calibration</h3>\r\n<p>Set sys.password to start it here.</p>\r\n");
+  }
+  else if(calibration_available())
   {
     out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calibrate onsubmit='pw(this)'><input type=hidden name=_pw>"
               "<p>Only with the device in fresh air for at least 2 minutes: it sets the current reading to 400 ppm. "
@@ -630,7 +640,11 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
   if(strcmp(path, "calibrate") == 0)
   {
     free(body);
-    if(calibration_available())
+    if(!calibration_allowed())
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"calibration\":\"needs sys.password\"}}");
+    }
+    else if(calibration_available())
     {
       res.print("{\"result\":\"OK\",\"calibration\":true}");
       calibrate_pending = true;

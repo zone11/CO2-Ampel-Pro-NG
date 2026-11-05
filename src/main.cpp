@@ -318,10 +318,12 @@ void setup()
     {
       if(wifi_start() != 0) //connect to WiFi
       {
+#if WITH_DEVICE_UI
         if(wifi_start_ap() != 0) //start AP
         {
           features &= ~FEATURE_WINC1500;
         }
+#endif //otherwise no open network in public areas: loop() keeps trying to connect
       }
       WiFi.setTimeout(WIFI_RECONNECT_TIMEOUT);
       delay(2000);

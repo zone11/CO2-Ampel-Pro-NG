@@ -40,7 +40,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 | `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~12 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
-| `-DWITH_DEVICE_UI=0` | every button function: service menu with self test, air test and configuration, brightness, buzzer mute, opening the WiFi setup network | ~2 KB |
+| `-DWITH_DEVICE_UI=0` | every button function: service menu with self test, air test and configuration, brightness, buzzer mute, the WiFi setup network, also the one opened when WiFi fails at boot | ~2 KB |
 
 The main page shows these under "Build options".
 
@@ -48,10 +48,10 @@ The main page shows these under "Build options".
 uses it. This build can't remove discovery messages it finds on the broker, so set `mqtt.ha=0` before flashing a device that
 had it on.
 
-`WITH_DEVICE_UI=0` is meant for devices in public areas. Calibration then runs over serial or the web page, altitude and
-temperature offset can't be changed (they are only in the menu), and wrong WiFi settings need USB. The red reset button and
-USB serial stay active; set `sys.password` to protect the settings. A failed WiFi connect at boot still opens the setup
-network ([TODO](TODO.md)).
+`WITH_DEVICE_UI=0` is meant for devices in public areas. Calibration then runs over serial or the web page, and the web page
+only offers it once `sys.password` is set. Altitude and temperature offset can't be changed (they are only in the menu). The
+device never opens its own network: when WiFi fails at boot it keeps trying to connect, so wrong WiFi settings need USB. The
+red reset button and USB serial stay active; set `sys.password` to protect the settings.
 
 Compile-time defaults of the settings (thresholds, colors, brightness, `CO2_ASC`, MQTT defaults) are in
 `include/app_config.h`; they apply to new devices and after a factory reset.
