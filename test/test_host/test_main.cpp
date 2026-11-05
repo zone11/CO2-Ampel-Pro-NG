@@ -265,14 +265,15 @@ void test_v7_record_gets_nobuttons_default(void)
   TEST_ASSERT_FALSE(s.buzzer);
   TEST_ASSERT_FALSE(s.nobuttons);
 }
-void test_nobuttons_not_over_mqtt(void)
+void test_nobuttons_over_mqtt(void)
 {
   Out out;
-  settings.nobuttons = true;
-  settings_json_import("{\"sys.nobuttons\":false}", &out, true, false); //remote, config allowed
-  TEST_ASSERT_TRUE(settings.nobuttons);
-  settings_json_import("{\"sys.nobuttons\":false}", &out, true, true); //serial, web
+  settings.nobuttons = false;
+  TEST_ASSERT_FALSE(settings_json_import("{\"sys.nobuttons\":true}", &out, false, true, true)); //mqtt.config=0
   TEST_ASSERT_FALSE(settings.nobuttons);
+  TEST_ASSERT_TRUE(settings_json_import("{\"sys.nobuttons\":true}", &out, false, true)); //mqtt.config=1
+  TEST_ASSERT_TRUE(settings.nobuttons);
+  settings.nobuttons = false;
 }
 void test_bad_crc_falls_back(void)
 {
@@ -383,7 +384,7 @@ int main(void)
   RUN_TEST(test_slots_alternate);
   RUN_TEST(test_old_record_without_counter);
   RUN_TEST(test_v7_record_gets_nobuttons_default);
-  RUN_TEST(test_nobuttons_not_over_mqtt);
+  RUN_TEST(test_nobuttons_over_mqtt);
   RUN_TEST(test_bad_crc_falls_back);
   RUN_TEST(test_every_cut_of_a_save_keeps_settings);
   RUN_TEST(test_erased_slot_a);

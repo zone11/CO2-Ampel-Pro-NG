@@ -56,7 +56,7 @@ static const cfg_item_t settings_items[] =
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "sys.buzzer",       CFG_BOOL,  &settings.buzzer,         0, 0, 0, apply_buzzer, 0 },
   { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },
-  { "sys.nobuttons",    CFG_BOOL,  &settings.nobuttons,      0, 0, 0, NULL, CFG_LOCAL },
+  { "sys.nobuttons",    CFG_BOOL,  &settings.nobuttons,      0, 0, 0, NULL, 0 },
   { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL, 0 },
   { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL, 0 },
   { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL, 0 },
