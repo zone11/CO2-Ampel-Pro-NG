@@ -438,7 +438,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 
 A watchdog restarts the device if the firmware hangs for 30 seconds (2 minutes while it connects to the network). The cause of the last restart is shown
 in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `poweron`,
-`watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `reset pin`, `brown-out`.
+`watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `resetpin`, `brownout`.
 
 Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details. On MQTT a change of `errors` is sent at once, the rest every `mqtt.interval`:
 

@@ -391,7 +391,7 @@ void setup()
   const char *cause = reset_cause();
   if(strcmp(cause, "watchdog") == 0)  { error_event(ERR_RESET_HANG); }
   if(strcmp(cause, "fault") == 0)     { error_event(ERR_RESET_FAULT); }
-  if(strcmp(cause, "brown-out") == 0) { error_event(ERR_RESET_BROWNOUT); }
+  if(strcmp(cause, "brownout") == 0)  { error_event(ERR_RESET_BROWNOUT); }
 
   return;
 }
