@@ -39,7 +39,23 @@ static int hex_digit(char c)
   return -1;
 }
 
-// Reads a string (p on the opening quote) into out; non-ASCII \u escapes become '?'
+// Reads a string (p on the opening quote) into out; \u escapes become UTF-8
+static bool parse_hex4(parser_t *ps, unsigned long *value)
+{
+  *value = 0;
+  for(int i = 0; i < 4; i++)
+  {
+    int d = hex_digit(*ps->p);
+    if(d < 0)
+    {
+      return false;
+    }
+    ps->p++;
+    *value = (*value << 4) | (unsigned long)d;
+  }
+  return true;
+}
+
 static bool parse_string(parser_t *ps, char *out, size_t size)
 {
   size_t n = 0;
@@ -69,18 +85,39 @@ static bool parse_string(parser_t *ps, char *out, size_t size)
         case 't': c = '\t'; break;
         case 'u':
         {
-          unsigned int v = 0;
-          for(int i = 0; i < 4; i++)
+          unsigned long v;
+          if(!parse_hex4(ps, &v))
           {
-            int d = hex_digit(*ps->p++);
-            if(d < 0)
+            return fail(ps, "invalid \\u escape");
+          }
+          if((v >= 0xD800) && (v < 0xDC00) && (ps->p[0] == '\\') && (ps->p[1] == 'u')) //surrogate pair
+          {
+            ps->p += 2;
+            unsigned long low;
+            if(!parse_hex4(ps, &low))
             {
               return fail(ps, "invalid \\u escape");
             }
-            v = (v << 4) | (unsigned int)d;
+            v = ((low >= 0xDC00) && (low < 0xE000)) ? 0x10000UL + ((v - 0xD800) << 10) + (low - 0xDC00) : 0;
           }
-          c = ((v >= 0x20) && (v < 0x80)) ? (char)v : '?';
-          break;
+          if((v == 0) || ((v >= 0xD800) && (v < 0xE000))) //no NUL in text, a lone surrogate is no character
+          {
+            v = '?';
+          }
+          size_t len = (v < 0x80) ? 1 : (v < 0x800) ? 2 : (v < 0x10000) ? 3 : 4;
+          if((n + len) >= size)
+          {
+            return fail(ps, "string too long");
+          }
+          static const unsigned char lead[] = { 0, 0, 0xC0, 0xE0, 0xF0 };
+          for(size_t i = len - 1; i > 0; i--)
+          {
+            out[n + i] = (char)(0x80 | (v & 0x3F));
+            v >>= 6;
+          }
+          out[n] = (char)(lead[len] | v);
+          n += len;
+          continue;
         }
         default:
           return fail(ps, "invalid escape");

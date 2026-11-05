@@ -2,6 +2,7 @@
 #define SENSORS_H
 
 #include "app_globals.h"
+#include "scd4x_convert.h"
 
 unsigned int light_sensor(void);
 float co2_sensor(void);

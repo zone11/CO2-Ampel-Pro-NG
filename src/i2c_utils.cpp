@@ -104,27 +104,11 @@ int check_i2c(Sercom *sercom, byte addr) //1=okay
     }
   }
 
-  /*
-  if(res == 0)
+  if(sercom->I2CM.STATUS.bit.BUSSTATE == 2) //we own the bus: release it, the device is waiting for a STOP
   {
-    if(sercom == SERCOM1)
-    {
-      Wire.beginTransmission(addr);
-      if(Wire.endTransmission() == 0)
-      {
-        res = 1; //ok
-      }
-    }
-    else if(sercom == SERCOM2)
-    {
-      Wire1.beginTransmission(addr);
-      if(Wire1.endTransmission() == 0)
-      {
-        res = 1; //ok
-      }
-    }
+    sercom->I2CM.CTRLB.bit.CMD = 3;
+    delay(1);
   }
-  */
 
   return res;
 }

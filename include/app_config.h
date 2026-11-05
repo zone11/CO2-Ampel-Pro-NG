@@ -35,7 +35,8 @@
 #define DEFAULT_COLOR_T4   0xFF0000 //red
 
 //--- Watchdog ---
-#define WATCHDOG_TIMEOUT   120 //s without watchdog_feed() until reset (multiple of 2; WiFi/MQTT connects can block ~100 s)
+#define WATCHDOG_LOOP      30  //s without a loop pass until reset (multiple of 2)
+#define WATCHDOG_LONG      120 //s at boot and during WiFi/MQTT connects, they can block ~100 s (multiple of 2)
 #define WIFI_RECONNECT_TIMEOUT 20000UL //ms a WiFi reconnect may block (at boot: 60 s)
 #define RETRY_MIN 30000UL  //ms between WiFi/MQTT connect attempts, doubled while they fail and block
 #define RETRY_MAX 300000UL

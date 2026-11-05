@@ -9,7 +9,9 @@
 // reserves this area, and scripts/upload_samba.py reads it before the erase and
 // writes it back with the firmware, so settings survive firmware updates.
 // Two slots: a save goes to the older one, so a power loss during it keeps the previous settings.
+#ifndef SETTINGS_FLASH_ADDR //host tests use a fake flash
 #define SETTINGS_FLASH_ADDR  0x0003F800UL
+#endif
 #define SETTINGS_SLOT_SIZE   1024
 #define SETTINGS_SLOTS       2
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
@@ -313,7 +315,7 @@ void settings_write(const SETTINGS *data)
   int newest = newest_slot(&version, &size, &seq);
   rec->seq     = seq + 1;
   rec->seq_inv = ~rec->seq;
-  const uint32_t addr = SETTINGS_FLASH_ADDR + (((newest + 1) % SETTINGS_SLOTS) * SETTINGS_SLOT_SIZE);
+  const uintptr_t addr = SETTINGS_FLASH_ADDR + (((newest + 1) % SETTINGS_SLOTS) * SETTINGS_SLOT_SIZE);
 
   const uint32_t num_rows  = (RECORD_BYTES + FLASH_ROW_SIZE - 1) / FLASH_ROW_SIZE;
   const uint32_t num_pages = RECORD_BYTES / FLASH_PAGE_SIZE;

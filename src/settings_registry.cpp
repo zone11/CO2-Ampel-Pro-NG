@@ -51,24 +51,24 @@ static bool on_save_settings(void *user)
 
 static const cfg_item_t settings_items[] =
 {
-  { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name },
-  { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL },
+  { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name, 0 },
+  { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL, 0 },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
-  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, apply_buzzer },
+  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, apply_buzzer, 0 },
   { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },
-  { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL },
-  { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL },
-  { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL },
-  { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, NULL },
-  { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, NULL },
-  { "co2.asc",          CFG_BOOL,  &settings.asc,            0, 0, 0, apply_asc },
-  { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness },
-  { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness },
-  { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness },
-  { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL },
-  { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL },
-  { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL },
-  { "led.color.t4",     CFG_COLOR, &settings.color_t4,       0, 0xFFFFFF, 0, NULL },
+  { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL, 0 },
+  { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL, 0 },
+  { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL, 0 },
+  { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, NULL, 0 },
+  { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, NULL, 0 },
+  { "co2.asc",          CFG_BOOL,  &settings.asc,            0, 0, 0, apply_asc, 0 },
+  { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness, 0 },
+  { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness, 0 },
+  { "led.auto",         CFG_BOOL,  &settings.led_auto,       0, 0, 0, apply_brightness, 0 },
+  { "led.color.t1",     CFG_COLOR, &settings.color_t1,       0, 0xFFFFFF, 0, NULL, 0 },
+  { "led.color.t2",     CFG_COLOR, &settings.color_t2,       0, 0xFFFFFF, 0, NULL, 0 },
+  { "led.color.t3",     CFG_COLOR, &settings.color_t3,       0, 0xFFFFFF, 0, NULL, 0 },
+  { "led.color.t4",     CFG_COLOR, &settings.color_t4,       0, 0xFFFFFF, 0, NULL, 0 },
   { "wifi.ssid",        CFG_STRING, settings.wifi_ssid,      0, 0, sizeof(settings.wifi_ssid) - 1, NULL, CFG_LOCAL },
   { "wifi.pass",        CFG_STRING, settings.wifi_code,      0, 0, sizeof(settings.wifi_code) - 1, NULL, CFG_SECRET|CFG_LOCAL },
   { "mqtt.enabled",     CFG_BOOL,  &settings.mqtt_enabled,   0, 0, 0, NULL, CFG_LOCAL },
@@ -77,15 +77,15 @@ static const cfg_item_t settings_items[] =
   { "mqtt.tls",         CFG_BOOL,  &settings.mqtt_tls,       0, 0, 0, NULL, CFG_LOCAL },
   { "mqtt.user",        CFG_STRING, settings.mqtt_user,      0, 0, sizeof(settings.mqtt_user) - 1, NULL, CFG_LOCAL },
   { "mqtt.pass",        CFG_STRING, settings.mqtt_pass,      0, 0, sizeof(settings.mqtt_pass) - 1, NULL, CFG_SECRET|CFG_LOCAL },
-  { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL },
-  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, apply_topic_prefix },
+  { "mqtt.client_id",   CFG_STRING, settings.mqtt_client_id, 0, 0, sizeof(settings.mqtt_client_id) - 1, NULL, 0 },
+  { "mqtt.topic_prefix",CFG_STRING, settings.mqtt_topic_prefix, 0, 0, sizeof(settings.mqtt_topic_prefix) - 1, apply_topic_prefix, 0 },
 #if WITH_HA
   { "mqtt.ha",          CFG_BOOL,  &settings.mqtt_ha,        0, 0, 0, apply_mqtt_ha, CFG_LOCAL },
 #endif
 #if WITH_MQTT_CONFIG
   { "mqtt.config",      CFG_BOOL,  &settings.mqtt_config,    0, 0, 0, NULL, CFG_LOCAL },
 #endif
-  { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL },
+  { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL, 0 },
 };
 static const size_t settings_items_count = sizeof(settings_items) / sizeof(settings_items[0]);
 
@@ -165,29 +165,10 @@ bool settings_handle_line(char *line, Print *out, bool remote_on, bool local)
   return serial_settings_handle_line(line, settings_items, settings_items_count, &ctx);
 }
 
-// Swallows the handler's reply; "set" answers either "OK" or "ERROR: ..."
-class ReplySink : public Print
-{
-public:
-  char first = 0;
-  size_t write(uint8_t c) override
-  {
-    if(first == 0) { first = (char)c; }
-    return 1;
-  }
-};
-
 bool settings_set(const char *key, const char *value)
 {
-  char line[16 + 32 + 3*64 + 1];
-  ReplySink sink;
-
-  if(snprintf(line, sizeof(line), "set %s=%s", key, value) >= (int)sizeof(line))
-  {
-    return false;
-  }
-  settings_handle_line(line, &sink, true, true);
-  return sink.first == 'O';
+  const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
+  return (item != NULL) && (cfg_set_value(item, value, false, NULL) == NULL);
 }
 
 // Collects "key":"message" pairs for the import reply

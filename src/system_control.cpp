@@ -9,6 +9,7 @@
 #define WATCHDOG_EW_S  2 //early warning interval in s (WDT clock 1024 Hz, EWOFFSET 2K)
 
 static volatile unsigned int wdt_ticks = 0; //early warnings since the last watchdog_feed()
+static volatile unsigned int wdt_limit = WATCHDOG_LONG / WATCHDOG_EW_S; //early warnings until the reset
 
 void reset_mcu(void)
 {
@@ -186,6 +187,18 @@ void watchdog_feed(void)
   wdt_ticks = 0;
 }
 
+void watchdog_long(void)
+{
+  wdt_ticks = 0;
+  wdt_limit = WATCHDOG_LONG / WATCHDOG_EW_S;
+}
+
+void watchdog_loop(void)
+{
+  wdt_ticks = 0;
+  wdt_limit = WATCHDOG_LOOP / WATCHDOG_EW_S;
+}
+
 // Exception entry: passes the stack with the exception frame (MSP or PSP) to the C handler
 #define FRAME_HANDLER(handler) \
   __asm volatile( \
@@ -204,7 +217,7 @@ void watchdog_feed(void)
 extern "C" __attribute__((used)) void wdt_handler_c(uint32_t *frame)
 {
   WDT->INTFLAG.reg = WDT_INTFLAG_EW;
-  if(wdt_ticks < (WATCHDOG_TIMEOUT / WATCHDOG_EW_S))
+  if(wdt_ticks < wdt_limit)
   {
     wdt_ticks++;
     WDT->CLEAR.reg = WDT_CLEAR_CLEAR_KEY; //the last clear was 2 s ago, so no sync is pending
