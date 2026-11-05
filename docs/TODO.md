@@ -38,7 +38,6 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Complete calibration started over serial or web, in fresh air (start, abort and result were tested, not the part that
       sets the sensor). 
-- [ ] `WITH_HA=0` on the device (image checked: no `mqtt.ha` or discovery strings).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).
 - [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).
