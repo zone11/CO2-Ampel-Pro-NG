@@ -142,7 +142,7 @@ running. Switch it with the Home Assistant switch "Quiet", over MQTT (see
 | short (0.1–3 s) | halve the LED brightness; below `led.brightness_dark` it jumps back to the maximum (not saved) |
 | any press | mute the buzzer, start its 5-minute delay again |
 | during a calibration | abort it (nothing else happens) |
-| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet for a moment, then the normal colors again; restart to leave) |
+| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet for a moment, then the normal colors again; ends with a restart, or after 5 minutes with nobody connected) |
 | hold while plugging in | service menu |
 
 For devices in public areas, set `sys.nobuttons=1`. All of the above then does nothing, including aborting a calibration. The
@@ -427,7 +427,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 |---|---|
 | No CO2 values, traffic light stays red | The CO2 sensor was not found at power-on (`status` / boot log: `Error: CO2 sensor not found`). Unplug the device for a few seconds. |
 | LEDs blink white, CO2 shows `--` | The CO2 sensor has delivered no new reading for over a minute, so the last value is no longer shown or published, and the buzzer stays off. It clears itself when readings return (`co2_failures` in `diag` counts these). Otherwise unplug the device for a few seconds. |
-| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
+| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup, and tries your WiFi again every 5 minutes while nobody is connected to it. A lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
 | MQTT not connected | The MQTT section of the web page shows the last error (e.g. wrong password, broker not reachable). With TLS: is the root certificate installed, and does `mqtt.broker` match the certificate? |
 | Nothing appears in Home Assistant | `mqtt.ha=1`? Check the broker access rules (see [Home Assistant](#home-assistant)). |
 | Upload fails with "Resource busy" | A serial monitor still has the port open; close it. |

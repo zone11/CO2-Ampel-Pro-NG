@@ -411,9 +411,14 @@ void loop()
   {
     phase_set(PHASE_WIFI);
     int wifi_status = WiFi.status();
-    if((wifi_status == WL_CONNECTED) || (wifi_status == WL_AP_LISTENING) || (wifi_status == WL_AP_CONNECTED)) //AP_CONNECTED: a client joined the setup network
+    if(wifi_status == WL_CONNECTED)
     {
       wifi_retry.wait = RETRY_MIN;
+    }
+    else if((wifi_status == WL_AP_LISTENING) || (wifi_status == WL_AP_CONNECTED)) //AP_CONNECTED: a client joined the setup network
+    {
+      wifi_retry.wait = RETRY_MIN;
+      wifi_ap_service(wifi_status);
     }
     else if((settings.wifi_ssid[0] != 0) && retry_due(&wifi_retry))
     {

@@ -181,6 +181,8 @@ void print_wifi_status(void)
   }
 }
 
+static unsigned long t_ap = 0;
+
 unsigned int wifi_start_ap(void)
 {
   char hostname[33];
@@ -212,7 +214,25 @@ unsigned int wifi_start_ap(void)
   server.begin(); //start the web server
 #endif
 
+  t_ap = millis();
   return 0;
+}
+
+// Setup network open: with no client, try the normal WiFi now and then, e.g. the router was slower than the device after a power cut
+void wifi_ap_service(int status)
+{
+  if(status == WL_AP_CONNECTED)
+  {
+    t_ap = millis();
+  }
+  else if((settings.wifi_ssid[0] != 0) && ((millis() - t_ap) > AP_RETRY))
+  {
+    t_ap = millis();
+    if((wifi_start() != 0) && !settings.nobuttons)
+    {
+      wifi_start_ap(); //if this fails too, loop() retries the normal WiFi
+    }
+  }
 }
 
 unsigned int wifi_start(void)

@@ -210,6 +210,9 @@ trigger it: `check_sensors()` runs first in that pass and picks up the waiting r
 use `retry_due()`: RETRY_MIN, doubled per attempt up to RETRY_MAX. An MQTT connect refused within 5 s does not count,
 it doesn't stall the loop, so a restarted broker is found again quickly.
 
+While the setup network is open, `wifi_ap_service()` tries the normal WiFi after `AP_RETRY` (5 minutes) with no client, and reopens the
+network if that fails (not with `sys.nobuttons=1`, which keeps retrying). A joined client restarts the wait.
+
 The connects still block the loop, because WiFi101 offers no non-blocking way: after `setTimeout()` runs out
 `startConnect()` resets its mode and ignores the late DHCP reply, so a timeout of 0 never connects. The limits are 60 s
 at boot, `WIFI_RECONNECT_TIMEOUT` after it, and for MQTT up to ~40 s (DNS 20 s + TCP 20 s, fixed in the library).
