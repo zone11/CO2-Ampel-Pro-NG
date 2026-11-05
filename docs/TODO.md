@@ -2,8 +2,8 @@
 
 Open changes and features for CO2-Ampel Pro NG. Order: roadmap features top down; follow-ups when convenient.
 Done items are removed (the GitHub releases list what was done).
-Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). Firmware updates over the network are on hold, not
-planned: [OTA.md](OTA.md).
+Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). On hold, not planned: firmware updates over the network
+([OTA.md](OTA.md)) and root certificate upload in the web interface ([ROOT_CERT_UPLOAD.md](ROOT_CERT_UPLOAD.md)).
 
 ## Stability (watchdog resets on the dev unit, 2026-11-01/02)
 
@@ -34,8 +34,19 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 
+## Devices in public areas (`WITH_DEVICE_UI=0`)
+
+- [ ] Altitude and temperature offset can only be set in the service menu, there are no settings keys. Without the menu they
+      can't be changed.
+- [ ] A failed WiFi connect at boot still opens the device's own open WiFi network with the web page (`wifi_start_ap()` in
+      `setup()`), also with `WITH_DEVICE_UI=0`. Without `sys.password` everyone nearby can change every setting there.
+
 ## Not tested on hardware
 
+- [ ] Complete calibration started over serial or web, in fresh air (start, abort and result were tested, not the part that
+      sets the sensor). Password check of the web calibration (same check as the restart button).
+- [ ] Button with `WITH_DEVICE_UI=0`, physically pressed (the code isn't in that build).
+- [ ] `WITH_HA=0` on the device (image checked: no `mqtt.ha` or discovery strings).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).
 - [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).

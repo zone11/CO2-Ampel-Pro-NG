@@ -166,6 +166,14 @@ Calibrate the CO2 sensor from time to time:
    is set to 400 ppm. Unstable readings start the run again; a button press aborts it.
 4. Done: LEDs blue and a short beep.
 
+Without the button, start it over USB serial with `enable`, then `calibrate`, or with "Start calibration" on the web page
+`/config`. Put the device in fresh air first: the current reading is set to 400 ppm, wherever the device is. It is offline
+during the 3 minutes or more and restarts afterwards. Any input on the serial port aborts it. If the readings stay unstable,
+it gives up after three runs (LEDs red), but the sensor has been set anyway, so repeat it in fresh air. The web page shows the
+result as "Last calibration" until the next restart.
+
+Anyone who can open the web page can start this, so set `sys.password` if others are on your network.
+
 Automatic self-calibration (`co2.asc=1`, off by default) needs 7 days of continuous operation with at least
 1 hour of fresh air every day.
 
@@ -250,8 +258,8 @@ When WiFi is connected, the device answers at `http://<IP address>/`:
 
 | Address | Content |
 |---|---|
-| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart). Refreshes every 30 seconds |
-| `/config` | all settings as a form, JSON upload and download, restart button |
+| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart, build options). Refreshes every 30 seconds |
+| `/config` | all settings as a form, JSON upload and download, calibration, restart button |
 | `/config.json` | all settings as JSON, passwords as `***` |
 | `/json` | measurements as JSON, e.g. `{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}` |
 | `/diag` | diagnostics as JSON, see [Troubleshooting](#troubleshooting) |
@@ -451,6 +459,7 @@ json export        all settings as JSON
 json import        apply settings from JSON (on the same line or pasted afterwards, max. 2 KB)
 help               list all keys
 i2c scan           list the sensors found on the I2C buses
+calibrate          fresh air calibration, needs enable; any input aborts, restarts afterwards
 reset              restart the device
 ```
 
