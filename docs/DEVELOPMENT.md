@@ -148,7 +148,8 @@ Stuck interrupts restart after 4 s.
 ## Calibration Trigger
 
 `calibration.cpp` is a small state machine without hardware access of its own, so the host tests cover complete runs.
-`calibrate` on serial and POST `/config/calibrate` call `calibration_start()`; `loop()` then passes every new reading to
+`calibrate` on serial, POST `/config/calibrate` and the command word `calibrate` on `<base>/cmd` (only with `mqtt.config=1`; JSON
+imports from serial and web treat it as unknown, so the web password rule can't be bypassed) call `calibration_start()`; `loop()` then passes every new reading to
 `calibration_reading()`, so web and MQTT keep running. The traffic light pauses while `calibration_leds()` is true (during the run,
 and 3 seconds for the result). The result is kept in RAM until the next restart. The service menu runs before the network starts and
 drives the same code in its own loop. An unstable run still applies the forced recalibration, as in the original firmware; it starts

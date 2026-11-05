@@ -464,6 +464,34 @@ void test_cal_leds_respect_quiet_and_enable(void)
   settings.quiet = false;
   settings.buzzer = true;
 }
+void test_cal_over_mqtt(void)
+{
+  Out out;
+  cal_begin();
+  calibration_abort();
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":true}", &out, false, true, true)); //mqtt.config=0
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":1}", &out, false, true));
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_TRUE(settings_json_import("{\"calibrate\":true}", &out, true, true)); //serial, web: unknown word
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":true,\"co2.t1\":99999}", &out, false, true)); //all or nothing
+  TEST_ASSERT_FALSE(calibration_running());
+  out.text.clear();
+  TEST_ASSERT_TRUE(settings_json_import("{\"calibrate\":true}", &out, false, true));
+  TEST_ASSERT_TRUE(calibration_running());
+  TEST_ASSERT_TRUE(out.text.find("\"calibration\":\"running") != std::string::npos);
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":true}", &out, false, true)); //already running
+  TEST_ASSERT_TRUE(calibration_running());
+  TEST_ASSERT_TRUE(settings_json_import("{\"calibrate\":false}", &out, false, true));
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(0, recals);
+  unsigned int f = features;
+  features = 0;
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":true}", &out, false, true)); //no sensor
+  features = f;
+  TEST_ASSERT_FALSE(calibration_running());
+}
 void test_scd4x_conversions(void)
 {
   for(uint32_t raw = 0; raw <= 65535; raw += 257)
@@ -508,6 +536,7 @@ int main(void)
   RUN_TEST(test_cal_unstable_gives_up_after_three_runs);
   RUN_TEST(test_cal_stable_second_run_is_ok);
   RUN_TEST(test_cal_leds_respect_quiet_and_enable);
+  RUN_TEST(test_cal_over_mqtt);
   RUN_TEST(test_scd4x_conversions);
   return UNITY_END();
 }

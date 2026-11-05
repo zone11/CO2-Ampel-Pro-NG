@@ -1,6 +1,7 @@
 #include "settings_registry.h"
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "json_parser.h"
 #include "led_control.h"
 #include "mqtt_service.h"
@@ -206,6 +207,7 @@ typedef struct
   bool control_only;
   bool save;
   bool do_export;
+  int calibrate; //1 = start, -1 = abort
   const SETTINGS *before;
   JsonPairs errors;
   JsonPairs warnings;
@@ -231,9 +233,18 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   if(strchr(key, '.') == NULL) //command words (settings always contain a dot)
   {
     bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
-    if(ic->control_only && ((strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
+    bool cal = (strcmp(key, "calibrate") == 0) && !ic->local; //MQTT only: local callers have their own command, web a password rule
+    if(ic->control_only && (cal || (strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
     {
       ic->errors.add(key, "Configuration over MQTT is off (mqtt.config)");
+    }
+    else if(cal)
+    {
+      if(type != JSON_BOOL)                  { ic->errors.add(key, "Invalid value"); }
+      else if(!on)                           { ic->calibrate = -1; }
+      else if(!calibration_available())      { ic->errors.add(key, "No CO2 sensor"); }
+      else if(calibration_running())         { ic->errors.add(key, "Already running"); }
+      else                                   { ic->calibrate = 1; }
     }
     else if(strcmp(key, "save") == 0)   { ic->save = on; }
     else if(strcmp(key, "export") == 0) { ic->do_export = on; }
@@ -289,6 +300,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   ic.control_only = control_only;
   ic.save = false;
   ic.do_export = false;
+  ic.calibrate = 0;
   ic.before = &before;
 
   if(!enabled)
@@ -330,6 +342,14 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   {
     settings_save();
   }
+  if(ok && (ic.calibrate > 0))
+  {
+    calibration_start(false);
+  }
+  else if(ok && (ic.calibrate < 0))
+  {
+    calibration_abort();
+  }
 
   if(out)
   {
@@ -342,6 +362,13 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
     else if(ic.save)
     {
       out->print(",\"saved\":true");
+    }
+    char cal[48];
+    if(ok && (ic.calibrate != 0) && calibration_status(cal, sizeof(cal)))
+    {
+      out->print(",\"calibration\":\"");
+      out->print(cal);
+      out->print('"');
     }
     if(!ic.warnings.empty())
     {
