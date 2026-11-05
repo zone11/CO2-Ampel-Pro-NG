@@ -33,11 +33,11 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 96 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 95 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~12.5 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~12.5 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.4 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.4 KB |
 

@@ -86,7 +86,7 @@ device and writes them back with the new firmware. Each upload also keeps a copy
 3. After the restart `status` shows the IP address. Open `http://<IP address>/` in a browser.
 
 Without a serial monitor: hold the button for more than 3 seconds. The device opens its own WiFi network
-(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
+(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and `http://192.168.1.1/config` there has the WiFi settings; use "Save", then "Restart".
 
 MQTT and Home Assistant: see [MQTT and Home Assistant](#mqtt-and-home-assistant).
 
@@ -240,7 +240,7 @@ USB serial or the web page, so a mistake over MQTT can't cut the device off the 
 Without a password, anyone on your network can change the settings on the web page (the stored passwords
 themselves are never shown). With `sys.password` set (`enable`, `set sys.password=...`, `save`):
 - `enable <password>` is required before `get`, `dump`, `json export/import`, `set` and `save` on the serial port
-- the web configuration page and the WiFi form ask for it
+- the web configuration page asks for it
 - the main web page no longer shows the WiFi name, broker and topic
 - a wrong password locks further attempts for 1, 2, 4 … 30 seconds
 

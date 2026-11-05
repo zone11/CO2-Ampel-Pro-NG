@@ -166,41 +166,6 @@ static const char *form_value(const form_t *form, const char *name)
   return NULL;
 }
 
-// POST of the "Change WiFi" form (fields 1 = SSID, 2 = password, 3 = sys.password). Returns the message for the page.
-static const char *wifi_form(WiFiClient &client, size_t content_length)
-{
-  char *body = read_body(client, content_length);
-  if(body == NULL)
-  {
-    return "<b>Not saved: incomplete or too long</b><br/>\r\n";
-  }
-  form_t form;
-  form_parse(body, &form);
-  const char *ssid = form_value(&form, "1");
-  const char *code = form_value(&form, "2");
-  const char *pw = form_value(&form, "3");
-  const char *msg = "";
-  if(!settings_enable(pw ? pw : "", NULL)) //with sys.password: password required
-  {
-    msg = "<b>Wrong password</b><br/>\r\n";
-  }
-  else if((ssid == NULL) || (code == NULL) ||
-          (strlen(ssid) >= sizeof(settings.wifi_ssid)) || (strlen(code) >= sizeof(settings.wifi_code)))
-  {
-    msg = "<b>Not saved: incomplete or too long</b><br/>\r\n";
-  }
-  else if(strcmp(ssid, settings.wifi_ssid) || strcmp(code, settings.wifi_code))
-  {
-    if(settings_set("wifi.ssid", ssid) && settings_set("wifi.pass", code))
-    {
-      settings_save();
-      msg = "<b>Saved</b><br/>\r\n";
-    }
-  }
-  free(body);
-  return msg;
-}
-
 static void print_field(Print &out, const cfg_item_t *item)
 {
   char val[72];
@@ -394,16 +359,13 @@ static const char *fmt_duration(char *buf, size_t size, unsigned long s)
 }
 
 // GET /: names as in Home Assistant; readings, WiFi (with the login form), MQTT and system status in sections like /config
-static void main_page(WiFiClient &client, const char *form_msg)
+static void main_page(WiFiClient &client)
 {
   ChunkPrint out(client);
   bool pw = settings_password_set(); //with a password: no SSID, broker or topic on this page
   char v[96], f1[16], f2[16];
 
-  page_head(out, NULL,
-            "<meta http-equiv=refresh content=30>\r\n"
-            "<script>function wifi(){var b=document.getElementById('wifi');"
-            "b.style.display=(b.style.display=='block')?'none':'block';}</script>\r\n");
+  page_head(out, NULL, "<meta http-equiv=refresh content=30>\r\n");
   //measurements: without a CO2 sensor "--" instead of start values; pressure only with a pressure sensor
   out.print("<fieldset><legend>Measurements</legend>\r\n");
   uint32_t shown = ws2812.getPixelColor(0);
@@ -453,17 +415,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   row(out, "MAC", v);
   String fv = WiFi.firmwareVersion();
   row(out, "WINC1500 firmware", fv.c_str());
-  out.print(form_msg);
-  out.print("<button onclick='wifi()'>Change WiFi</button>\r\n"
-            "<div id=wifi style='display:none'><form method=post>\r\n"
-            "<label>SSID</label> <input name=1 size=30 maxlength=64 placeholder=SSID value='");
-  print_html(out, pw ? "" : settings.wifi_ssid, true);
-  out.print("'><br/>\r\n<label>Password</label> <input name=2 type=password size=30 maxlength=64><br/>\r\n");
-  if(pw)
-  {
-    out.print("<label>Enable password</label> <input name=3 type=password size=30 maxlength=32><br/>\r\n");
-  }
-  out.print("<input type=submit value='Save'> (applies after a restart)</form></div>\r\n</fieldset>\r\n");
+  out.print("</fieldset>\r\n");
 
   //MQTT
   out.print("<fieldset><legend>MQTT</legend>\r\n");
@@ -801,7 +753,6 @@ void webserver_service(void)
   unsigned int pos=0;
   char buf[640]; //replies of /json, /diag and errors (the pages use ChunkPrint)
   char req[3*64+1]; //HTTP request
-  const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
   char hline[24]; //current header line (only for Content-Length)
   size_t hlen = 0, content_length = 0;
@@ -896,11 +847,7 @@ void webserver_service(void)
         }
         else
         {
-          if(strncmp(req, "POST ", 5) == 0)
-          {
-            form_msg = wifi_form(client, content_length);
-          }
-          main_page(client, form_msg);
+          main_page(client);
         }
         break;
       }

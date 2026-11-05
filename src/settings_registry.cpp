@@ -166,12 +166,6 @@ bool settings_handle_line(char *line, Print *out, bool remote_on, bool local)
   return serial_settings_handle_line(line, settings_items, settings_items_count, &ctx);
 }
 
-bool settings_set(const char *key, const char *value)
-{
-  const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
-  return (item != NULL) && (cfg_set_value(item, value, false, NULL) == NULL);
-}
-
 // Collects "key":"message" pairs for the import reply
 class JsonPairs : public Print
 {

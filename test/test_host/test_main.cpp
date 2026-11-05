@@ -205,14 +205,18 @@ void test_import_buzzer_old_and_new_form(void)
   TEST_ASSERT_TRUE(settings_json_import("{\"sys.buzzer\":true}", &out, true, true));
   TEST_ASSERT_TRUE(settings.buzzer);
 }
-void test_settings_set(void)
+void test_wifi_import_local(void)
 {
-  TEST_ASSERT_TRUE(settings_set("wifi.ssid", "a b=c&d"));
+  Out out;
+  TEST_ASSERT_TRUE(settings_json_import("{\"wifi.ssid\":\"a b=c&d\",\"wifi.pass\":\"secret\"}", &out, true, true));
   TEST_ASSERT_EQUAL_STRING("a b=c&d", settings.wifi_ssid);
-  TEST_ASSERT_TRUE(settings_set("wifi.pass", ""));
-  TEST_ASSERT_FALSE(settings_set("no.such", "1"));
+  TEST_ASSERT_EQUAL_STRING("secret", settings.wifi_code);
+  TEST_ASSERT_TRUE(settings_json_import("{\"wifi.pass\":\"\"}", &out, true, true)); //open network: not possible in the form
+  TEST_ASSERT_EQUAL_STRING("", settings.wifi_code);
   std::string long_ssid(sizeof(settings.wifi_ssid), 'x');
-  TEST_ASSERT_FALSE(settings_set("wifi.ssid", long_ssid.c_str()));
+  std::string json = "{\"wifi.ssid\":\"" + long_ssid + "\"}";
+  TEST_ASSERT_FALSE(settings_json_import(json.c_str(), &out, true, true));
+  TEST_ASSERT_EQUAL_STRING("a b=c&d", settings.wifi_ssid);
 }
 void test_topic_prefix(void)
 {
@@ -487,7 +491,7 @@ int main(void)
   RUN_TEST(test_import_remote_cannot_change_local_keys);
   RUN_TEST(test_import_control_only);
   RUN_TEST(test_import_buzzer_old_and_new_form);
-  RUN_TEST(test_settings_set);
+  RUN_TEST(test_wifi_import_local);
   RUN_TEST(test_topic_prefix);
   RUN_TEST(test_slots_alternate);
   RUN_TEST(test_old_record_without_counter);
