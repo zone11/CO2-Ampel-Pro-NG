@@ -34,16 +34,11 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 
-## Devices in public areas (`WITH_DEVICE_UI=0`)
-
-- [ ] Altitude and temperature offset can only be set in the service menu, there are no settings keys. Without the menu they
-      can't be changed.
-
 ## Not tested on hardware
 
 - [ ] Complete calibration started over serial or web, in fresh air (start, abort and result were tested, not the part that
       sets the sensor). 
-- [ ] Button with `WITH_DEVICE_UI=0`, physically pressed (the code isn't in that build).
+- [ ] `sys.nobuttons=1` with the button physically pressed: short, 3 s, held at power-on, during a calibration.
 - [ ] `WITH_HA=0` on the device (image checked: no `mqtt.ha` or discovery strings).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).

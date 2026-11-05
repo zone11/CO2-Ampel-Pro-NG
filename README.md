@@ -142,6 +142,13 @@ running. Switch it with the Home Assistant switch "Quiet", over MQTT (see
 | long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet; restart to leave) |
 | hold while plugging in | service menu |
 
+For devices in public areas, set `sys.nobuttons=1`. All of the above then does nothing, including aborting a calibration. The
+device also no longer opens its own WiFi network when WiFi fails at startup; it keeps trying to connect, so wrong WiFi settings
+have to be fixed over USB. "Start calibration" on the web page needs `sys.password` to be set.
+
+**Set `sys.password` as well.** Without it, anyone on the network or with USB access can turn the setting off again. The red
+reset button and the USB port always stay active. If the stored settings are ever lost, the button works again.
+
 ### Service Menu
 
 The number of violet LEDs shows the selected option. A short press selects the next one; a 2-second press
@@ -200,6 +207,7 @@ Without `save` a change lasts until the next restart.
 | `sys.password` | empty | password for changes, see [Password](#password) |
 | `sys.buzzer` | 1 | buzzer on (1) or off (0) |
 | `sys.quiet` | 0 | Quiet: LEDs, status LED and buzzer off, see [Quiet](#quiet-night) |
+| `sys.nobuttons` | 0 | for devices in public areas, see [Button](#button). Only over USB serial and the web page |
 | `co2.t1` … `co2.t5` | 600, 1000, 1200, 1400, 1600 | CO2 thresholds in ppm (400–10000): blue/green, green/yellow, yellow/red, red/blinking, buzzer |
 | `co2.asc` | 0 | automatic self-calibration of the CO2 sensor |
 | `led.brightness` | 125 | LED brightness 1–255 |
@@ -219,7 +227,7 @@ Without `save` a change lasts until the next restart.
 | `mqtt.interval` | 60 | seconds between two MQTT messages (10–3600) |
 
 Passwords are never shown over MQTT or on the web pages. The WiFi and MQTT connection settings
-(`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`) and `sys.password` can only be changed over
+(`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`), `sys.password` and `sys.nobuttons` can only be changed over
 USB serial or the web page, so a mistake over MQTT can't cut the device off the network.
 
 ### Password
