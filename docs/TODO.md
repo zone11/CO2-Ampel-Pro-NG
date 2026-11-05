@@ -31,14 +31,14 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 - [ ] Failed first MQTT connect (error -3) on some boots, the retry connects. Seen on both units while they shared a subnet
       with the broker; 7 of 7 restarts clean on a routed network (2026-11-04), then once more there on the second unit, after a software
-      restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once. On 2026-11-05 it followed most software
-      restarts and flashes on the second unit, but not the one power-on checked.
+      restart (`mqtt_failures` 1, `mqtt_error` -3), so the subnet is not the whole explanation. After a prefix change it still happens once. On 2026-11-05 it followed software restarts and
+      flashes on both units, but no power-on (small sample), so look at the WiFi module keeping its power or the old connection on the broker.
 - [ ] Apply other MQTT connection settings (broker, port, user, pass, tls) without `reset`.
 
 ## Not tested on hardware
 
-- [ ] Complete calibration started over MQTT or from the service menu (one complete background run passed outdoors on 2026-11-05; the menu uses
-      the same code, only start and abort were tested there).
+- [ ] Complete calibration started from the service menu (complete runs passed outdoors over web or serial and over MQTT on 2026-11-05; the menu
+      uses the same code, only start and abort were tested there).
 - [ ] WiFi setup in the device's own network over `/config` (the "Change WiFi" form was removed in 0.9).
 - [ ] Calibration on an SCD4x (the recalibration stops its measurement for about 2 s).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
