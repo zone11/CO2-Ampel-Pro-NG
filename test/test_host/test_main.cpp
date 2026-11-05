@@ -187,6 +187,14 @@ void test_import_control_only(void)
   TEST_ASSERT_TRUE(settings_json_import("{\"sys.quiet\":true}", &out, false, true, true));
   TEST_ASSERT_TRUE(settings.quiet);
 }
+void test_import_buzzer_old_and_new_form(void)
+{
+  Out out;
+  TEST_ASSERT_TRUE(settings_json_import("{\"sys.buzzer\":0}", &out, true, true)); //exports up to 0.8.1
+  TEST_ASSERT_FALSE(settings.buzzer);
+  TEST_ASSERT_TRUE(settings_json_import("{\"sys.buzzer\":true}", &out, true, true));
+  TEST_ASSERT_TRUE(settings.buzzer);
+}
 void test_settings_set(void)
 {
   TEST_ASSERT_TRUE(settings_set("wifi.ssid", "a b=c&d"));
@@ -338,6 +346,7 @@ int main(void)
   RUN_TEST(test_import_mask_keeps_secret);
   RUN_TEST(test_import_remote_cannot_change_local_keys);
   RUN_TEST(test_import_control_only);
+  RUN_TEST(test_import_buzzer_old_and_new_form);
   RUN_TEST(test_settings_set);
   RUN_TEST(test_topic_prefix);
   RUN_TEST(test_slots_alternate);
