@@ -83,6 +83,7 @@
 #define PRESSURE_DIFF      5   //pressure change in hPa (5-20)
 #define BAUDRATE           9600
 #define CO2_START          500 //500ppm, CO2 start value
+#define CO2_TIMEOUT        60000UL //ms without a new CO2 reading until the sensor counts as failed
 
 //--- Fixed LED colors (not configurable) ---
 #define COLOR_SETTINGS     0x007CB0 //light blue

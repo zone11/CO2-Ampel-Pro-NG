@@ -197,6 +197,13 @@ because of a 64-bit to float conversion in the BMP280 library.
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
 
+## CO2 Sensor Failure
+
+`co2_failed()` runs once per second after `check_sensors()`: without a new reading for `CO2_TIMEOUT` (60 s) it clears `co2_valid`, so web
+and MQTT drop the value as they do before the first reading, counts `co2_failures`, and the traffic light is replaced by blinking
+white with the buzzer off. A running calibration is aborted. The next reading ends this. The connects that block the loop can't
+trigger it: `check_sensors()` runs first in that pass and picks up the waiting reading.
+
 ## Reconnects
 
 `loop()` is the only caller of `wifi_start()` after boot; `mqtt_service()` follows with MQTT once WiFi is back. Both

@@ -85,6 +85,10 @@ void print_sensor_info(void) //print the sensor configuration
   {
     Serial.println("none");
   }
+  if(co2_failed())
+  {
+    Serial.println("CO2 sensor: no new readings, values withheld");
+  }
   Serial.print("Firmware Temp Offset (C): ");
   print2(temp_offset);
 }
@@ -273,6 +277,44 @@ static void read_pressure(void)
   sys_phase = phase;
 }
 
+static unsigned long t_reading = 0;
+static bool reading_failed = false;
+
+static void co2_reading_ok(void)
+{
+  t_reading = millis();
+  co2_valid = true;
+  reading_failed = false;
+}
+
+// Keeps the last value out of the web page, MQTT and the traffic light when the sensor stops delivering
+bool co2_failed(void)
+{
+  if((features & (FEATURE_SCD30|FEATURE_SCD4X)) == 0)
+  {
+    return false; //no sensor found at boot: has its own display
+  }
+  if(t_reading == 0)
+  {
+    t_reading = millis(); //first call, end of the boot
+  }
+  if((millis() - t_reading) <= CO2_TIMEOUT)
+  {
+    return false;
+  }
+  if(!reading_failed)
+  {
+    reading_failed = true;
+    co2_valid = false;
+    health.co2_failures++;
+    if(features & FEATURE_USB)
+    {
+      Serial.println("WARNING: no new CO2 reading for 60 s");
+    }
+  }
+  return true;
+}
+
 unsigned int check_sensors(void) //read the sensors
 {
   static unsigned long t_pres = 0;
@@ -308,7 +350,7 @@ unsigned int check_sensors(void) //read the sensors
       {
         humi_value = 100;
       }
-      co2_valid = true;
+      co2_reading_ok();
       return 1;
     }
   }
@@ -340,7 +382,7 @@ unsigned int check_sensors(void) //read the sensors
       {
         humi_value = 100;
       }
-      co2_valid = true;
+      co2_reading_ok();
       return 1;
     }
   }

@@ -39,6 +39,15 @@ void status_wait(unsigned int ms)
   }
 }
 
+void led_sensor_error(void)
+{
+  static bool on = false;
+
+  on = !on;
+  leds((on && !settings.quiet) ? COLOR_WHITE : COLOR_OFF);
+  buzzer(0);
+}
+
 void led_calibration(unsigned int co2)
 {
   ws2812.fill(COLOR_WHITE, 0, 2);

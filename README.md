@@ -426,6 +426,7 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 | Problem | What to do |
 |---|---|
 | No CO2 values, traffic light stays red | The CO2 sensor was not found at power-on (`status` / boot log: `Error: CO2 sensor not found`). Unplug the device for a few seconds. |
+| LEDs blink white, CO2 shows `--` | The CO2 sensor has delivered no new reading for over a minute, so the last value is no longer shown or published, and the buzzer stays off. It clears itself when readings return (`co2_failures` in `diag` counts these). Otherwise unplug the device for a few seconds. |
 | Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
 | MQTT not connected | The MQTT section of the web page shows the last error (e.g. wrong password, broker not reachable). With TLS: is the root certificate installed, and does `mqtt.broker` match the certificate? |
 | Nothing appears in Home Assistant | `mqtt.ha=1`? Check the broker access rules (see [Home Assistant](#home-assistant)). |
@@ -455,6 +456,7 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `wifi_connects`, `mqtt_connects`, `mqtt_failures`, `mqtt_error` | connection counters since start |
 | `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
 | `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
+| `co2_failures` | times the CO2 sensor stopped delivering readings since start |
 | `pressure_offset` | normally 0. Otherwise the pressure sensor had an offset set that shifted its reading, and the device cleared it (256 = 16 hPa); please open an issue |
 
 These values survive restarts, but not a power loss: read them before unplugging the device. If the device

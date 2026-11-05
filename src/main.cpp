@@ -500,7 +500,16 @@ void loop()
 
   //traffic light
   phase_set(PHASE_LEDS);
-  if((remote_on == 0) && !calibration_leds())
+  bool failed = co2_failed();
+  if(failed)
+  {
+    calibration_abort(); //it would wait for readings forever
+  }
+  if(failed && (remote_on == 0))
+  {
+    led_sensor_error();
+  }
+  else if((remote_on == 0) && !calibration_leds())
   {
     #if USE_CO2_AVERAGE > 0
       traffic_light(co2_average);
