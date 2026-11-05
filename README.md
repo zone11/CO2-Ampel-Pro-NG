@@ -267,7 +267,7 @@ When WiFi is connected, the device answers at `http://<IP address>/`:
 
 | Address | Content |
 |---|---|
-| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart, build options). Refreshes every 30 seconds |
+| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart, optional features the firmware was built with). Refreshes every 30 seconds |
 | `/config` | all settings as a form, JSON upload and download, calibration, restart button |
 | `/config.json` | all settings as JSON, passwords as `***` |
 | `/json` | measurements as JSON, e.g. `{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}` |

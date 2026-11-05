@@ -531,8 +531,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   }
   snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
   row(out, "Free RAM", v);
-  snprintf(v, sizeof(v), "HA %s, MQTT config %s", WITH_HA ? "on" : "off", WITH_MQTT_CONFIG ? "on" : "off");
-  row(out, "Build options", v);
+  row(out, "Built with", WITH_HA ? (WITH_MQTT_CONFIG ? "HA, MQTT config" : "HA") : (WITH_MQTT_CONFIG ? "MQTT config" : "no options"));
   out.print("</fieldset>\r\n");
 
   out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a> - <a href='https://github.com/zone11/CO2-Ampel-Pro-NG' target=_blank>GitHub</a>\r\n"

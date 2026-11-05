@@ -41,7 +41,7 @@ Optional features can be left out at compile time to save flash; all are on by d
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
 
-The main page shows these under "Build options".
+The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
 
 `WITH_HA=0`: the setting's stored field stays, so the settings format doesn't change, and `<base>/state` stays because Quiet
 uses it. This build can't remove discovery messages it finds on the broker, so set `mqtt.ha=0` before flashing a device that
