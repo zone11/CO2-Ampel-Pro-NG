@@ -181,6 +181,8 @@ the next restart. Stop it with "Abort calibration" on `/config`, with `calibrate
 stay unstable, it gives up after three runs (LEDs red), but the sensor has been set anyway, so repeat it in fresh air. With
 Quiet on, or while `enable` is active on the serial port, the LEDs don't show the calibration.
 
+Anyone who can open the web page can start this, so set `sys.password` if others are on your network.
+
 Automatic self-calibration (`co2.asc=1`, off by default) needs 7 days of continuous operation with at least
 1 hour of fresh air every day.
 
