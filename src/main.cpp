@@ -29,6 +29,7 @@
 #include "wifi_manager.h"
 #include "serial_console.h"
 #include "i2c_utils.h"
+#include "calibration.h"
 #include "ui_menu.h"
 
 extern USBDeviceClass USBDevice; //USBCore.cpp
@@ -429,9 +430,14 @@ void loop()
   {
     if(sw == 0)
     {
-      sw = 1;
+      sw = calibration_running() ? 2 : 1; //this press only aborts
+      calibration_abort();
       t_switch = millis();
     }
+  }
+  else if(sw == 2) //released
+  {
+    sw = 0;
   }
   else if(sw != 0) //released
   {
@@ -476,6 +482,7 @@ void loop()
     if(check_sensors())
     {
       phase_set(PHASE_LOOP);
+      calibration_reading();
       show_data();
       if((dark == 0) && !settings.quiet)
       {
@@ -492,7 +499,7 @@ void loop()
 
   //traffic light
   phase_set(PHASE_LEDS);
-  if(remote_on == 0)
+  if((remote_on == 0) && !calibration_leds())
   {
     #if USE_CO2_AVERAGE > 0
       traffic_light(co2_average);

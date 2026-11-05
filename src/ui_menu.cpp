@@ -1,14 +1,12 @@
 #include "ui_menu.h"
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "diagnostics.h"
 #include "led_control.h"
-#include "mqtt_service.h"
 #include "sensors.h"
 #include "settings_registry.h"
 #include "system_control.h"
-
-#define CALIBRATION_RUNS 3 //a run that stays unstable starts again, up to this many runs
 
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off)
 {
@@ -163,160 +161,32 @@ void altitude_toffset(void) //altitude and temperature offset
 }
 
 
-CAL_RESULT calibration(void) //calibration
+// Service menu: runs before the network starts, so nothing else needs loop() here
+static void calibration_menu(void)
 {
-  unsigned int abort=0, runs=0, cycle, again, interval=MEASURE_INTERVAL, co2, co2_last;
-
-  //The measurement interval during the calibration and in operation should be the same.
-  //Different intervals can cause deviations and unstable readings.
-  //scd30.setMeasurementInterval(MEASURE_INTERVAL);
-
-  ws2812.fill(COLOR_WHITE, 0, 4); //LEDs white
-  ws2812.show();
-
-  if(features & FEATURE_SCD4X)
-  {
-    interval = 5; //5s
-  }
-
-  //ASC from the settings (co2.asc)
-  co2_set_asc(settings.asc);
-
-  calibration_start:
-
-  //calibration
-  co2 = co2_last = co2_sensor();
-  for(again=0, cycle=0; cycle < (180/interval);)
+  calibration_start(true);
+  while(calibration_running())
   {
     watchdog_feed(); //calibration takes several minutes
-    if(!settings.nobuttons && (digitalRead(PIN_SWITCH) == 0)) //button pressed?
+    if((digitalRead(PIN_SWITCH) == 0) || Serial.available()) //button pressed or any input on the serial port
     {
-      abort = 1;
-      break; //abort
-    }
-    if(Serial.available()) //any input on the serial port
-    {
-      abort = 1;
-      break; //abort
+      calibration_abort();
+      break;
     }
 
     status_led(200);
 
     if(check_sensors())
     {
-      co2 = co2_sensor();
-      if((co2 >= 200) && (co2 <= 800) && 
-         (co2 >= (co2_last-30)) &&
-         (co2 <= (co2_last+30))) //+/-30ppm tolerance to the previous value
-      {
-        cycle++;
-        again = 0;
-      }
-      else //sensor badly calibrated
-      {
-        again++;
-        if(again > 3)
-        {
-          again = 1;
-          cycle++;
-        }
-      }
-      co2_last = co2;
-
-      if(co2 <= 500)
-      {
-        ws2812.fill(COLOR_BLUE, 2, 2);
-      }
-      else if(co2 <= 750)
-      {
-        ws2812.fill(COLOR_GREEN, 2, 2);
-      }
-      else if(co2 <= 1500)
-      {
-        ws2812.fill(COLOR_YELLOW, 2, 2);
-      }
-      else //>1500
-      {
-        ws2812.fill(COLOR_RED, 2, 2); //rot
-      }
-      ws2812.show();
-
-      if(features & FEATURE_USB)
-      {
-        Serial.print("loop: ");
-        Serial.println(cycle);
-      }
-
+      calibration_reading();
       show_data();
     }
   }
-  if(abort == 0)
+  if(calibration_leds())
   {
-    if(features & FEATURE_SCD30)
-    {
-      scd30.forceRecalibration(400); //400ppm = fresh air
-      delay(500);
-    }
-    else if(features & FEATURE_SCD4X)
-    {
-      uint16_t corr;
-      scd4x.stopPeriodicMeasurement();
-      delay(1000);
-      scd4x.performForcedRecalibration(400, corr); //400ppm = fresh air
-      delay(1000);
-      scd4x.startPeriodicMeasurement();
-    }
-    if(again != 0)
-    {
-      if(++runs >= CALIBRATION_RUNS)
-      {
-        leds(COLOR_RED);
-        buzzer(500);
-        Serial.println("Calibration failed: readings not stable");
-        delay(3000);
-        return CAL_FAILED;
-      }
-      Serial.println("Restart calibration");
-      goto calibration_start;
-    }
-    leds(COLOR_BLUE);
-    buzzer(500);
-    if(features & FEATURE_USB)
-    {
-      Serial.println("Calibration OK");
-    }
-    delay(3000);
-    return CAL_OK;
+    delay(3000); //result
   }
-
-  if(features & FEATURE_USB)
-  {
-    Serial.println("Calibration aborted");
-  }
-  return CAL_ABORTED;
 }
-
-bool calibration_available(void)
-{
-  return (features & (FEATURE_SCD30 | FEATURE_SCD4X)) != 0;
-}
-
-// Started over serial or web: blocks for minutes, so MQTT goes offline cleanly and a restart ends it
-void calibration_run(void)
-{
-  mqtt_shutdown();
-  delay(100);
-  while(Serial.available()) //rest of the command line must not abort
-  {
-    Serial.read();
-  }
-  reset_record_cal(calibration());
-  Serial.flush();
-  delay(100);
-  NVIC_SystemReset();
-  while(1);
-}
-
 
 void menu(void)
 {
@@ -335,7 +205,7 @@ void menu(void)
     case 1: self_test();        break;
     case 2: air_test();         break;
     case 3: altitude_toffset(); break;
-    case 4: calibration();      break;
+    case 4: calibration_menu(); break;
   }
 
   led_brightness_update();

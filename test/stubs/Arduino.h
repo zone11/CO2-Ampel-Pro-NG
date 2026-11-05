@@ -47,6 +47,13 @@ private:
 
 unsigned long millis(void);
 
+class FakeSerial : public Print
+{
+public:
+  size_t write(uint8_t) override { return 1; }
+};
+extern FakeSerial Serial;
+
 // Fake flash for src/settings_storage.cpp
 extern uint8_t fake_flash[2048];
 #define SETTINGS_FLASH_ADDR ((uintptr_t)fake_flash)

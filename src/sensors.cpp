@@ -152,6 +152,24 @@ float pres_sensor(void)
   return pres_value;
 }
 
+void co2_force_recalibration(void)
+{
+  if(features & FEATURE_SCD30)
+  {
+    scd30.forceRecalibration(400); //400ppm = fresh air
+    delay(500);
+  }
+  else if(features & FEATURE_SCD4X)
+  {
+    uint16_t corr;
+    scd4x.stopPeriodicMeasurement();
+    delay(1000);
+    scd4x.performForcedRecalibration(400, corr); //400ppm = fresh air
+    delay(1000);
+    scd4x.startPeriodicMeasurement();
+  }
+}
+
 // Set automatic self calibration (ASC), only if it differs
 void co2_set_asc(bool on)
 {

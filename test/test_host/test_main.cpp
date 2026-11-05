@@ -4,6 +4,7 @@
 #include <string>
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "json_parser.h"
 #include "scd4x_convert.h"
 #include "settings_registry.h"
@@ -22,7 +23,16 @@ void FakeCtrla::operator=(uint32_t cmd)
 }
 
 SETTINGS settings;
-unsigned long millis(void) { return 0; }
+static unsigned long now_ms = 0;
+unsigned long millis(void) { return now_ms; }
+FakeSerial Serial;
+unsigned int features = FEATURE_SCD30, remote_on = 0, co2_value = 420;
+static int recals = 0, led_draws = 0, beeps = 0;
+float co2_sensor(void) { return co2_value; }
+void co2_force_recalibration(void) { recals++; }
+void leds(uint32_t) { led_draws++; }
+void led_calibration(unsigned int) { led_draws++; }
+void buzzer(unsigned int on) { if(on) { beeps++; } }
 static int ha_updates = 0;
 void mqtt_ha_update(void) { ha_updates++; }
 void co2_set_asc(bool) {}
@@ -352,6 +362,104 @@ void test_validation_on_read(void)
 }
 
 // --- SCD4x conversions (float) against the library's double formulas ---
+// --- Calibration ---
+static std::string cal_text(void)
+{
+  char b[48];
+  return calibration_status(b, sizeof(b)) ? b : "";
+}
+static void cal_begin(bool menu = false)
+{
+  recals = led_draws = beeps = 0;
+  remote_on = 0;
+  settings.quiet = false;
+  settings.buzzer = true;
+  co2_value = 420;
+  calibration_start(menu);
+}
+static void cal_readings(int n, unsigned int a, unsigned int b)
+{
+  for(int i = 0; i < n; i++)
+  {
+    co2_value = (i & 1) ? b : a;
+    calibration_reading();
+  }
+}
+void test_cal_complete_run(void)
+{
+  cal_begin();
+  cal_readings(35, 420, 425);
+  TEST_ASSERT_TRUE(calibration_running());
+  TEST_ASSERT_EQUAL(0, recals);
+  TEST_ASSERT_EQUAL_STRING("running, step 35 of 36, run 1 of 3", cal_text().c_str());
+  cal_readings(1, 420, 420);
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(1, recals);
+  TEST_ASSERT_EQUAL_STRING("OK", cal_text().c_str());
+  TEST_ASSERT_EQUAL(1, beeps);
+  TEST_ASSERT_TRUE(calibration_leds()); //result shown for 3 s
+  now_ms += 3001;
+  TEST_ASSERT_FALSE(calibration_leds());
+  cal_readings(40, 420, 420); //nothing happens after the end
+  TEST_ASSERT_EQUAL(1, recals);
+}
+void test_cal_abort_never_sets_the_sensor(void)
+{
+  cal_begin();
+  cal_readings(10, 420, 420);
+  calibration_abort();
+  TEST_ASSERT_FALSE(calibration_leds()); //traffic light back at once
+  cal_readings(40, 420, 420);
+  TEST_ASSERT_EQUAL(0, recals);
+  TEST_ASSERT_EQUAL_STRING("aborted", cal_text().c_str());
+}
+void test_cal_unstable_gives_up_after_three_runs(void)
+{
+  cal_begin();
+  cal_readings(1000, 420, 900);
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(3, recals); //applied anyway, as in the original firmware
+  TEST_ASSERT_EQUAL_STRING("failed, readings not stable", cal_text().c_str());
+}
+void test_cal_stable_second_run_is_ok(void)
+{
+  cal_begin();
+  cal_readings(143, 420, 900); //first run ends unstable
+  TEST_ASSERT_EQUAL(1, recals);
+  TEST_ASSERT_TRUE(calibration_running());
+  co2_value = 420;
+  cal_readings(50, 420, 420);
+  TEST_ASSERT_EQUAL(2, recals);
+  TEST_ASSERT_EQUAL_STRING("OK", cal_text().c_str());
+}
+void test_cal_leds_respect_quiet_and_enable(void)
+{
+  cal_begin();
+  settings.quiet = true;
+  led_draws = 0;
+  cal_readings(36, 420, 420);
+  TEST_ASSERT_EQUAL(0, led_draws);
+  TEST_ASSERT_EQUAL(0, beeps);
+  cal_begin();
+  remote_on = 1;
+  led_draws = 0;
+  cal_readings(36, 420, 420);
+  TEST_ASSERT_EQUAL(0, led_draws);
+  remote_on = 0;
+  cal_begin();
+  settings.buzzer = false;
+  cal_readings(36, 420, 420);
+  TEST_ASSERT_EQUAL(0, beeps);
+  cal_begin(true); //service menu: always
+  settings.quiet = true;
+  settings.buzzer = false;
+  led_draws = 0;
+  cal_readings(36, 420, 420);
+  TEST_ASSERT_EQUAL(37, led_draws);
+  TEST_ASSERT_EQUAL(1, beeps);
+  settings.quiet = false;
+  settings.buzzer = true;
+}
 void test_scd4x_conversions(void)
 {
   for(uint32_t raw = 0; raw <= 65535; raw += 257)
@@ -391,6 +499,11 @@ int main(void)
   RUN_TEST(test_both_slots_invalid);
   RUN_TEST(test_newer_record);
   RUN_TEST(test_validation_on_read);
+  RUN_TEST(test_cal_complete_run);
+  RUN_TEST(test_cal_abort_never_sets_the_sensor);
+  RUN_TEST(test_cal_unstable_gives_up_after_three_runs);
+  RUN_TEST(test_cal_stable_second_run_is_ok);
+  RUN_TEST(test_cal_leds_respect_quiet_and_enable);
   RUN_TEST(test_scd4x_conversions);
   return UNITY_END();
 }

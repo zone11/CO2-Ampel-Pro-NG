@@ -36,8 +36,10 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
 
 ## Not tested on hardware
 
-- [ ] Complete calibration started over serial or web, in fresh air (start, abort and result were tested, not the part that
-      sets the sensor). 
+- [ ] Complete calibration on a device, in fresh air, started from serial, web and the service menu (start and abort were tested on
+      hardware, complete runs only in host tests).
+- [ ] Calibration on an SCD4x.
+- [ ] Button press aborts a calibration, also from the service menu.
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
 - [ ] 0.8.1 on a USB charger (the 22 h run was on the Mac's USB).
 - [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).

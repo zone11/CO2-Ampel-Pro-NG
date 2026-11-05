@@ -146,9 +146,12 @@ Stuck interrupts restart after 4 s.
 
 ## Calibration Trigger
 
-`calibrate` on serial and POST `/config/calibrate` call `calibration_run()` (`ui_menu`): MQTT goes offline cleanly, then the
-blocking `calibration()` runs, and a restart ends it. The result stays in the reset record (`cal`) for the main page. An unstable
-run still applies the forced recalibration, as in the original firmware; it starts again up to `CALIBRATION_RUNS` times.
+`calibration.cpp` is a small state machine without hardware access of its own, so the host tests cover complete runs.
+`calibrate` on serial and POST `/config/calibrate` call `calibration_start()`; `loop()` then passes every new reading to
+`calibration_reading()`, so web and MQTT keep running. The traffic light pauses while `calibration_leds()` is true (during the run,
+and 3 seconds for the result). The result is kept in RAM until the next restart. The service menu runs before the network starts and
+drives the same code in its own loop. An unstable run still applies the forced recalibration, as in the original firmware; it starts
+again up to `CALIBRATION_RUNS` times. On an SCD4x the recalibration stops the measurement for about 2 seconds.
 
 ## Diagnostics Internals
 

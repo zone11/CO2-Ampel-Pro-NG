@@ -1,6 +1,7 @@
 #include "serial_console.h"
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "i2c_utils.h"
 #include "led_control.h"
 #include "mqtt_service.h"
@@ -10,7 +11,6 @@
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
-#include "ui_menu.h"
 #include "winc_bridge.h"
 
 #include <ctype.h>
@@ -211,6 +211,12 @@ void serial_service(void)
     print_measurements();
     print_sensor_info();
     print_led_status();
+    char cal[48];
+    if(calibration_status(cal, sizeof(cal)))
+    {
+      Serial.print("Calibration: ");
+      Serial.println(cal);
+    }
     print_wifi_status();
     print_mqtt_status();
     return;
@@ -257,10 +263,27 @@ void serial_service(void)
     {
       Serial.println("ERROR: No CO2 sensor");
     }
+    else if(calibration_running())
+    {
+      Serial.println("ERROR: Already running ('calibrate abort' stops it)");
+    }
     else
     {
-      Serial.println("OK, any input aborts");
-      calibration_run(); //does not return (restart)
+      Serial.println("OK, 'calibrate abort' stops it");
+      calibration_start(false);
+    }
+    return;
+  }
+  if(strcasecmp(line, "calibrate abort") == 0)
+  {
+    if(!remote_on)
+    {
+      Serial.println("ERROR: Not enabled (send 'enable' first)");
+    }
+    else
+    {
+      calibration_abort();
+      Serial.println("OK");
     }
     return;
   }

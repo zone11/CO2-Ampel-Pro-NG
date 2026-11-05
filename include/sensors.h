@@ -11,6 +11,7 @@ float humi_sensor(void);
 float pres_sensor(void);
 unsigned int check_sensors(void);
 void co2_set_asc(bool on);
+void co2_force_recalibration(void); // sets the current reading to 400 ppm
 void print_measurements(void);
 void print_sensor_info(void);
 void show_data(void);
