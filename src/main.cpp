@@ -61,7 +61,9 @@ bool co2_valid=false, pres_valid=false; //start values above are no readings (no
 
 void setup()
 {
+#if WITH_DEVICE_UI
   int run_menu=0;
+#endif
 
   reset_info_init(); //record of the previous run (hang/fault), before the watchdog starts
   health_init();
@@ -80,16 +82,20 @@ void setup()
   pinMode(PIN_LSENSOR_PWR, OUTPUT);
   digitalWrite(PIN_LSENSOR_PWR, LOW); //light sensor off
   pinMode(PIN_LSENSOR, INPUT);
+#if WITH_DEVICE_UI
   pinMode(PIN_SWITCH, INPUT_PULLUP);
+#endif
   pinMode(14, OUTPUT); //PA18 WINC1500 CS pin
   digitalWrite(14, HIGH); //WINC1500 CS high
   pinMode(PIN_RFM9X_CS, OUTPUT); //PA21 RFM9X CS pin
   digitalWrite(PIN_RFM9X_CS, HIGH); //RFM9X CS high
 
+#if WITH_DEVICE_UI
   if(digitalRead(PIN_SWITCH) == LOW) //button pressed
   {
     run_menu = 1;
   }
+#endif
 
   watchdog_init(); //fed by loop() and the long waits (menu, WiFi/MQTT connect, WINC bridge)
 
@@ -297,11 +303,13 @@ void setup()
     Serial.println();
   }
 
+#if WITH_DEVICE_UI
   //service menu
   if(run_menu)
   {
     menu();
   }
+#endif
 
   //Plus version
   if(features & FEATURE_WINC1500)
@@ -382,8 +390,12 @@ void setup()
 
 void loop()
 {
-  static unsigned int dark=0, sw=0;
-  static unsigned long t_switch=0, t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
+#if WITH_DEVICE_UI
+  static unsigned int sw=0;
+  static unsigned long t_switch=0;
+#endif
+  static unsigned int dark=0;
+  static unsigned long t_traffic=0, t_light=~((LIGHT_INTERVAL*1000UL*60UL)-60000UL); //check the light sensor after 60s
   static RETRY wifi_retry = { 0, RETRY_MIN };
   unsigned int overwrite=0;
 
@@ -417,6 +429,7 @@ void loop()
     }
   }
 
+#if WITH_DEVICE_UI
   //button
   phase_set(PHASE_LOOP);
   if(digitalRead(PIN_SWITCH) == LOW) //pressed
@@ -446,6 +459,7 @@ void loop()
       overwrite = 1;
     }
   }
+#endif
 
   if((millis()-t_traffic) > 1000) //traffic light once per second
   {

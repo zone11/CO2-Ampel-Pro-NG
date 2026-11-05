@@ -33,6 +33,7 @@ const char *phase_name(unsigned int p);
 
 // Reset record in RAM that survives every reset except power-on/brown-out
 typedef enum { EVENT_NONE, EVENT_HANG, EVENT_FAULT } RESET_EVENT;
+typedef enum { CAL_NONE, CAL_OK, CAL_FAILED, CAL_ABORTED } CAL_RESULT;
 
 typedef struct
 {
@@ -42,6 +43,7 @@ typedef struct
   uint32_t pc, lr; // code address at the hang/fault (0 without event)
   uint32_t uptime; // s, uptime of the previous run (2 s resolution)
   uint32_t led;    // LED state of the previous run (led_control: Quiet + button level)
+  uint32_t cal;    // CAL_RESULT of a calibration started over serial or web in the previous run
 } RESET_INFO;
 
 void reset_info_init(void);         // at boot, before watchdog_init()
@@ -51,5 +53,6 @@ uint32_t uptime_s(void);            // s since boot (does not wrap with millis()
 const char *event_name(uint32_t e); // "none", "hang", "fault"
 bool reset_unplanned(void);         // watchdog or crash (not power-on, reset command, upload, reset pin)
 void reset_record_led(uint32_t led);// stores the LED state for the next run
+void reset_record_cal(uint32_t cal);// stores the calibration result for the next run
 
 #endif

@@ -3,10 +3,14 @@
 #include "app_globals.h"
 #include "diagnostics.h"
 #include "led_control.h"
+#include "mqtt_service.h"
 #include "sensors.h"
 #include "settings_registry.h"
 #include "system_control.h"
 
+#define CALIBRATION_RUNS 3 //a run that stays unstable starts again, up to this many runs
+
+#if WITH_DEVICE_UI
 unsigned int select_value(unsigned int value, unsigned int min, unsigned int max, unsigned int fill, uint32_t color, uint32_t color_off)
 {
   unsigned int timeout, sw;
@@ -159,9 +163,11 @@ void altitude_toffset(void) //altitude and temperature offset
   return;
 }
 
-void calibration(void) //calibration
+#endif //WITH_DEVICE_UI
+
+CAL_RESULT calibration(void) //calibration
 {
-  unsigned int abort=0, cycle, again, interval=MEASURE_INTERVAL, co2, co2_last;
+  unsigned int abort=0, runs=0, cycle, again, interval=MEASURE_INTERVAL, co2, co2_last;
 
   //The measurement interval during the calibration and in operation should be the same.
   //Different intervals can cause deviations and unstable readings.
@@ -185,7 +191,14 @@ void calibration(void) //calibration
   for(again=0, cycle=0; cycle < (180/interval);)
   {
     watchdog_feed(); //calibration takes several minutes
+#if WITH_DEVICE_UI
     if(digitalRead(PIN_SWITCH) == 0) //button pressed?
+    {
+      abort = 1;
+      break; //abort
+    }
+#endif
+    if(Serial.available()) //any input on the serial port
     {
       abort = 1;
       break; //abort
@@ -259,6 +272,14 @@ void calibration(void) //calibration
     }
     if(again != 0)
     {
+      if(++runs >= CALIBRATION_RUNS)
+      {
+        leds(COLOR_RED);
+        buzzer(500);
+        Serial.println("Calibration failed: readings not stable");
+        delay(3000);
+        return CAL_FAILED;
+      }
       Serial.println("Restart calibration");
       goto calibration_start;
     }
@@ -269,10 +290,38 @@ void calibration(void) //calibration
       Serial.println("Calibration OK");
     }
     delay(3000);
+    return CAL_OK;
   }
 
-  return;
+  if(features & FEATURE_USB)
+  {
+    Serial.println("Calibration aborted");
+  }
+  return CAL_ABORTED;
 }
+
+bool calibration_available(void)
+{
+  return (features & (FEATURE_SCD30 | FEATURE_SCD4X)) != 0;
+}
+
+// Started over serial or web: blocks for minutes, so MQTT goes offline cleanly and a restart ends it
+void calibration_run(void)
+{
+  mqtt_shutdown();
+  delay(100);
+  while(Serial.available()) //rest of the command line must not abort
+  {
+    Serial.read();
+  }
+  reset_record_cal(calibration());
+  Serial.flush();
+  delay(100);
+  NVIC_SystemReset();
+  while(1);
+}
+
+#if WITH_DEVICE_UI
 
 void menu(void)
 {
@@ -299,3 +348,4 @@ void menu(void)
 
   return;
 }
+#endif //WITH_DEVICE_UI

@@ -10,6 +10,7 @@
 #include "wifi_manager.h"
 
 #include "settings_registry.h"
+#include "ui_menu.h"
 #include "winc_bridge.h"
 
 #include <ctype.h>
@@ -244,6 +245,23 @@ void serial_service(void)
   {
     i2c_scan(Wire, "Wire (SERCOM0)", Serial);
     i2c_scan(Wire1, "Wire1 (SERCOM2)", Serial);
+    return;
+  }
+  if(strcasecmp(line, "calibrate") == 0)
+  {
+    if(!remote_on)
+    {
+      Serial.println("ERROR: Not enabled (send 'enable' first)");
+    }
+    else if(!calibration_available())
+    {
+      Serial.println("ERROR: No CO2 sensor");
+    }
+    else
+    {
+      Serial.println("OK, any input aborts");
+      calibration_run(); //does not return (restart)
+    }
     return;
   }
   if(strcasecmp(line, "reset") == 0)

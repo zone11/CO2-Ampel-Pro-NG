@@ -5,6 +5,7 @@
 #include "health.h"
 #include "mqtt_service.h"
 #include "system_control.h"
+#include "ui_menu.h"
 
 #include <ctype.h>
 
@@ -15,6 +16,7 @@
 
 static void urldecode(char *src);
 static bool restart_pending = false; //restart after the reply has been sent
+static bool calibrate_pending = false; //calibration after the reply has been sent
 
 // Writes text into a fixed buffer (for the JSON import reply on the page)
 class BufPrint : public Print
@@ -338,6 +340,15 @@ static void config_page(WiFiClient &client, const char *result)
             "<textarea id=j name=j rows=8 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
             "<input type=submit value='Import'> (all or nothing, saved)</form>\r\n");
 
+  //calibration
+  if(calibration_available())
+  {
+    out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calibrate onsubmit='pw(this)'><input type=hidden name=_pw>"
+              "<p>Only with the device in fresh air for at least 2 minutes: it sets the current reading to 400 ppm. "
+              "Takes 3 minutes or more; the device is offline and restarts afterwards.</p>"
+              "<input type=submit value='Start calibration'></form>\r\n");
+  }
+
   //restart
   out.print("<h3>Restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
             "<input type=submit value='Restart'></form>\r\n"
@@ -504,8 +515,15 @@ static void main_page(WiFiClient &client, const char *form_msg)
     snprintf(v, sizeof(v), "%s in %s after %s", event_name(r->event), phase_name(r->phase), fmt_duration(f2, sizeof(f2), r->uptime));
     row(out, "Last reset", v);
   }
+  if(r->valid && (r->cal != CAL_NONE))
+  {
+    row(out, "Last calibration", (r->cal == CAL_OK) ? "OK" : (r->cal == CAL_FAILED) ? "failed, readings not stable" : "aborted");
+  }
   snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
   row(out, "Free RAM", v);
+  snprintf(v, sizeof(v), "HA %s, MQTT config %s, device UI %s", WITH_HA ? "on" : "off",
+           WITH_MQTT_CONFIG ? "on" : "off", WITH_DEVICE_UI ? "on" : "off");
+  row(out, "Build options", v);
   out.print("</fieldset>\r\n");
 
   out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a> - <a href='https://github.com/zone11/CO2-Ampel-Pro-NG' target=_blank>GitHub</a>\r\n"
@@ -606,6 +624,21 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
     free(body);
     res.print("{\"result\":\"OK\",\"restart\":true}");
     restart_pending = true;
+    return false;
+  }
+
+  if(strcmp(path, "calibrate") == 0)
+  {
+    free(body);
+    if(calibration_available())
+    {
+      res.print("{\"result\":\"OK\",\"calibration\":true}");
+      calibrate_pending = true;
+    }
+    else
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"calibration\":\"no CO2 sensor\"}}");
+    }
     return false;
   }
 
@@ -812,7 +845,7 @@ void webserver_service(void)
         }
         else if((strncmp(req, "POST /config/", 13) == 0) || (strncmp(req, "POST /restart", 13) == 0))
         {
-          char result[400], path[8];
+          char result[400], path[12];
           const char *p = (req[6] == 'r') ? "restart" : req + 13; //save, import, export
           size_t n = strcspn(p, " ?");
           snprintf(path, sizeof(path), "%.*s", (int)((n < sizeof(path)) ? n : sizeof(path) - 1), p);
@@ -873,6 +906,11 @@ void webserver_service(void)
 
   delay(20); //give the client time to receive
   client.stop();
+
+  if(calibrate_pending) //calibration button on /config: only after the page has been sent
+  {
+    calibration_run(); //does not return (restart)
+  }
 
   if(restart_pending) //restart button on /config: only after the page has been sent
   {

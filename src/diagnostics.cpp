@@ -7,6 +7,7 @@
 
 #include <SPI.h>
 
+#if WITH_DEVICE_UI
 void self_test(void) //self test
 {
   //buzzer test
@@ -202,3 +203,4 @@ void air_test(void) //fresh air test
 
   return;
 }
+#endif //WITH_DEVICE_UI
