@@ -104,15 +104,15 @@ all.
 
 ### Size
 
-Measured on 1.0-pre1. The full build takes 119 KB of the 246 KB available.
+Measured on 1.0-pre1 (8882fd4). The full build takes 117 KB (119,856 bytes) of the 246 KB available.
 
 | Switch | Flash saved | RAM saved |
 |---|---|---|
 | `-DWITH_LORA=0` | 18.5 KB | 0.9 KB |
-| `-DWITH_WEB=0` | 12.3 KB | almost none |
-| `-DWITH_HA=0` | 3.3 KB | none |
+| `-DWITH_WEB=0` | 12.2 KB | almost none |
+| `-DWITH_HA=0` | 3.2 KB | none |
 | `-DWITH_MQTT_CONFIG=0` | 2.3 KB | 1 KB, plus about 0.9 KB of the MQTT buffer |
-| all four | 34.7 KB | 1.9 KB |
+| all four | 35.1 KB | 1.9 KB |
 
 Only the full build runs on our test devices. The smaller builds compile without warnings but have not been tested
 on hardware.
