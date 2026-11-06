@@ -312,7 +312,8 @@ again once. "Link dead" from LMIC (no downlink for long, even at the lowest data
 again with LMIC's backoff.
 
 The uplink interval is the larger of `lora.interval` and the airtime at the current data rate times 2880
-(86400 s / 30 s), so the airtime stays within TTN's fair use limit. Payload, port 1, big endian:
+(86400 s / 30 s), so the airtime stays within TTN's fair use limit. It is calculated again after every
+transmission, because an ADR downlink can change the data rate after the uplink was queued. Payload, port 1, big endian:
 
 | Bytes | Value | Missing |
 |---|---|---|

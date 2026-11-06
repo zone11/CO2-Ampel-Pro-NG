@@ -47,6 +47,7 @@ static uint8_t deveui[8], joineui[8], appkey[16]; //EUIs LSB first (LMIC), key M
 static bool deveui_from_mac = false;
 static unsigned long t_next = 0, t_last = 0;      //ms: next action (join or uplink), last uplink done
 static unsigned long t_join = 0;                  //ms: since when the device tries to join
+static unsigned long t_queued = 0;                //ms: our last uplink was queued, the interval counts from here
 static unsigned long interval_ms = 0;             //current uplink interval incl. the fair use stretch
 static uint32_t uplinks = 0, join_attempts = 0;
 static int16_t dn_rssi = 0, dn_snr = 0;            //last downlink (snr in 0.25 dB)
@@ -174,6 +175,18 @@ static unsigned long airtime_ms(void)
   return osticks2ms(calcAirTime(rps, 13 + LORA_PAYLOAD)); //13 bytes LoRaWAN header, port and MIC
 }
 
+// Interval from the current data rate; again after each TX, as an ADR downlink may have changed it
+static void schedule_uplink(void)
+{
+  interval_ms = settings.lora_interval * 1000UL;
+  unsigned long fair = airtime_ms() * FAIR_USE_FACTOR;
+  if(fair > interval_ms)
+  {
+    interval_ms = fair;
+  }
+  t_next = t_queued + interval_ms;
+}
+
 // Same rights as MQTT: Quiet is a control (RAM only), buzzer and thresholds need lora.config and are saved
 static bool downlink(uint8_t port, const uint8_t *d, uint8_t len)
 {
@@ -252,6 +265,10 @@ static void on_event(void *user, ev_t ev)
       break;
     case EV_TXCOMPLETE:
       session_save();
+      if((state == LORA_JOINED) && interval_ms)
+      {
+        schedule_uplink();
+      }
       if(sent_ours)
       {
         sent_ours = false;
@@ -379,13 +396,8 @@ void lora_service(void)
     uint8_t p[LORA_PAYLOAD];
     payload(p);
     sent_ours = (LMIC_setTxData2(LORA_PORT, p, sizeof(p), 0) == 0);
-    interval_ms = settings.lora_interval * 1000UL;
-    unsigned long fair = airtime_ms() * FAIR_USE_FACTOR;
-    if(fair > interval_ms)
-    {
-      interval_ms = fair;
-    }
-    t_next = millis() + interval_ms;
+    t_queued = millis();
+    schedule_uplink();
   }
 }
 
