@@ -417,6 +417,23 @@ static const char *fmt_duration(char *buf, size_t size, unsigned long s)
   return buf;
 }
 
+// "Built with" on the main page: each optional feature compiled in, joined with ", "
+#if WITH_HA
+#define BUILT_HA ", HA"
+#else
+#define BUILT_HA ""
+#endif
+#if WITH_MQTT_CONFIG
+#define BUILT_MQTT_CONFIG ", MQTT config"
+#else
+#define BUILT_MQTT_CONFIG ""
+#endif
+#if WITH_LORA
+#define BUILT_LORA ", LoRaWAN"
+#else
+#define BUILT_LORA ""
+#endif
+
 // GET /: names as in Home Assistant; readings, WiFi (with the login form), MQTT and system status in sections like /config
 static void main_page(WiFiClient &client)
 {
@@ -555,7 +572,9 @@ static void main_page(WiFiClient &client)
   }
   snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
   row(out, "Free RAM", v);
-  row(out, "Built with", WITH_HA ? (WITH_MQTT_CONFIG ? "HA, MQTT config" : "HA") : (WITH_MQTT_CONFIG ? "MQTT config" : "no options"));
+  //optional features compiled in (the web page itself is one, but this page only exists with it)
+  static const char built[] = "" BUILT_HA BUILT_MQTT_CONFIG BUILT_LORA;
+  row(out, "Built with", built[0] ? built + 2 : "no options");
   out.print("</fieldset>\r\n");
 
   out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a> - <a href='https://github.com/zone11/CO2-Ampel-Pro-NG' target=_blank>GitHub</a>\r\n"

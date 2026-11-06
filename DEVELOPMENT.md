@@ -41,7 +41,7 @@ its switch to `build_flags` in `platformio.ini`. With everything included, the f
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
 | `-DWITH_LORA=0` | LoRaWAN (`lora.*` settings, LMIC) | ~17.8 KB, 0.9 KB RAM |
 
-The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
+The main page lists `WITH_HA`, `WITH_MQTT_CONFIG` and `WITH_LORA` under "Built with" when they are included.
 
 With `WITH_HA=0` the setting's stored field stays, so the settings format doesn't change, and `<base>/state` stays
 because Quiet uses it. Such a build can't remove discovery messages it finds on the broker, so set `mqtt.ha=0` before
