@@ -50,8 +50,11 @@ bool retry_due(RETRY *r)
 
 void get_device_id(char *buffer, size_t buffer_size)
 {
-  byte mac[6];
-  WiFi.macAddress(mac);
+  static byte mac[6]; //kept after the first read: with wifi.enabled=0 the module is switched off after boot
+  if((mac[0] | mac[1] | mac[2] | mac[3] | mac[4] | mac[5]) == 0)
+  {
+    WiFi.macAddress(mac);
+  }
   snprintf(buffer, buffer_size, "%02X%02X%02X%02X%02X%02X",
            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
 }
@@ -178,7 +181,9 @@ void print_wifi_status(void)
   }
   else
   {
-    Serial.println("WiFi hardware not available");
+    Serial.print("Name: ");
+    Serial.println(system_name());
+    Serial.println(settings.wifi_enabled ? "WiFi hardware not available" : "WiFi off (wifi.enabled=0)");
   }
 }
 

@@ -56,6 +56,8 @@ typedef struct
   char lora_joineui[16+1];    // hex (v9)
   char lora_appkey[32+1];     // hex, empty = no join (v9)
   boolean lora_enabled;       // LoRaWAN on (v9)
+  boolean lora_config;        // buzzer and CO2 thresholds by downlink on port 3 (v9)
+  boolean wifi_enabled;       // WiFi module on; off = LoRa-only device without web, MQTT and setup network (v9)
 } SETTINGS;
 
 #endif

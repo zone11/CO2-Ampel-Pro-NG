@@ -118,6 +118,7 @@ void settings_defaults(SETTINGS *data)
   data->lora_enabled  = LORA_ENABLED;
   data->lora_interval = LORA_INTERVAL;
   copy_str(data->lora_joineui, sizeof(data->lora_joineui), LORA_JOINEUI);
+  data->wifi_enabled  = true;
 }
 
 bool settings_hex_valid(const char *s, size_t digits)
@@ -185,6 +186,8 @@ static bool settings_validate(SETTINGS *data)
   data->buzzer  = to_bool(&data->buzzer);
   data->nobuttons = to_bool(&data->nobuttons);
   data->lora_enabled = to_bool(&data->lora_enabled);
+  data->lora_config = to_bool(&data->lora_config);
+  data->wifi_enabled = to_bool(&data->wifi_enabled);
 
   if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
   if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }

@@ -19,12 +19,15 @@ bool lora_radio_found(void)
 
 #include "calibration.h"
 #include "errors.h"
+#include "settings_registry.h"
 #include "system_control.h"
 
 #include <lmic.h>
 #include <hal/hal.h>
 
 #define LORA_PORT        1      //uplink port of the sensor payload
+#define PORT_CONTROL     2      //downlink: 01 xx Quiet off/on, FF rejoin
+#define PORT_CONFIG      3      //downlink with lora.config: 10 xx buzzer off/on, 20 + 5 x u16 CO2 thresholds
 #define LORA_PAYLOAD     10     //bytes, see payload()
 #define LORA_JOIN_DELAY  30     //s, maximum random delay before the first join
 #define FAIR_USE_FACTOR  2880UL //86400 s / 30 s: interval = airtime * factor stays under 30 s airtime per day
@@ -46,6 +49,10 @@ static unsigned long interval_ms = 0;             //current uplink interval incl
 static uint32_t uplinks = 0, join_attempts = 0;
 static int16_t dn_rssi = 0, dn_snr = 0;            //last downlink (snr in 0.25 dB)
 static bool dn_seen = false;
+static uint8_t dn_port = 0, dn_len = 0, dn_data[16]; //downlink waiting for lora_service() (no settings work in the LMIC callback)
+static bool dn_refused = false;
+static uint8_t dn_last_port = 0;
+static uint32_t dn_count = 0; //downlinks with data, so a new result can be told from the last one                       //the last downlink was refused (flag in the next uplink)
 static bool sent_ours = false; //the pending frame is ours (LMIC also sends empty frames to answer the network)
 
 // Session over a warm reset (watchdog, reset command, upload): .noinit keeps it, a power cut loses it (new join)
@@ -165,6 +172,45 @@ static unsigned long airtime_ms(void)
   return osticks2ms(calcAirTime(rps, 13 + LORA_PAYLOAD)); //13 bytes LoRaWAN header, port and MIC
 }
 
+// Same rights as MQTT: Quiet is a control (RAM only), buzzer and thresholds need lora.config and are saved
+static bool downlink(uint8_t port, const uint8_t *d, uint8_t len)
+{
+  char json[128];
+  if((port == PORT_CONTROL) && (len == 1) && (d[0] == 0xFF))
+  {
+    session.magic = 0;
+    state = LORA_JOINING;
+    LMIC_unjoinAndRejoin();
+    return true;
+  }
+  if((port == PORT_CONTROL) && (len == 2) && (d[0] == 0x01) && (d[1] <= 1))
+  {
+    snprintf(json, sizeof(json), "{\"sys.quiet\":%s}", d[1] ? "true" : "false");
+    return settings_json_import(json, NULL, false, true, true);
+  }
+  if((port != PORT_CONFIG) || !settings.lora_config)
+  {
+    return false;
+  }
+  if((len == 2) && (d[0] == 0x10) && (d[1] <= 1))
+  {
+    snprintf(json, sizeof(json), "{\"sys.buzzer\":%s,\"save\":true}", d[1] ? "true" : "false");
+    return settings_json_import(json, NULL, false, true);
+  }
+  if((len == 11) && (d[0] == 0x20))
+  {
+    unsigned int t[5];
+    for(int i = 0; i < 5; i++)
+    {
+      t[i] = (d[1 + 2*i] << 8) | d[2 + 2*i];
+    }
+    snprintf(json, sizeof(json), "{\"co2.t1\":%u,\"co2.t2\":%u,\"co2.t3\":%u,\"co2.t4\":%u,\"co2.t5\":%u,\"save\":true}",
+             t[0], t[1], t[2], t[3], t[4]);
+    return settings_json_import(json, NULL, false, true); //range and order checks, all or nothing
+  }
+  return false;
+}
+
 // Port 1, big endian: CO2 ppm u16, temperature 0.1 C s16, humidity 0.5 % u8, pressure 0.1 hPa u16, light u16,
 // flags u8 (bit0 quiet, bit1 any error, bit2 calibrating, bit4 buzzer); a missing value is all ones (0x7FFF for temperature)
 static void payload(uint8_t *p)
@@ -179,7 +225,8 @@ static void payload(uint8_t *p)
   p[4] = h;
   p[5] = pr >> 8;           p[6] = pr & 0xFF;
   p[7] = l >> 8;            p[8] = l & 0xFF;
-  p[9] = (settings.quiet ? 0x01 : 0) | (errors_any() ? 0x02 : 0) | (calibration_running() ? 0x04 : 0) | (settings.buzzer ? 0x10 : 0);
+  p[9] = (settings.quiet ? 0x01 : 0) | (errors_any() ? 0x02 : 0) | (calibration_running() ? 0x04 : 0) | (dn_refused ? 0x08 : 0) |
+         (settings.buzzer ? 0x10 : 0);
 }
 
 static void on_event(void *user, ev_t ev)
@@ -212,6 +259,12 @@ static void on_event(void *user, ev_t ev)
         dn_seen = true;
         dn_rssi = LMIC.rssi - RSSI_OFF;
         dn_snr = LMIC.snr;
+      }
+      if((LMIC.txrxFlags & TXRX_PORT) && (LMIC.dataLen > 0))
+      {
+        dn_port = LMIC.frame[LMIC.dataBeg - 1];
+        dn_len = (LMIC.dataLen < sizeof(dn_data)) ? LMIC.dataLen : sizeof(dn_data);
+        memcpy(dn_data, LMIC.frame + LMIC.dataBeg, dn_len);
       }
       break;
     case EV_LINK_DEAD: //no downlink for a long time, even at the lowest data rate: join again (with LMIC's backoff)
@@ -289,6 +342,14 @@ void lora_service(void)
   }
   phase_set(PHASE_LORA);
   os_runloop_once();
+  if(dn_port != 0)
+  {
+    uint8_t port = dn_port;
+    dn_port = 0;
+    dn_refused = !downlink(port, dn_data, dn_len);
+    dn_last_port = port;
+    dn_count++;
+  }
 
   if((long)(millis() - t_next) < 0)
   {
@@ -316,9 +377,14 @@ void lora_service(void)
   }
 }
 
+bool lora_busy(void)
+{
+  return ((state == LORA_JOINING) || (state == LORA_JOINED)) && (LMIC.opmode & OP_TXRXPEND); //about 2 s per uplink, 6 s per join
+}
+
 void lora_status(lora_row_fn row, void *ctx)
 {
-  char v[48];
+  char v[64];
   if(!radio)
   {
     return;
@@ -363,7 +429,11 @@ void lora_status(lora_row_fn row, void *ctx)
   }
   if(dn_seen)
   {
-    snprintf(v, sizeof(v), "RSSI %d dBm, SNR %d dB", dn_rssi, dn_snr / 4);
+    int n = snprintf(v, sizeof(v), "RSSI %d dBm, SNR %d dB", dn_rssi, dn_snr / 4);
+    if(dn_last_port)
+    {
+      snprintf(v + n, sizeof(v) - n, ", #%lu port %u %s", (unsigned long)dn_count, dn_last_port, dn_refused ? "refused" : "done");
+    }
     row(ctx, "Last downlink", v);
   }
 }
@@ -394,6 +464,7 @@ size_t lora_json(char *buf, size_t size)
 
 void lora_setup(void) {}
 void lora_service(void) {}
+bool lora_busy(void) { return false; }
 void lora_status(lora_row_fn row, void *ctx) { (void)row; (void)ctx; }
 size_t lora_json(char *buf, size_t size) { (void)buf; (void)size; return 0; }
 

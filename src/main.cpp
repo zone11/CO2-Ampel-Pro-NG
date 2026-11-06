@@ -135,6 +135,7 @@ void setup()
   {
     features |= FEATURE_RFM9X;
   }
+  lora_setup(); //here: the DevEUI default comes from the WiFi MAC, also with wifi.enabled=0
 
   //LPS22HB
   if(check_i2c(SERCOM2, ADDR_LPS22HB)) //LPS22HB found
@@ -313,6 +314,13 @@ void setup()
   }
 
   //Plus version
+  bool wifi_off = (features & FEATURE_WINC1500) && !settings.wifi_enabled; //LoRa-only device
+  if(wifi_off)
+  {
+    system_name(); //reads the MAC id once, before the module is off
+    features &= ~FEATURE_WINC1500;
+    WiFi.end();
+  }
   if(features & FEATURE_WINC1500)
   {
     if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 found
@@ -359,8 +367,6 @@ void setup()
     }
   }
 
-  lora_setup(); //after the WiFi start: the DevEUI default is derived from the WiFi MAC
-
   //start measurement
   co2_value = co2_average = CO2_START;
   if(features & FEATURE_SCD30)
@@ -390,7 +396,7 @@ void setup()
   //what the boot found, for the errors list in diag
   error_set(ERR_CO2_MISSING, (features & (FEATURE_SCD30|FEATURE_SCD4X)) == 0);
   error_set(ERR_PRESSURE_MISSING, (features & (FEATURE_LPS22HB|FEATURE_BMP280)) == 0);
-  error_set(ERR_WIFI_MODULE_MISSING, (features & FEATURE_WINC1500) == 0);
+  error_set(ERR_WIFI_MODULE_MISSING, ((features & FEATURE_WINC1500) == 0) && !wifi_off);
   error_set(ERR_SETTINGS_NEWER, load == SETTINGS_NEWER);
   if(load == SETTINGS_DEFAULTS)
   {
@@ -424,7 +430,10 @@ void loop()
 #if WITH_WEB
   //WiFi data
   phase_set(PHASE_WEB);
-  webserver_service();
+  if(!lora_busy()) //a request can wait up to 3 s for its body; the browser waits instead of the LoRa receive window
+  {
+    webserver_service();
+  }
 #endif
 
   //MQTT data
@@ -445,7 +454,7 @@ void loop()
       wifi_retry.wait = RETRY_MIN;
       wifi_ap_service(wifi_status);
     }
-    else if((settings.wifi_ssid[0] != 0) && retry_due(&wifi_retry))
+    else if((settings.wifi_ssid[0] != 0) && !lora_busy() && retry_due(&wifi_retry)) //a connect blocks up to 20 s
     {
       wifi_start(); //MQTT follows in mqtt_service()
     }

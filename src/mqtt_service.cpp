@@ -1,4 +1,5 @@
 #include "mqtt_service.h"
+#include "lora_service.h"
 #include <ctype.h>
 #include "sensors.h"
 #include "settings_registry.h"
@@ -611,7 +612,7 @@ void mqtt_reconnect(void)
     return;
   }
 
-  if(!retry_due(&mqtt_retry))
+  if(lora_busy() || !retry_due(&mqtt_retry)) //a connect blocks for seconds: not while LoRa waits for its receive windows
   {
     return;
   }
@@ -787,7 +788,7 @@ void mqtt_service(void)
   mqtt_retry.wait = RETRY_MIN;
 
   //topic prefix or client id changed: reconnect, so LWT, subscription and HA discovery use the new topics
-  if((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0))
+  if(((strcmp(used_prefix, settings.mqtt_topic_prefix) != 0) || (strcmp(used_client_id, settings.mqtt_client_id) != 0)) && !lora_busy())
   {
     if(features & FEATURE_USB)
     {
