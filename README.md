@@ -23,7 +23,7 @@ have not been tested on a real sensor.
 - [Troubleshooting](#troubleshooting)
 - [Serial command reference](#serial-command-reference)
 
-How to build your own variant, the code structure and the internals are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+How to build your own variant, the code structure and the internals are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Features
 
@@ -64,7 +64,7 @@ Planned: LoRaWAN/TTN, charts on the web page.
 
 The same command installs later updates, and your settings are kept: the upload reads them from the device and
 writes them back together with the new firmware. Each upload also leaves a copy in `.pio/settings-backup.bin`. That
-file contains your passwords. [DEVELOPMENT.md](docs/DEVELOPMENT.md#upload-script) explains how to write it back.
+file contains your passwords. [DEVELOPMENT.md](DEVELOPMENT.md#upload-script) explains how to write it back.
 
 A factory reset puts all settings back to the defaults and also clears a forgotten password:
 `CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`

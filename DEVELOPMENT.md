@@ -1,7 +1,7 @@
 # CO2-Ampel Pro NG: development
 
 How to build your own variant, how the code is laid out, and how the internals work. Installing and using the
-firmware is covered in the [README](../README.md).
+firmware is covered in the [README](README.md).
 
 ## Hardware
 
@@ -229,7 +229,7 @@ doesn't fit its buffer, it ends with `"truncated"`, but all errors together fit 
 
 The checks run where the data is: `co2_reading_check()` and `sensors_error_check()` in `sensors`, `wifi_error_check()`
 in `wifi_manager`, `health_error_check()` in `health`, and the boot findings at the end of `setup()`. An SCD4x has no
-`co2_read_failed`, because its read also fails while no new data is ready (REFACTOR M3); `co2_stale` covers that case.
+`co2_read_failed`, because its read also fails while no new data is ready; `co2_stale` covers that case.
 
 A new error goes into `ERROR_CODE` and `error_names`, in the same position in both, and into the README table. The
 thresholds are starting values that still need a long run to confirm them.
