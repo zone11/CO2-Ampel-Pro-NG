@@ -62,7 +62,7 @@ static const char *const phase_names[PHASE_COUNT] =
 {
   "boot", "loop", "serial", "web", "wifi", "wifi.connect",
   "mqtt.loop", "mqtt.connect", "mqtt.publish", "mqtt.cmd",
-  "co2", "pressure", "light", "leds",
+  "co2", "pressure", "light", "leds", "lora",
 };
 
 const char *phase_name(unsigned int p)

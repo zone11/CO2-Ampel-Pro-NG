@@ -20,6 +20,7 @@ typedef enum
 
 void error_set(ERROR_CODE e, bool active); // a condition: listed while it lasts
 void error_event(ERROR_CODE e);            // a one-off event: listed for ERROR_HOLD, so a tool can't miss it between messages
+bool errors_any(void);                     // anything listed right now (conditions or held events)
 bool errors_changed(void);                 // the list differs from the one errors_json() last wrote
 size_t errors_json(char *buf, size_t size);// JSON array; ends with "truncated" if it doesn't fit
 

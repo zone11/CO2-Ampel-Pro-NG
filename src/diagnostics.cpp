@@ -1,4 +1,5 @@
 #include "diagnostics.h"
+#include "lora_service.h"
 
 #include "app_globals.h"
 #include "led_control.h"
@@ -47,14 +48,8 @@ void self_test(void) //self test
   }
 
   //RFM9X test (optional, fitted?)
-  SPI.begin();
-  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(PIN_RFM9X_CS, LOW); //RFM9X CS low/active
-  SPI.transfer(0x42); //0x42 = version
-  byte rfm_version = SPI.transfer(0x00);
-  digitalWrite(PIN_RFM9X_CS, HIGH); //RFM9X CS high
-  SPI.endTransaction();
-  if(rfm_version == 0x12) //check version
+  bool rfm = lora_radio_found();
+  if(rfm)
   {
     leds(COLOR_WHITE);
     buzzer(1000);
@@ -62,7 +57,7 @@ void self_test(void) //self test
   if(features & FEATURE_USB)
   {
     Serial.print("RFM9X: ");
-    Serial.println((rfm_version == 0x12) ? "found" : "not found");
+    Serial.println(rfm ? "found" : "not found");
   }
 
   //sensor test

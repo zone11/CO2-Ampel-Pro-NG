@@ -7,6 +7,7 @@
 #include "system_control.h"
 #include "calibration.h"
 #include "json_parser.h"
+#include "lora_service.h"
 
 #include <ctype.h>
 
@@ -398,6 +399,11 @@ static void row(Print &out, const char *label, const char *value)
   out.print("<br/>\r\n");
 }
 
+static void lora_row(void *ctx, const char *name, const char *value)
+{
+  row(*(Print *)ctx, name, value);
+}
+
 static const char *fmt_duration(char *buf, size_t size, unsigned long s)
 {
   if(s >= 86400UL)
@@ -522,6 +528,14 @@ static void main_page(WiFiClient &client)
 #endif
   }
   out.print("</fieldset>\r\n");
+
+  //LoRaWAN, only with the radio fitted
+  if(features & FEATURE_RFM9X)
+  {
+    out.print("<fieldset><legend>LoRaWAN</legend>\r\n");
+    lora_status(lora_row, &out);
+    out.print("</fieldset>\r\n");
+  }
 
   //system
   const RESET_INFO *r = last_run();

@@ -18,6 +18,9 @@ void settings_write(const SETTINGS *data);
 // MQTT topic prefix check: not empty, no wildcards (+ #), no empty levels (leading, trailing or double /)
 bool settings_topic_valid(const char *prefix);
 
+// Empty or exactly digits hex characters (LoRaWAN EUIs and keys)
+bool settings_hex_valid(const char *s, size_t digits);
+
 // CO2 thresholds in ascending order (co2.t1 <= .. <= co2.t5); an equal pair is allowed
 bool settings_thresholds_ordered(const SETTINGS *data);
 

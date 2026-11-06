@@ -306,6 +306,52 @@ void test_v7_record_gets_nobuttons_default(void)
   TEST_ASSERT_FALSE(s.buzzer);
   TEST_ASSERT_FALSE(s.nobuttons);
 }
+void test_v8_record_gets_lora_defaults(void)
+{
+  SETTINGS s;
+  settings_defaults(&s);
+  strcpy(s.name, "v8");
+  s.nobuttons = true;
+  uint8_t data[468]; //the v8 layout ends with nobuttons + padding; 0xAA where v9 adds the LoRa fields
+  memcpy(data, &s, sizeof(data));
+  memset(fake_flash, 0xFF, sizeof(fake_flash));
+  const uint32_t magic = 0x434F3241UL; //"CO2A"
+  const uint16_t version = 8, size = sizeof(data);
+  memcpy(SLOT(0), &magic, 4);
+  memcpy(SLOT(0) + 4, &version, 2);
+  memcpy(SLOT(0) + 6, &size, 2);
+  memcpy(SLOT(0) + HEADER, data, sizeof(data));
+  uint32_t crc = crc_of(SLOT(0), HEADER + sizeof(data));
+  memcpy(SLOT(0) + HEADER + sizeof(data), &crc, 4);
+  memset(SLOT(0) + HEADER + sizeof(data) + 4, 0xAA, 64);
+  TEST_ASSERT_EQUAL(SETTINGS_MIGRATED, settings_read(&s));
+  TEST_ASSERT_EQUAL_STRING("v8", s.name);
+  TEST_ASSERT_TRUE(s.nobuttons);
+  TEST_ASSERT_FALSE(s.lora_enabled);
+  TEST_ASSERT_EQUAL_UINT(LORA_INTERVAL, s.lora_interval);
+  TEST_ASSERT_EQUAL_STRING("", s.lora_deveui);
+  TEST_ASSERT_EQUAL_STRING(LORA_JOINEUI, s.lora_joineui);
+  TEST_ASSERT_EQUAL_STRING("", s.lora_appkey);
+}
+void test_lora_keys(void)
+{
+  Out out;
+  char bad[] = "set lora.deveui=70B3D57ED00123"; //14 digits
+  settings_handle_line(bad, &out, true, true);
+  TEST_ASSERT_EQUAL_STRING("", settings.lora_deveui);
+  char good[] = "set lora.deveui=70B3D57ED0012345";
+  settings_handle_line(good, &out, true, true);
+  TEST_ASSERT_EQUAL_STRING("70B3D57ED0012345", settings.lora_deveui);
+  char hex[] = "set lora.appkey=0123456789ABCDEF0123456789ABCDEX"; //not hex
+  settings_handle_line(hex, &out, true, true);
+  TEST_ASSERT_EQUAL_STRING("", settings.lora_appkey);
+  TEST_ASSERT_TRUE(settings_json_import("{\"lora.appkey\":\"0123456789ABCDEF0123456789ABCDEF\"}", &out, true, true));
+  TEST_ASSERT_FALSE(settings_json_import("{\"lora.appkey\":\"00000000000000000000000000000000\"}", &out, false, true)); //only serial/web
+  out.text.clear();
+  char get[] = "get lora.appkey";
+  settings_handle_line(get, &out, true, false); //remote caller: masked
+  TEST_ASSERT_NULL(strstr(out.text.c_str(), "0123456789ABCDEF"));
+}
 void test_nobuttons_over_mqtt(void)
 {
   Out out;
@@ -330,17 +376,24 @@ void test_bad_crc_falls_back(void)
 void test_every_cut_of_a_save_keeps_settings(void)
 {
   //a power loss after any page of the save: the settings before or after it, never defaults
-  for(size_t page = 0; page <= 8; page++)
+  memset(fake_flash, 0xFF, sizeof(fake_flash));
+  save_named("before");
+  save_named("after");
+  size_t pages = 0; //pages a save writes (the record grows with new settings)
+  for(size_t i = 0; i < 1024; i++)
+  {
+    if(SLOT(1)[i] != 0xFF) { pages = (i / 64) + 1; }
+  }
+  TEST_ASSERT_TRUE(pages >= 8);
+  for(size_t page = 0; page <= pages; page++)
   {
     SETTINGS s;
     memset(fake_flash, 0xFF, sizeof(fake_flash));
     save_named("before");
-    uint8_t saved[1024];
-    memcpy(saved, SLOT(1), sizeof(saved));
     save_named("after");
     memset(SLOT(1) + (page * 64), 0xFF, 1024 - (page * 64)); //the pages after the cut are still erased
     TEST_ASSERT_EQUAL(SETTINGS_LOADED, settings_read(&s));
-    TEST_ASSERT_EQUAL_STRING((page == 8) ? "after" : "before", s.name);
+    TEST_ASSERT_EQUAL_STRING((page == pages) ? "after" : "before", s.name);
   }
 }
 void test_erased_slot_a(void)
@@ -652,6 +705,8 @@ int main(void)
   RUN_TEST(test_slots_alternate);
   RUN_TEST(test_old_record_without_counter);
   RUN_TEST(test_v7_record_gets_nobuttons_default);
+  RUN_TEST(test_v8_record_gets_lora_defaults);
+  RUN_TEST(test_lora_keys);
   RUN_TEST(test_nobuttons_over_mqtt);
   RUN_TEST(test_bad_crc_falls_back);
   RUN_TEST(test_every_cut_of_a_save_keeps_settings);

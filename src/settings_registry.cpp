@@ -53,6 +53,12 @@ static bool apply_threshold(void *user, const cfg_item_t *item)
   return import_running || settings_thresholds_ordered(&settings);
 }
 
+static bool apply_eui(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  return settings_hex_valid((const char *)item->ptr, item->max_len); //takes effect after a restart (join)
+}
+
 static bool on_save_settings(void *user)
 {
   (void)user;
@@ -97,6 +103,13 @@ static const cfg_item_t settings_items[] =
   { "mqtt.config",      CFG_BOOL,  &settings.mqtt_config,    0, 0, 0, NULL, CFG_LOCAL },
 #endif
   { "mqtt.interval",    CFG_U32,   &settings.mqtt_interval,  10, 3600, 0, NULL, 0 },
+#if WITH_LORA
+  { "lora.enabled",     CFG_BOOL,  &settings.lora_enabled,   0, 0, 0, NULL, CFG_LOCAL },
+  { "lora.deveui",      CFG_STRING, settings.lora_deveui,    0, 0, sizeof(settings.lora_deveui) - 1, apply_eui, CFG_LOCAL },
+  { "lora.joineui",     CFG_STRING, settings.lora_joineui,   0, 0, sizeof(settings.lora_joineui) - 1, apply_eui, CFG_LOCAL },
+  { "lora.appkey",      CFG_STRING, settings.lora_appkey,    0, 0, sizeof(settings.lora_appkey) - 1, apply_eui, CFG_SECRET|CFG_LOCAL },
+  { "lora.interval",    CFG_U32,   &settings.lora_interval,  60, 3600, 0, NULL, 0 },
+#endif
 };
 static const size_t settings_items_count = sizeof(settings_items) / sizeof(settings_items[0]);
 

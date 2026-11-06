@@ -1,6 +1,7 @@
 #include "calibration.h"
 #include "errors.h"
 #include "health.h"
+#include "lora_service.h"
 #include "system_control.h"
 
 #include <Arduino.h>
@@ -119,7 +120,7 @@ size_t health_json(char *buf, size_t size)
     "{\"uptime\":%lu,\"resets\":%lu,\"reset\":\"%s\","
     "\"last_event\":\"%s\",\"last_phase\":\"%s\",\"last_pc\":\"0x%08lX\",\"last_lr\":\"0x%08lX\",\"last_uptime\":%lu,"
     "\"ram_free\":%lu,\"ram_free_min\":%lu,\"heap_free\":%lu,\"loop_max_ms\":%lu,"
-    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d,\"i2c_errors\":%lu,\"net_write_timeouts\":%lu,\"co2_failures\":%lu,\"pressure_offset\":%lu,\"calibration\":\"%s\",\"errors\":",
+    "\"wifi_connects\":%lu,\"mqtt_connects\":%lu,\"mqtt_failures\":%lu,\"mqtt_error\":%d,\"i2c_errors\":%lu,\"net_write_timeouts\":%lu,\"co2_failures\":%lu,\"pressure_offset\":%lu,\"calibration\":\"%s\",",
     (unsigned long)uptime_s(), (unsigned long)reset_count(), reset_cause(),
     r->valid ? event_name(r->event) : "none", r->valid ? phase_name(r->phase) : "none",
     (unsigned long)(r->valid ? r->pc : 0), (unsigned long)(r->valid ? r->lr : 0),
@@ -132,6 +133,15 @@ size_t health_json(char *buf, size_t size)
   {
     return (n < 0) ? 0 : size - 1;
   }
+  n += lora_json(buf + n, size - n);
+  static const char key[] = "\"errors\":"; //errors last: it truncates itself when short
+  if((n + sizeof(key) + 16) >= size) //no room for the list: close after the last value (it ends with a comma)
+  {
+    buf[n - 1] = '}';
+    return n;
+  }
+  memcpy(buf + n, key, sizeof(key));
+  n += sizeof(key) - 1;
   n += errors_json(buf + n, size - n - 1);
   buf[n++] = '}';
   buf[n] = 0;

@@ -3,6 +3,7 @@
 #include "app_config.h"
 
 #include <Arduino.h>
+#include <ctype.h>
 #include <string.h>
 
 // Settings live in the last 2KB of flash (0x3F800-0x3FFFF). The linker script
@@ -15,7 +16,7 @@
 #define SETTINGS_SLOT_SIZE   1024
 #define SETTINGS_SLOTS       2
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     8            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     9            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -40,6 +41,7 @@ static_assert(sizeof(SETTINGS) >= SETTINGS_V1_SIZE, "fields may only be appended
 static_assert(offsetof(SETTINGS, wifi_ssid) == 32, "sys.buzzer keeps its 4 bytes");
 static_assert(offsetof(SETTINGS, brightness_dark) == 392, "v6 fields must start after the v5 record (392 bytes)");
 static_assert(offsetof(SETTINGS, name) == 431, "v7 name starts in the last padding byte of v6 (see default_padding_fields)");
+static_assert(offsetof(SETTINGS, lora_interval) == 468, "v9 fields must start after the v8 record (468 bytes), not in its padding");
 
 // Rounded up to whole pages so page writes never read past the buffer
 #define RECORD_BYTES  (((sizeof(SETTINGS_RECORD) + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE)
@@ -112,6 +114,27 @@ void settings_defaults(SETTINGS *data)
   data->password[0]   = 0;
   data->name[0]       = 0;
   data->nobuttons     = false;
+
+  data->lora_enabled  = LORA_ENABLED;
+  data->lora_interval = LORA_INTERVAL;
+  copy_str(data->lora_joineui, sizeof(data->lora_joineui), LORA_JOINEUI);
+}
+
+bool settings_hex_valid(const char *s, size_t digits)
+{
+  size_t n = strlen(s);
+  if((n != 0) && (n != digits))
+  {
+    return false;
+  }
+  for(size_t i = 0; i < n; i++)
+  {
+    if(!isxdigit((unsigned char)s[i]))
+    {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -161,11 +184,13 @@ static bool settings_validate(SETTINGS *data)
   data->quiet   = to_bool(&data->quiet);
   data->buzzer  = to_bool(&data->buzzer);
   data->nobuttons = to_bool(&data->nobuttons);
+  data->lora_enabled = to_bool(&data->lora_enabled);
 
   if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
   if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }
   if((data->mqtt_port < 1) || (data->mqtt_port > 65535))    { data->mqtt_port = def.mqtt_port; changed = true; }
   if((data->mqtt_interval < 10) || (data->mqtt_interval > 3600)) { data->mqtt_interval = def.mqtt_interval; changed = true; }
+  if((data->lora_interval < 60) || (data->lora_interval > 3600)) { data->lora_interval = def.lora_interval; changed = true; }
 
   for(int i = 0; i < 5; i++)
   {
@@ -203,6 +228,12 @@ static bool settings_validate(SETTINGS *data)
   }
   data->password[sizeof(data->password) - 1] = 0;
   data->name[sizeof(data->name) - 1] = 0;
+  data->lora_deveui[sizeof(data->lora_deveui) - 1] = 0;
+  data->lora_joineui[sizeof(data->lora_joineui) - 1] = 0;
+  data->lora_appkey[sizeof(data->lora_appkey) - 1] = 0;
+  if(!settings_hex_valid(data->lora_deveui, 16))  { data->lora_deveui[0] = 0; changed = true; }
+  if(!settings_hex_valid(data->lora_joineui, 16)) { strcpy(data->lora_joineui, def.lora_joineui); changed = true; }
+  if(!settings_hex_valid(data->lora_appkey, 32))  { data->lora_appkey[0] = 0; changed = true; }
 
   return changed;
 }

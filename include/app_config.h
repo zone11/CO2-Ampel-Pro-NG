@@ -20,6 +20,9 @@
 #ifndef WITH_MQTT_CONFIG
 #define WITH_MQTT_CONFIG   1 //configuration over MQTT (mqtt.config)
 #endif
+#ifndef WITH_LORA
+#define WITH_LORA          1 //LoRaWAN over the RFM95 (TTN, EU868), only used when the radio is fitted
+#endif
 
 // Default CO2 thresholds (can be changed via serial commands and saved to flash)
 #define DEFAULT_T1         600  //>= 600ppm
@@ -61,6 +64,12 @@
 #define MQTT_HA            0      //1 = Home Assistant MQTT discovery (mqtt.ha)
 #define MQTT_DISCOVERY_PREFIX "homeassistant" //Home Assistant discovery prefix
 #define MQTT_CONFIG        0      //1 = configuration over MQTT (topic <prefix>/<id>/cmd) allowed
+
+//--- LoRaWAN (TTN) ---
+#define LORA_ENABLED       0      //1 = LoRaWAN on (lora.enabled)
+#define LORA_INTERVAL      300    //uplink interval in seconds (lora.interval, 60-3600)
+#define LORA_JOINEUI       "0000000000000000" //TTN accepts all zeros
+#define LORA_PLAN          "EU_863_870_TTN"   //TTN frequency plan ID (region is a build flag, CFG_eu868)
 
 //--- LED brightness ---
 #define BRIGHTNESS         125 //1-255 (255=100%, 179=70%)

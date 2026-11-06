@@ -1,4 +1,5 @@
 #include "serial_console.h"
+#include "lora_service.h"
 
 #include "app_globals.h"
 #include "calibration.h"
@@ -20,6 +21,15 @@
 #define IMPORT_IDLE  30000UL //abort after 30s without input
 
 // "json import": collects raw characters (no line limit) until the closing brace of the object
+
+static void serial_row(void *ctx, const char *name, const char *value) //"Name: value", like the other status lines
+{
+  (void)ctx;
+  Serial.print(name);
+  Serial.print(": ");
+  Serial.println(value);
+}
+
 static struct
 {
   char *buf;          //only allocated during the import
@@ -236,6 +246,7 @@ void serial_service(void)
     }
     print_wifi_status();
     print_mqtt_status();
+    lora_status(serial_row, NULL);
     return;
   }
   if(strcasecmp(line, "diag") == 0)

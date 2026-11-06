@@ -24,6 +24,7 @@
 #include "health.h"
 #include "sensors.h"
 #include "mqtt_service.h"
+#include "lora_service.h"
 #include "webserver.h"
 #include "settings_storage.h"
 #include "wifi_manager.h"
@@ -129,6 +130,10 @@ void setup()
   if(WiFi.status() != WL_NO_SHIELD) //ATWINC1500 found
   {
     features |= FEATURE_WINC1500;
+  }
+  if(lora_radio_found()) //RFM95 fitted
+  {
+    features |= FEATURE_RFM9X;
   }
 
   //LPS22HB
@@ -284,6 +289,7 @@ void setup()
     if(features & FEATURE_LPS22HB)  { Serial.print(" LPS22HB"); }
     if(features & FEATURE_BMP280)   { Serial.print(" BMP280"); }
     if(features & FEATURE_WINC1500) { Serial.print(" WINC1500"); }
+    if(features & FEATURE_RFM9X)    { Serial.print(" RFM9X"); }
     Serial.println();
     if(bus0_stuck || bus1_stuck)
     {
@@ -353,6 +359,8 @@ void setup()
     }
   }
 
+  lora_setup(); //after the WiFi start: the DevEUI default is derived from the WiFi MAC
+
   //start measurement
   co2_value = co2_average = CO2_START;
   if(features & FEATURE_SCD30)
@@ -421,6 +429,8 @@ void loop()
 
   //MQTT data
   mqtt_service();
+
+  lora_service();
 
   if(features & FEATURE_WINC1500)
   {

@@ -12,6 +12,7 @@ enum Features
   FEATURE_LPS22HB  = (1<<3),
   FEATURE_BMP280   = (1<<4),
   FEATURE_WINC1500 = (1<<5),
+  FEATURE_RFM9X    = (1<<6),
 };
 
 typedef struct
@@ -50,6 +51,11 @@ typedef struct
   char password[32+1];        // enable password, empty = none (v6)
   char name[32+1];            // system name, empty = DEFAULT_NAME + MAC id (v7)
   boolean nobuttons;          // no button functions and no setup network at boot, for public areas (v8)
+  unsigned int lora_interval; // LoRaWAN uplink interval in seconds, stretched for the TTN fair use limit (v9)
+  char lora_deveui[16+1];     // hex, empty = derived from the WiFi MAC (v9)
+  char lora_joineui[16+1];    // hex (v9)
+  char lora_appkey[32+1];     // hex, empty = no join (v9)
+  boolean lora_enabled;       // LoRaWAN on (v9)
 } SETTINGS;
 
 #endif

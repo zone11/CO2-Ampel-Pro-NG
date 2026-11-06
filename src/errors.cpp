@@ -53,6 +53,11 @@ void error_event(ERROR_CODE e)
   event_at[e] = uptime_s() + 1;
 }
 
+bool errors_any(void)
+{
+  return error_mask() != 0;
+}
+
 bool errors_changed(void)
 {
   return error_mask() != written;
