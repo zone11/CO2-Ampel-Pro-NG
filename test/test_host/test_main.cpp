@@ -376,14 +376,14 @@ static std::string cal_text(void)
   char b[48];
   return calibration_status(b, sizeof(b)) ? b : "";
 }
-static void cal_begin(bool menu = false)
+static void cal_begin(bool menu = false, bool force = false)
 {
   recals = led_draws = beeps = 0;
   remote_on = 0;
   settings.quiet = false;
   settings.buzzer = true;
   co2_value = 420;
-  calibration_start(menu);
+  calibration_start(menu, force);
 }
 static void cal_readings(int n, unsigned int a, unsigned int b)
 {
@@ -426,18 +426,44 @@ void test_cal_unstable_gives_up_after_three_runs(void)
   cal_begin();
   cal_readings(1000, 420, 900);
   TEST_ASSERT_FALSE(calibration_running());
-  TEST_ASSERT_EQUAL(3, recals); //applied anyway, as in the original firmware
+  TEST_ASSERT_EQUAL(0, recals); //sensor left as it was
+  TEST_ASSERT_EQUAL_STRING("failed, out of range or unstable, not set", cal_text().c_str());
+}
+void test_cal_indoors_never_sets_the_sensor(void)
+{
+  cal_begin();
+  co2_value = 1100;
+  cal_readings(1000, 1100, 1105); //stable, but above 800 ppm
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(0, recals);
+  cal_begin();
+  cal_readings(1000, 80, 85); //badly drifted sensor outdoors: needs force
+  TEST_ASSERT_EQUAL(0, recals);
+}
+void test_cal_forced_sets_after_every_run(void)
+{
+  cal_begin(false, true);
+  TEST_ASSERT_EQUAL_STRING("running, step 0 of 36, run 1 of 3, forced", cal_text().c_str());
+  cal_readings(1000, 80, 85);
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_EQUAL(3, recals); //as in the original firmware
   TEST_ASSERT_EQUAL_STRING("failed, readings not stable", cal_text().c_str());
+  cal_begin(false, true);
+  cal_readings(143, 80, 85); //first run out of range, applied
+  TEST_ASSERT_EQUAL(1, recals);
+  cal_readings(50, 420, 420);
+  TEST_ASSERT_EQUAL(2, recals);
+  TEST_ASSERT_EQUAL_STRING("OK", cal_text().c_str());
 }
 void test_cal_stable_second_run_is_ok(void)
 {
   cal_begin();
-  cal_readings(143, 420, 900); //first run ends unstable
-  TEST_ASSERT_EQUAL(1, recals);
+  cal_readings(143, 420, 900); //first run ends unstable, not applied
+  TEST_ASSERT_EQUAL(0, recals);
   TEST_ASSERT_TRUE(calibration_running());
   co2_value = 420;
   cal_readings(50, 420, 420);
-  TEST_ASSERT_EQUAL(2, recals);
+  TEST_ASSERT_EQUAL(1, recals);
   TEST_ASSERT_EQUAL_STRING("OK", cal_text().c_str());
 }
 void test_cal_leds_respect_quiet_and_enable(void)
@@ -502,6 +528,11 @@ void test_cal_over_mqtt(void)
   TEST_ASSERT_TRUE(settings_json_import("{\"calibrate\":false}", &out, false, true));
   TEST_ASSERT_FALSE(calibration_running());
   TEST_ASSERT_EQUAL(0, recals);
+  TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":\"yes\"}", &out, false, true));
+  TEST_ASSERT_FALSE(calibration_running());
+  TEST_ASSERT_TRUE(settings_json_import("{\"calibrate\":\"force\"}", &out, false, true));
+  TEST_ASSERT_TRUE(out.text.find(", forced") != std::string::npos);
+  calibration_abort();
   unsigned int f = features;
   features = 0;
   TEST_ASSERT_FALSE(settings_json_import("{\"calibrate\":true}", &out, false, true)); //no sensor
@@ -606,6 +637,8 @@ int main(void)
   RUN_TEST(test_cal_complete_run);
   RUN_TEST(test_cal_abort_never_sets_the_sensor);
   RUN_TEST(test_cal_unstable_gives_up_after_three_runs);
+  RUN_TEST(test_cal_indoors_never_sets_the_sensor);
+  RUN_TEST(test_cal_forced_sets_after_every_run);
   RUN_TEST(test_cal_stable_second_run_is_ok);
   RUN_TEST(test_cal_leds_respect_quiet_and_enable);
   RUN_TEST(test_cal_refused_by_the_sensor);

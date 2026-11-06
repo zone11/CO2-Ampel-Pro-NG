@@ -11,7 +11,8 @@ Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). On hold
       MQTT publish and the Home Assistant "Errors" entity passed on hardware 2026-11-06 (stopped SCD30, `co2_stale`).
 - [ ] CO2 sensor failure, not yet checked on hardware: the buzzer staying off (both dev devices run with buzzer off) and what the
       Home Assistant CO2 entity shows while the value is withheld. Blinking white, withheld value, `co2_stale` and recovery passed 2026-11-06.
-- [ ] A calibration started indoors still sets the sensor; refuse out-of-range readings, with an override for a badly drifted sensor.
+- [ ] Calibration refuses out-of-range runs since 0.9.1 (host tested): check on hardware that an indoor run above 800 ppm leaves the
+      sensor unchanged and that a forced run still works outdoors. A well-aired room between 200 and 800 ppm still passes.
 - [ ] Drift: no reminder and no calibration date on the device.
 - [ ] Tests still missing: buzzer alarm at 1600 ppm, default settings incl. full brightness over a long run, TLS on the current firmware,
       first setup from empty settings.

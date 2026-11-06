@@ -325,7 +325,8 @@ static void config_page(WiFiClient &client, const char *result)
   {
     out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calibrate onsubmit='pw(this)'><input type=hidden name=_pw>"
               "<p>Only with the device in fresh air for at least 2 minutes: it sets the current reading to 400 ppm. "
-              "Takes 3 minutes or more; the device stays online.</p>"
+              "Usually takes 3 to 15 minutes; the device stays online. Readings outside 200-800 ppm leave the sensor unchanged.</p>"
+              "<p><label><input type=checkbox name=force value=1> Force (badly drifted sensor: sets it even when out of range)</label></p>"
               "<input type=submit value='Start calibration'></form>\r\n");
   }
 
@@ -594,6 +595,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
 
   if(strcmp(path, "calibrate") == 0)
   {
+    bool force = (strncmp(body, "force=1", 7) == 0) || (strstr(body, "&force=1") != NULL);
     free(body);
     if(!calibration_allowed())
     {
@@ -606,7 +608,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
     else if(calibration_available())
     {
       res.print("{\"result\":\"OK\",\"calibration\":true}");
-      calibration_start(false);
+      calibration_start(false, force);
     }
     else
     {

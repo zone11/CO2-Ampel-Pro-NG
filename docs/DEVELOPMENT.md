@@ -154,8 +154,11 @@ Stuck interrupts restart after 4 s.
 imports from serial and web treat it as unknown, so the web password rule can't be bypassed) call `calibration_start()`; `loop()` then passes every new reading to
 `calibration_reading()`, so web and MQTT keep running. The traffic light pauses while `calibration_leds()` is true (during the run,
 and 3 seconds for the result). The result is kept in RAM until the next restart. The service menu runs before the network starts and
-drives the same code in its own loop. An unstable run still applies the forced recalibration, as in the original firmware; it starts
-again up to `CALIBRATION_RUNS` times. On an SCD4x the recalibration stops the measurement for about 2 seconds.
+drives the same code in its own loop. A run only applies the forced recalibration when it ends stable (last
+reading within 200–800 ppm and ±30 ppm of the one before); otherwise it starts again, up to `CALIBRATION_RUNS` times, and then
+ends as "not set". A forced run (`calibration_start(..., true)`: `calibrate force`, the web checkbox `force=1`,
+`{"calibrate":"force"}`) applies it after every run, as the original firmware did, for a sensor drifted outside 200–800 ppm. The
+service menu never forces. On an SCD4x the recalibration stops the measurement for about 2 seconds.
 
 ## Diagnostics Internals
 

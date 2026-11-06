@@ -5,7 +5,8 @@
 
 // Fresh air calibration in the background: loop() passes every new reading on, so web and MQTT keep running
 bool calibration_available(void);       // a CO2 sensor is present
-void calibration_start(bool menu);      // menu: LEDs and beep also with Quiet
+void calibration_start(bool menu, bool force); // menu: LEDs and beep also with Quiet; force: sets the sensor
+                                        // also after an unstable or out-of-range run (badly drifted sensor)
 void calibration_abort(void);
 bool calibration_running(void);
 void calibration_reading(void);         // after check_sensors() found a new reading

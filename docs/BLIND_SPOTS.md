@@ -7,7 +7,8 @@ Open work is tracked in [TODO.md](TODO.md); this document keeps the reasoning.
 ## Could Stop the Device Working as Planned
 
 Items 1 to 3 are changed in the 0.9 code, as described under CO2 Sensor Failure and Reconnects in [DEVELOPMENT.md](DEVELOPMENT.md). Items 1 and
-2 passed on hardware on 2026-11-06, item 3 has a host test. The text below describes the state before those changes.
+2 passed on hardware on 2026-11-06, item 3 has a host test. Item 4 is changed in 0.9.1: only a stable run within 200–800 ppm
+sets the sensor, a forced run is needed for a badly drifted one (host tested). The text below describes the state before those changes.
 
 1. **A dead CO2 sensor looks healthy.** After the first reading, `co2_valid` was never cleared, and a failed read kept the old
    value. If the sensor stopped, the LEDs stayed on the last color, possibly green; web and MQTT kept sending the frozen number,

@@ -176,14 +176,20 @@ Calibrate the CO2 sensor from time to time:
 3. The LEDs turn white; LEDs 3–4 show the current value (blue ≤ 500, green ≤ 750, yellow ≤ 1500 ppm, red
    above). Once the readings are stable for about 3 minutes (±30 ppm, between 200 and 800 ppm), the sensor
    is set to 400 ppm. Unstable readings start the run again; a button press aborts it.
-4. Done: LEDs blue and a short beep.
+4. Done: LEDs blue and a short beep. LEDs red: the readings stayed outside 200–800 ppm or unstable for three runs, and
+   the sensor was left as it was (see below).
 
-Without the button, start it over USB serial with `enable`, then `calibrate`, with "Start calibration" on the web page
-`/config`, or [over MQTT](#remote-configuration). Put the device in fresh air first: the current reading is set to 400 ppm, wherever the device is. It usually takes 3 to 15
-minutes, and the web page and MQTT keep running. The main page shows the progress and then the result under "Calibration" until
+The sensor is only changed after a stable run between 200 and 800 ppm, so a calibration started indoors by mistake
+leaves it alone. A sensor that has drifted so far that it reads below 200 or above 800 ppm in fresh air needs a
+**forced** calibration over USB serial, the web page or MQTT (see below): it sets the sensor after every run, even an
+unstable or out-of-range one, as the original firmware did. Use it only outdoors.
+
+Without the button, start it over USB serial with `enable`, then `calibrate` (`calibrate force` for a forced run), with
+"Start calibration" on the web page `/config` (tick "Force" for a forced run), or [over MQTT](#remote-configuration). Put the device in fresh air first: a stable reading between 200 and 800 ppm is set to 400 ppm wherever the device is,
+so a well-aired room passes too. It usually takes 3 to 15 minutes, and the web page and MQTT keep running. The main page shows the progress and then the result under "Calibration" until
 the next restart. Stop it the same way ("Abort calibration" on `/config`, `calibrate abort`, `{"calibrate":false}`) or with a button press. If the readings
-stay unstable, it gives up after three runs (LEDs red), but the sensor has been set anyway, so repeat it in fresh air. With
-Quiet on, or while `enable` is active on the serial port, the LEDs don't show the calibration.
+stay unstable or out of range, it gives up after three runs (LEDs red); a forced run has set the sensor anyway by then, so
+repeat it in fresh air. With Quiet on, or while `enable` is active on the serial port, the LEDs don't show the calibration.
 
 Anyone who can open the web page can start this, so set `sys.password` if others are on your network.
 
@@ -372,9 +378,9 @@ mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"export":true}'     
 - Each `"save":true` writes the flash; don't save in automated loops.
 
 A [calibration](#calibration) can be started the same way, for example on a device without a web page. `{"calibrate":true}` starts
-it and `{"calibrate":false}` aborts it. The reply confirms the command; `calibration` in `<base>/diag` then shows the progress and
-the result, updated every `mqtt.interval`. Put the device in fresh air first: the current reading is set to 400 ppm, wherever the
-device is, and the password rules of the web page don't apply here, so restrict `<base>/cmd` on the broker.
+it, `{"calibrate":"force"}` starts a forced run, and `{"calibrate":false}` aborts it. The reply confirms the command; `calibration` in `<base>/diag` then shows the progress and
+the result, updated every `mqtt.interval`. Put the device in fresh air first (a stable reading between 200 and 800 ppm is set to 400
+ppm wherever the device is, a forced run sets any reading), and the password rules of the web page don't apply here, so restrict `<base>/cmd` on the broker.
 
 ### MQTT over TLS
 
@@ -496,7 +502,7 @@ listed for one hour, or until a restart.
 | `mqtt_connect` | 2 failed MQTT connects in a row |
 | `mqtt_publish` | event: a message could not be sent |
 | `net_write_timeout` | event: a network send was given up |
-| `cal_refused`, `cal_failed` | event: the sensor refused the new value, or the readings stayed unstable for 3 runs |
+| `cal_refused`, `cal_failed` | event: the sensor refused the new value, or the readings stayed unstable or out of range for 3 runs |
 
 ## Serial Command Reference
 
@@ -517,6 +523,7 @@ json import        apply settings from JSON (on the same line or pasted afterwar
 help               list all keys
 i2c scan           list the sensors found on the I2C buses
 calibrate          start the fresh air calibration, needs enable
+calibrate force    the same, also sets a badly drifted sensor (see Calibration)
 calibrate abort    stop it, needs enable
 reset              restart the device
 ```

@@ -253,7 +253,7 @@ void serial_service(void)
     i2c_scan(Wire1, "Wire1 (SERCOM2)", Serial);
     return;
   }
-  if(strcasecmp(line, "calibrate") == 0)
+  if((strcasecmp(line, "calibrate") == 0) || (strcasecmp(line, "calibrate force") == 0))
   {
     if(!remote_on)
     {
@@ -270,7 +270,7 @@ void serial_service(void)
     else
     {
       Serial.println("OK, 'calibrate abort' stops it");
-      calibration_start(false);
+      calibration_start(false, line[9] != 0);
     }
     return;
   }

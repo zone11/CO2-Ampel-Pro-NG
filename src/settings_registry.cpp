@@ -207,7 +207,7 @@ typedef struct
   bool control_only;
   bool save;
   bool do_export;
-  int calibrate; //1 = start, -1 = abort
+  int calibrate; //1 = start, 2 = start forced, -1 = abort
   const SETTINGS *before;
   JsonPairs errors;
   JsonPairs warnings;
@@ -240,11 +240,12 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
     }
     else if(cal)
     {
-      if(type != JSON_BOOL)                  { ic->errors.add(key, "Invalid value"); }
-      else if(!on)                           { ic->calibrate = -1; }
+      bool force = (type == JSON_STRING) && (strcmp(value, "force") == 0);
+      if((type != JSON_BOOL) && !force)      { ic->errors.add(key, "Invalid value"); }
+      else if(!on && !force)                 { ic->calibrate = -1; }
       else if(!calibration_available())      { ic->errors.add(key, "No CO2 sensor"); }
       else if(calibration_running())         { ic->errors.add(key, "Already running"); }
-      else                                   { ic->calibrate = 1; }
+      else                                   { ic->calibrate = force ? 2 : 1; }
     }
     else if(strcmp(key, "save") == 0)   { ic->save = on; }
     else if(strcmp(key, "export") == 0) { ic->do_export = on; }
@@ -344,7 +345,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   }
   if(ok && (ic.calibrate > 0))
   {
-    calibration_start(false);
+    calibration_start(false, ic.calibrate == 2);
   }
   else if(ok && (ic.calibrate < 0))
   {
