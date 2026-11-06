@@ -43,7 +43,7 @@ How to build your own variant, the code structure and the internals are in [DEVE
 - Self test in the service menu
 - All button functions can be switched off for devices in public places
 
-Planned: LoRaWAN/TTN, charts on the web page.
+Planned: LoRaWAN/TTN.
 
 ## What you need
 
@@ -74,6 +74,26 @@ or the Arduino IDE, erases your settings.** Use the upload command above wheneve
 
 If the device stops showing up on USB, for example after an interrupted upload, press the red reset button twice
 quickly. That starts the bootloader, and the upload command works again.
+
+### Updates over the network (OTA)
+
+Firmware updates need a USB connection. Updates over the network (OTA) are not on the roadmap, because the hardware
+makes them risky:
+
+- The SAMD21 has 256 KB of internal flash and no external flash. The UF2 bootloader takes the first 8 KB and only
+  accepts firmware over USB; the settings take the last 2 KB.
+- An OTA update would download the new image into the free upper half of the flash. To start it, the device then has
+  to erase the running application at 0x2000 and copy the new image over it, from RAM, with interrupts off.
+- The flash of the WiFi module (WINC1500) can't serve as a staging area. It is only writable in download mode, with
+  WiFi switched off.
+- A power cut or a hang during that final copy, which takes a few seconds, leaves a half-written application. The
+  bootloader knows nothing about the image in the upper half, so the device no longer starts and has to be flashed
+  again over USB. A device mounted on a wall or in a public place stays dead until someone fetches it.
+- Both images have to fit side by side, which limits the firmware to about 120 KB (it is about 99 KB today) and leaves
+  little room for LoRaWAN.
+
+A custom bootloader that finishes an interrupted copy on the next start would remove the power-cut risk. A bug in that
+bootloader, though, could only be fixed over USB, on every device.
 
 ## Quick start
 
