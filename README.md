@@ -504,6 +504,31 @@ Port 3 only works with `lora.config=1`. The thresholds are checked like everywhe
 all together or not at all. A refused downlink shows up as "refused" in `status` and as the "last downlink refused"
 bit in the next message.
 
+### Readings in Home Assistant through TTN
+
+A device on WiFi and MQTT already reports to Home Assistant directly. A device that only sends over LoRaWAN reaches
+Home Assistant through TTN instead:
+
+1. In the TTN console, open the application, go to Integrations, Storage Integration, and activate it. TTN then keeps
+   the decoded messages for a while.
+2. Under API keys, add a key with the right "Read application traffic (uplink and downlink)". Copy it; TTN shows it
+   only once.
+3. In Home Assistant, add the integration "The Things Network (Cloud Storage)" (Settings, Devices & services) with
+   the application ID and that API key.
+
+Home Assistant then creates a device per TTN device with the sensors co2, temperature, humidity, pressure and light,
+without units. The on/off values of the payload (quiet, error, calibrating, buzzer) don't become entities. It fetches
+the stored messages from TTN, so a new value shows up with a short delay. The formatter from step 3 of the setup has
+to be in place.
+
+The other TTN integration in Home Assistant, "The Things Network" with an application hub, only creates entities for
+devices from TTN's device catalog. The CO2-Ampel is not in that catalog, so the hub stays empty.
+
+If you'd rather have the messages live, TTN also runs an MQTT server (Integrations, MQTT in the console; user
+`<application ID>@ttn`, an API key as password). Home Assistant connects to only one broker, so this needs a bridge
+from your broker to TTN's and MQTT sensors that read `uplink_message.decoded_payload` from
+`v3/<application ID>@ttn/devices/<device ID>/up`.
+
 ### Without WiFi
 
 `wifi.enabled=0` turns the WiFi module off. The device then has no web page, no MQTT and no setup network and only
