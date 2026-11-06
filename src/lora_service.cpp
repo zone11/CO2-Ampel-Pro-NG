@@ -46,6 +46,80 @@ static unsigned long interval_ms = 0;             //current uplink interval incl
 static uint32_t uplinks = 0, join_attempts = 0;
 static int16_t dn_rssi = 0, dn_snr = 0;            //last downlink (snr in 0.25 dB)
 static bool dn_seen = false;
+static bool sent_ours = false; //the pending frame is ours (LMIC also sends empty frames to answer the network)
+
+// Session over a warm reset (watchdog, reset command, upload): .noinit keeps it, a power cut loses it (new join)
+#define SESSION_MAGIC 0x4C4F5201 //"LOR" + layout version
+typedef struct
+{
+  uint32_t magic, keys; //keys: hash of DevEUI, JoinEUI and AppKey, a changed key means a new join
+  uint32_t netid, devaddr, seqno_up, seqno_dn, dn2_freq;
+  uint8_t nwk_key[16], art_key[16];
+  uint32_t channel_freq[MAX_CHANNELS];
+  uint16_t channel_dr_map[MAX_CHANNELS], channel_map;
+  uint8_t datarate, dn2_dr, rx1_dr_offset, rx_delay;
+  int8_t adr_tx_pow;
+  uint32_t check;
+} LORA_SESSION;
+static LORA_SESSION session __attribute__((section(".noinit")));
+static bool resumed = false;
+
+static uint32_t fnv1a(const void *data, size_t len, uint32_t h = 2166136261UL)
+{
+  for(const uint8_t *p = (const uint8_t *)data; len--; p++)
+  {
+    h = (h ^ *p) * 16777619UL;
+  }
+  return h;
+}
+
+static uint32_t keys_hash(void);
+
+static uint32_t session_check(void)
+{
+  return fnv1a(&session, offsetof(LORA_SESSION, check));
+}
+
+static void session_save(void)
+{
+  session.magic = SESSION_MAGIC;
+  session.keys = keys_hash();
+  LMIC_getSessionKeys(&session.netid, &session.devaddr, session.nwk_key, session.art_key);
+  session.seqno_up = LMIC.seqnoUp;
+  session.seqno_dn = LMIC.seqnoDn;
+  session.dn2_freq = LMIC.dn2Freq;
+  memcpy(session.channel_freq, LMIC.channelFreq, sizeof(session.channel_freq));
+  memcpy(session.channel_dr_map, LMIC.channelDrMap, sizeof(session.channel_dr_map));
+  session.channel_map = LMIC.channelMap;
+  session.datarate = LMIC.datarate;
+  session.dn2_dr = LMIC.dn2Dr;
+  session.rx1_dr_offset = LMIC.rx1DrOffset;
+  session.rx_delay = LMIC.rxDelay;
+  session.adr_tx_pow = LMIC.adrTxPow;
+  session.check = session_check();
+}
+
+static bool session_restore(void)
+{
+  uint8_t rc = PM->RCAUSE.reg;
+  bool cold = (rc & (PM_RCAUSE_POR | PM_RCAUSE_BOD12 | PM_RCAUSE_BOD33)) != 0;
+  if(cold || (session.magic != SESSION_MAGIC) || (session.check != session_check()) || (session.keys != keys_hash()))
+  {
+    return false;
+  }
+  LMIC_setSession(session.netid, session.devaddr, session.nwk_key, session.art_key); //sets the default channels
+  LMIC.seqnoUp = session.seqno_up;
+  LMIC.seqnoDn = session.seqno_dn;
+  LMIC.dn2Freq = session.dn2_freq;
+  memcpy(LMIC.channelFreq, session.channel_freq, sizeof(LMIC.channelFreq)); //incl. the channels of the join accept
+  memcpy(LMIC.channelDrMap, session.channel_dr_map, sizeof(LMIC.channelDrMap));
+  LMIC.channelMap = session.channel_map;
+  LMIC.dn2Dr = session.dn2_dr;
+  LMIC.rx1DrOffset = session.rx1_dr_offset;
+  LMIC.rxDelay = session.rx_delay;
+  LMIC_setDrTxpow(session.datarate, session.adr_tx_pow);
+  return true;
+}
 
 // LMIC key callbacks
 void os_getArtEui(u1_t *buf) { memcpy(buf, joineui, 8); }
@@ -73,6 +147,11 @@ static void print_eui(char *buf, const uint8_t *eui) //LSB first in, MSB first o
   {
     sprintf(buf + 2*i, "%02X", eui[7 - i]);
   }
+}
+
+static uint32_t keys_hash(void)
+{
+  return fnv1a(appkey, 16, fnv1a(joineui, 8, fnv1a(deveui, 8)));
 }
 
 static uint8_t spreading_factor(void)
@@ -117,12 +196,17 @@ static void on_event(void *user, ev_t ev)
     case EV_JOINED:
       join_attempts++;
       state = LORA_JOINED;
-      LMIC_setLinkCheckMode(0);
+      session_save();
       t_next = millis(); //first uplink right away
       break;
     case EV_TXCOMPLETE:
-      uplinks++;
-      t_last = millis();
+      session_save();
+      if(sent_ours)
+      {
+        sent_ours = false;
+        uplinks++;
+        t_last = millis();
+      }
       if(LMIC.dataLen || (LMIC.txrxFlags & (TXRX_DNW1 | TXRX_DNW2)))
       {
         dn_seen = true;
@@ -130,9 +214,10 @@ static void on_event(void *user, ev_t ev)
         dn_snr = LMIC.snr;
       }
       break;
-    case EV_RESET:
-    case EV_LINK_DEAD:
-      state = LORA_JOINING; //LMIC joins again
+    case EV_LINK_DEAD: //no downlink for a long time, even at the lowest data rate: join again (with LMIC's backoff)
+      session.magic = 0;
+      state = LORA_JOINING;
+      LMIC_unjoinAndRejoin();
       break;
     default:
       break;
@@ -185,6 +270,13 @@ void lora_setup(void)
   LMIC_reset();
   LMIC_registerEventCb(on_event, NULL);
   LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100); //no crystal: the RC clock may be off by up to 1 %
+  resumed = session_restore();
+  if(resumed)
+  {
+    state = LORA_JOINED;
+    t_next = millis() + 10000UL; //first uplink once WiFi and MQTT are up
+    return;
+  }
   state = LORA_WAITING;
   t_next = millis() + (unsigned long)(os_getRndU2() % (LORA_JOIN_DELAY * 1000)); //not all devices at once after a power cut
 }
@@ -213,7 +305,7 @@ void lora_service(void)
   {
     uint8_t p[LORA_PAYLOAD];
     payload(p);
-    LMIC_setTxData2(LORA_PORT, p, sizeof(p), 0);
+    sent_ours = (LMIC_setTxData2(LORA_PORT, p, sizeof(p), 0) == 0);
     interval_ms = settings.lora_interval * 1000UL;
     unsigned long fair = airtime_ms() * FAIR_USE_FACTOR;
     if(fair > interval_ms)
@@ -253,7 +345,7 @@ void lora_status(lora_row_fn row, void *ctx)
   }
   if(state == LORA_JOINED)
   {
-    snprintf(v, sizeof(v), "%08lX", (unsigned long)LMIC.devaddr);
+    snprintf(v, sizeof(v), resumed ? "%08lX (session kept over the reset)" : "%08lX", (unsigned long)LMIC.devaddr);
     row(ctx, "DevAddr", v);
     snprintf(v, sizeof(v), "SF%u", spreading_factor());
     row(ctx, "Spreading factor", v);
