@@ -229,13 +229,15 @@ one-off events, which stay listed for `ERROR_HOLD` (1 hour) so a monitoring tool
 The device keeps no history on purpose; that belongs in the monitoring tool. The counters in `diag` are unaffected.
 
 `errors_json()` writes the array into `health_json()`, and any change publishes `<base>/diag` at once. If the array
-doesn't fit its buffer, it ends with `"truncated"`, but all errors together fit the 1 KB buffers.
+doesn't fit its buffer, it ends with `"truncated"`. With the LoRa block in `diag`, that can happen only if most of the
+32 errors are listed at once.
 
 The checks run where the data is: `co2_reading_check()` and `sensors_error_check()` in `sensors`, `wifi_error_check()`
 in `wifi_manager`, `health_error_check()` in `health`, and the boot findings at the end of `setup()`. An SCD4x has no
 `co2_read_failed`, because its read also fails while no new data is ready; `co2_stale` covers that case.
 
-A new error goes into `ERROR_CODE` and `error_names`, in the same position in both, and into the README table. The
+A new error goes into `ERROR_CODE` and `error_names`, in the same position in both, and into the README table. All
+32 bits are in use since `lora_join` (set in `lora_service`), so the next one needs a wider mask. The
 thresholds are starting values that still need a long run to confirm them.
 
 ## CO2 sensor failure

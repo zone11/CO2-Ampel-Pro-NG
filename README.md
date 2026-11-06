@@ -618,6 +618,7 @@ until a restart.
 | `mqtt_publish` | event: a message could not be sent |
 | `net_write_timeout` | event: a network send was given up |
 | `cal_refused`, `cal_failed` | event: the sensor refused the new value, or the readings stayed unstable or out of range for 3 runs |
+| `lora_join` | LoRaWAN is on but has not joined for 30 minutes, or can't join at all because the AppKey or DevEUI is missing |
 
 ## Serial command reference
 

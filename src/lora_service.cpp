@@ -30,6 +30,7 @@ bool lora_radio_found(void)
 #define PORT_CONFIG      3      //downlink with lora.config: 10 xx buzzer off/on, 20 + 5 x u16 CO2 thresholds
 #define LORA_PAYLOAD     10     //bytes, see payload()
 #define LORA_JOIN_DELAY  30     //s, maximum random delay before the first join
+#define JOIN_ERROR_MS    1800000UL //not joined for 30 minutes: lora_join in the errors list
 #define FAIR_USE_FACTOR  2880UL //86400 s / 30 s: interval = airtime * factor stays under 30 s airtime per day
 
 const lmic_pinmap lmic_pins = {
@@ -45,6 +46,7 @@ static lora_state_t state = LORA_OFF;
 static uint8_t deveui[8], joineui[8], appkey[16]; //EUIs LSB first (LMIC), key MSB first
 static bool deveui_from_mac = false;
 static unsigned long t_next = 0, t_last = 0;      //ms: next action (join or uplink), last uplink done
+static unsigned long t_join = 0;                  //ms: since when the device tries to join
 static unsigned long interval_ms = 0;             //current uplink interval incl. the fair use stretch
 static uint32_t uplinks = 0, join_attempts = 0;
 static int16_t dn_rssi = 0, dn_snr = 0;            //last downlink (snr in 0.25 dB)
@@ -180,6 +182,7 @@ static bool downlink(uint8_t port, const uint8_t *d, uint8_t len)
   {
     session.magic = 0;
     state = LORA_JOINING;
+    t_join = millis();
     LMIC_unjoinAndRejoin();
     return true;
   }
@@ -243,6 +246,7 @@ static void on_event(void *user, ev_t ev)
     case EV_JOINED:
       join_attempts++;
       state = LORA_JOINED;
+      error_set(ERR_LORA_JOIN, false);
       session_save();
       t_next = millis(); //first uplink right away
       break;
@@ -270,6 +274,7 @@ static void on_event(void *user, ev_t ev)
     case EV_LINK_DEAD: //no downlink for a long time, even at the lowest data rate: join again (with LMIC's backoff)
       session.magic = 0;
       state = LORA_JOINING;
+      t_join = millis();
       LMIC_unjoinAndRejoin();
       break;
     default:
@@ -298,6 +303,7 @@ void lora_setup(void)
     if((mac[0] | mac[1] | mac[2] | mac[3] | mac[4] | mac[5]) == 0)
     {
       state = LORA_NO_DEVEUI; //no WiFi module: lora.deveui must be set
+      error_set(ERR_LORA_JOIN, settings.lora_enabled); //can never join
       return;
     }
     const uint8_t eui[8] = { mac[0], mac[1], mac[2], 0xFE, 0xFF, mac[3], mac[4], mac[5] }; //EUI-64 from MAC-48 (FFFE), LSB first
@@ -316,6 +322,7 @@ void lora_setup(void)
   if(!parse_hex(settings.lora_appkey, appkey, 16, false))
   {
     state = LORA_NO_APPKEY;
+    error_set(ERR_LORA_JOIN, true); //can never join
     return;
   }
 
@@ -331,6 +338,7 @@ void lora_setup(void)
     return;
   }
   state = LORA_WAITING;
+  t_join = millis();
   t_next = millis() + (unsigned long)(os_getRndU2() % (LORA_JOIN_DELAY * 1000)); //not all devices at once after a power cut
 }
 
@@ -342,6 +350,10 @@ void lora_service(void)
   }
   phase_set(PHASE_LORA);
   os_runloop_once();
+  if((state != LORA_JOINED) && ((millis() - t_join) > JOIN_ERROR_MS))
+  {
+    error_set(ERR_LORA_JOIN, true); //cleared by EV_JOINED
+  }
   if(dn_port != 0)
   {
     uint8_t port = dn_port;

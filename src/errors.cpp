@@ -16,7 +16,7 @@ static const char *const error_names[ERR_COUNT] =
   "settings_lost", "settings_newer", "ram_low", "loop_slow",
   "wifi_lost", "wifi_reconnects", "wifi_weak", "setup_network",
   "mqtt_reconnects", "mqtt_connect", "mqtt_publish", "net_write_timeout",
-  "cal_refused", "cal_failed",
+  "cal_refused", "cal_failed", "lora_join",
 };
 
 static uint32_t active = 0, written = 0;
