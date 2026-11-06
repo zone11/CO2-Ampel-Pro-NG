@@ -288,7 +288,7 @@ const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decima
     case CFG_U32:
     case CFG_COLOR:
       {
-        uint32_t parsed = 0;
+        uint32_t parsed = 0, old = 0;
         if(!parse_u32(value, &parsed, (item->type == CFG_COLOR) && !decimal))
         {
           return "Invalid number";
@@ -300,6 +300,7 @@ const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decima
             return "Out of range";
           }
         }
+        memcpy(&old, item->ptr, (item->type == CFG_U8) ? 1 : (item->type == CFG_U16) ? 2 : 4);
         if(item->type == CFG_U8)
         {
           *(uint8_t *)item->ptr = (uint8_t)parsed;
@@ -312,8 +313,13 @@ const char *cfg_set_value(const cfg_item_t *item, const char *value, bool decima
         {
           *(uint32_t *)item->ptr = (uint32_t)parsed;
         }
+        if(item->apply && !item->apply(user, item)) //apply rejects the value (e.g. co2.t1..t5 out of order): keep the old one
+        {
+          memcpy(item->ptr, &old, (item->type == CFG_U8) ? 1 : (item->type == CFG_U16) ? 2 : 4);
+          return "Conflicts with other settings";
+        }
+        return NULL;
       }
-      break;
     case CFG_BOOL:
       {
         bool b = false;

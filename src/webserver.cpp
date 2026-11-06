@@ -6,6 +6,7 @@
 #include "mqtt_service.h"
 #include "system_control.h"
 #include "calibration.h"
+#include "json_parser.h"
 
 #include <ctype.h>
 
@@ -246,15 +247,68 @@ static void page_head(Print &out, const char *page, const char *extra)
             "<link rel=icon href='data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA='>\r\n"
             "<style>body{font-family:Lato,sans-serif;padding:10px;max-width:42em}"
             "label{display:inline-block;width:14em}fieldset{margin-bottom:10px}"
-            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}</style>\r\n");
+            "input,select{margin:2px 0}textarea{width:100%}pre{white-space:pre-wrap}"
+            ".msg{border:2px solid #2a2;border-radius:4px;padding:8px 10px;margin-bottom:10px}.msg.err{border-color:#c22}</style>\r\n");
   out.print(extra);
   out.print("</head><body>\r\n<h2>");
   page_title(out, page);
   out.print("</h2>\r\n");
 }
 
+// One line of the result box per reply value ("errors.co2.t2" -> "co2.t2: Out of range")
+static bool result_line(void *user, const char *key, json_type_t type, const char *value)
+{
+  Print &out = *(Print *)user;
+  bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
+  if(strcmp(key, "result") == 0)                     { return true; }
+  else if(strcmp(key, "saved") == 0)                 { if(on) { out.print("Settings saved"); } }
+  else if(strcmp(key, "restart") == 0)               { out.print("Restarting, reload the page in a few seconds"); }
+  else if(strcmp(key, "calibration") == 0)
+  {
+    out.print("Calibration");
+    out.print(on ? " started" : ": ");
+    if(!on) { print_html(out, value); }
+  }
+  else if(strncmp(key, "errors.", 7) == 0)
+  {
+    if(strncasecmp(value, key + 7, strlen(key + 7)) != 0) //no prefix when the message already names it ("CO2 thresholds ...")
+    {
+      print_html(out, key + 7);
+      out.print(": ");
+    }
+    print_html(out, value);
+  }
+  else if(strncmp(key, "warnings.", 9) == 0)         { out.print("Warning, "); print_html(out, key + 9); out.print(": "); print_html(out, value); }
+  else                                               { print_html(out, key); out.print(": "); print_html(out, value); }
+  out.print("<br/>");
+  return true;
+}
+
+// Reply of a config action as a box: green outline for OK, red for an error; ok_text = first line on success
+static void print_result(Print &out, const char *result, const char *ok_text)
+{
+  bool ok = strstr(result, "\"result\":\"OK\"") != NULL;
+  char text[640], err[32]; //result is at most 400 bytes, escaping can make it longer
+  BufPrint lines(text, sizeof(text)); //parsed first, so a reply the parser refuses is shown raw instead of half
+  out.print(ok ? "<div class=msg role=status>" : "<div class='msg err' role=alert><b>Error, nothing changed</b><br/>");
+  if(ok && ok_text)
+  {
+    out.print(ok_text);
+    out.print("<br/>");
+  }
+  if(json_parse(result, result_line, &lines, err, sizeof(err)))
+  {
+    out.print((ok && !ok_text && (lines.length() == 0)) ? "Done" : text);
+  }
+  else
+  {
+    print_html(out, result);
+  }
+  out.print("</div>\r\n");
+}
+
 // GET /config: all settings as a form (from the key table), JSON upload/download, restart
-static void config_page(WiFiClient &client, const char *result)
+static void config_page(WiFiClient &client, const char *result, const char *ok_text = NULL)
 {
   ChunkPrint out(client);
   bool pw = settings_password_set();
@@ -265,9 +319,7 @@ static void config_page(WiFiClient &client, const char *result)
             "r.readAsText(i.files[0]);}</script>\r\n");
   if((result != NULL) && result[0])
   {
-    out.print("<pre>");
-    print_html(out, result);
-    out.print("</pre>\r\n");
+    print_result(out, result, ok_text);
   }
   if(pw)
   {
@@ -325,7 +377,8 @@ static void config_page(WiFiClient &client, const char *result)
   {
     out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calibrate onsubmit='pw(this)'><input type=hidden name=_pw>"
               "<p>Only with the device in fresh air for at least 2 minutes: it sets the current reading to 400 ppm. "
-              "Takes 3 minutes or more; the device stays online.</p>"
+              "Usually takes 3 to 15 minutes; the device stays online. Readings outside 200-800 ppm leave the sensor unchanged.</p>"
+              "<p><label><input type=checkbox name=force value=1> Force (badly drifted sensor: sets it even when out of range)</label></p>"
               "<input type=submit value='Start calibration'></form>\r\n");
   }
 
@@ -390,7 +443,7 @@ static void main_page(WiFiClient &client)
     row(out, "Pressure sensor temperature", v);
   }
   snprintf(v, sizeof(v), "%u", light_value);
-  row(out, "Light", (light_value < 1024) ? v : "--"); //1024 = no reading yet
+  row(out, "Light", (light_value != LIGHT_NONE) ? v : "--");
   out.print("</fieldset>\r\n");
 
   //WiFi
@@ -594,6 +647,8 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
 
   if(strcmp(path, "calibrate") == 0)
   {
+    const char *f = form_value(&form, "force");
+    bool force = (f != NULL) && (strcmp(f, "1") == 0);
     free(body);
     if(!calibration_allowed())
     {
@@ -606,7 +661,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
     else if(calibration_available())
     {
       res.print("{\"result\":\"OK\",\"calibration\":true}");
-      calibration_start(false);
+      calibration_start(false, force);
     }
     else
     {
@@ -619,7 +674,7 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
   {
     free(body);
     calibration_abort();
-    res.print("{\"result\":\"OK\"}");
+    res.print("{\"result\":\"OK\",\"calibration\":\"aborted\"}");
     return false;
   }
 
@@ -801,7 +856,16 @@ void webserver_service(void)
           {
             n += sprintf(buf + n, " \"p\": %s,\r\n \"u\": %s,\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
-          sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
+          if(light_value != LIGHT_NONE) //no reading in the first minute
+          {
+            n += sprintf(buf + n, " \"l\": %u,\r\n", light_value);
+          }
+          if(buf[n-3] == ',') //no comma after the last value
+          {
+            n -= 3;
+            n += sprintf(buf + n, "\r\n");
+          }
+          sprintf(buf + n, "}\r\n");
           client.print(buf);
         }
         else if(strncmp(req, "GET /diag", 9) == 0) //health JSON
@@ -831,7 +895,8 @@ void webserver_service(void)
           snprintf(path, sizeof(path), "%.*s", (int)((n < sizeof(path)) ? n : sizeof(path) - 1), p);
           if(!config_post(client, path, content_length, result, sizeof(result)))
           {
-            config_page(client, result);
+            bool saved = (strcmp(path, "save") == 0) || (strcmp(path, "import") == 0); //both always save on success
+            config_page(client, result, saved ? "Settings saved" : NULL);
           }
         }
         else if(strncmp(req, "GET /favicon", 12) == 0) //favicon

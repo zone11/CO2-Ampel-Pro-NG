@@ -164,7 +164,7 @@ void altitude_toffset(void) //altitude and temperature offset
 // Service menu: runs before the network starts, so nothing else needs loop() here
 static void calibration_menu(void)
 {
-  calibration_start(true);
+  calibration_start(true, false);
   while(calibration_running())
   {
     watchdog_feed(); //calibration takes several minutes

@@ -9,9 +9,9 @@
 #define CALIBRATION_SECONDS 180
 #define RESULT_SHOW_MS      3000
 
-typedef enum { CAL_NONE, CAL_OK, CAL_FAILED, CAL_REFUSED, CAL_ABORTED } CAL_RESULT;
+typedef enum { CAL_NONE, CAL_OK, CAL_FAILED, CAL_UNCHANGED, CAL_REFUSED, CAL_ABORTED } CAL_RESULT;
 
-static bool running = false, from_menu = false;
+static bool running = false, from_menu = false, forced = false;
 static CAL_RESULT result = CAL_NONE;
 static unsigned int runs = 0, cycle = 0, again = 0, co2_last = 0;
 static unsigned long t_result = 0;
@@ -51,9 +51,10 @@ bool calibration_available(void)
   return (features & (FEATURE_SCD30 | FEATURE_SCD4X)) != 0;
 }
 
-void calibration_start(bool menu)
+void calibration_start(bool menu, bool force)
 {
   from_menu = menu;
+  forced = force;
   running = true;
   result = CAL_NONE;
   runs = cycle = again = 0;
@@ -124,19 +125,27 @@ void calibration_reading(void)
     return;
   }
 
-  if(!co2_force_recalibration()) //an unstable run applies it too, as in the original firmware
+  bool stable = (again == 0); //ended on readings within 200-800 ppm and +/-30 ppm
+  if((stable || forced) && !co2_force_recalibration()) //forced: an unstable run applies it too, as in the original firmware
   {
     error_event(ERR_CAL_REFUSED);
     finish(CAL_REFUSED, COLOR_RED, "Calibration failed: the sensor refused the new value");
   }
-  else if(again == 0)
+  else if(stable)
   {
     finish(CAL_OK, COLOR_BLUE, "Calibration OK");
   }
   else if(++runs >= CALIBRATION_RUNS)
   {
     error_event(ERR_CAL_FAILED);
-    finish(CAL_FAILED, COLOR_RED, "Calibration failed: readings not stable");
+    if(forced)
+    {
+      finish(CAL_FAILED, COLOR_RED, "Calibration failed: readings not stable");
+    }
+    else
+    {
+      finish(CAL_UNCHANGED, COLOR_RED, "Calibration failed: readings outside 200-800 ppm or not stable, sensor not changed");
+    }
   }
   else
   {
@@ -158,7 +167,7 @@ bool calibration_status(char *buf, size_t len)
 {
   if(running)
   {
-    snprintf(buf, len, "running, step %u of %u, run %u of %u", cycle, cycles(), runs + 1, CALIBRATION_RUNS);
+    snprintf(buf, len, "running, step %u of %u, run %u of %u%s", cycle, cycles(), runs + 1, CALIBRATION_RUNS, forced ? ", forced" : "");
     return true;
   }
   if(result == CAL_NONE)
@@ -166,6 +175,7 @@ bool calibration_status(char *buf, size_t len)
     return false;
   }
   snprintf(buf, len, "%s", (result == CAL_OK) ? "OK" : (result == CAL_FAILED) ? "failed, readings not stable" :
+           (result == CAL_UNCHANGED) ? "failed, out of range or unstable, not set" :
            (result == CAL_REFUSED) ? "failed, sensor refused the new value" : "aborted");
   return true;
 }

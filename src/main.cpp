@@ -56,7 +56,7 @@ MQTTClient mqttClient(256, 1536);
 #endif
 
 unsigned int features=0, remote_on=0, buzzer_timer=BUZZER_DELAY;
-unsigned int co2_value=CO2_START, co2_average=CO2_START, light_value=1024;
+unsigned int co2_value=CO2_START, co2_average=CO2_START, light_value=LIGHT_NONE;
 float temp_value=20, temp_offset=TEMP_OFFSET, humi_value=50, pres_value=1013, pres_last=1013, temp2_value=20;
 bool co2_valid=false, pres_valid=false; //start values above are no readings (not published)
 

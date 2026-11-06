@@ -67,11 +67,13 @@
 #define BRIGHTNESS_DARK    20  //1-255 (255=100%, 25=10%)
 #define BRIGHTNESS_AUTO    1   //1 = dim with the light sensor (led.auto)
 #define BRIGHTNESS_MENU    30  //brightness with "enable" and in the service menu
+#define ENABLE_TIMEOUT     600000UL //ms without a serial line until "enable" ends on its own
 #define NUM_LEDS           4   //number of LEDs
 
 //--- Light sensor ---
 #define LIGHT_DARK         20  //<20 -> dark
 #define LIGHT_INTERVAL     10  //10-120min (sensor check)
+#define LIGHT_NONE         1024 //light_value before the first reading (the ADC gives 0-1023)
 #define LIGHT_LEDS_OFF_MS  3   //ms LEDs off before the reading (sensor reacts immediately)
 
 //--- General ---

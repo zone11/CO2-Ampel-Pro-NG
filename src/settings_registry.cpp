@@ -44,6 +44,15 @@ static bool apply_name(void *user, const cfg_item_t *item)
   return true;
 }
 
+static bool import_running = false; //an import checks the order once at the end, so all five can move together
+
+static bool apply_threshold(void *user, const cfg_item_t *item)
+{
+  (void)user;
+  (void)item;
+  return import_running || settings_thresholds_ordered(&settings);
+}
+
 static bool on_save_settings(void *user)
 {
   (void)user;
@@ -58,11 +67,11 @@ static const cfg_item_t settings_items[] =
   { "sys.buzzer",       CFG_BOOL,  &settings.buzzer,         0, 0, 0, apply_buzzer, 0 },
   { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },
   { "sys.nobuttons",    CFG_BOOL,  &settings.nobuttons,      0, 0, 0, NULL, 0 },
-  { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL, 0 },
-  { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL, 0 },
-  { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL, 0 },
-  { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, NULL, 0 },
-  { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, NULL, 0 },
+  { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, apply_threshold, 0 },
+  { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, apply_threshold, 0 },
+  { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, apply_threshold, 0 },
+  { "co2.t4",           CFG_U32,   &settings.range[3],       400, 10000, 0, apply_threshold, 0 },
+  { "co2.t5",           CFG_U32,   &settings.range[4],       400, 10000, 0, apply_threshold, 0 },
   { "co2.asc",          CFG_BOOL,  &settings.asc,            0, 0, 0, apply_asc, 0 },
   { "led.brightness",   CFG_U32,   &settings.brightness,     1, 255, 0, apply_brightness, 0 },
   { "led.brightness_dark", CFG_U32, &settings.brightness_dark, 1, 255, 0, apply_brightness, 0 },
@@ -207,7 +216,7 @@ typedef struct
   bool control_only;
   bool save;
   bool do_export;
-  int calibrate; //1 = start, -1 = abort
+  int calibrate; //1 = start, 2 = start forced, -1 = abort
   const SETTINGS *before;
   JsonPairs errors;
   JsonPairs warnings;
@@ -240,11 +249,12 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
     }
     else if(cal)
     {
-      if(type != JSON_BOOL)                  { ic->errors.add(key, "Invalid value"); }
-      else if(!on)                           { ic->calibrate = -1; }
+      bool force = (type == JSON_STRING) && (strcmp(value, "force") == 0);
+      if((type != JSON_BOOL) && !force)      { ic->errors.add(key, "Invalid value"); }
+      else if(!on && !force)                 { ic->calibrate = -1; }
       else if(!calibration_available())      { ic->errors.add(key, "No CO2 sensor"); }
       else if(calibration_running())         { ic->errors.add(key, "Already running"); }
-      else                                   { ic->calibrate = 1; }
+      else                                   { ic->calibrate = force ? 2 : 1; }
     }
     else if(strcmp(key, "save") == 0)   { ic->save = on; }
     else if(strcmp(key, "export") == 0) { ic->do_export = on; }
@@ -307,9 +317,18 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   {
     ic.errors.add("enable", "Not enabled (send 'enable' first)");
   }
-  else if(!json_parse(json, import_value, &ic, err, sizeof(err)))
+  else
   {
-    ic.errors.add("json", err);
+    import_running = true;
+    if(!json_parse(json, import_value, &ic, err, sizeof(err)))
+    {
+      ic.errors.add("json", err);
+    }
+    import_running = false;
+    if(ic.errors.empty() && !settings_thresholds_ordered(&settings))
+    {
+      ic.errors.add("co2", "CO2 thresholds out of order (co2.t1 <= co2.t2 <= co2.t3 <= co2.t4 <= co2.t5)");
+    }
   }
 
   bool ok = ic.errors.empty();
@@ -344,7 +363,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   }
   if(ok && (ic.calibrate > 0))
   {
-    calibration_start(false);
+    calibration_start(false, ic.calibrate == 2);
   }
   else if(ok && (ic.calibrate < 0))
   {

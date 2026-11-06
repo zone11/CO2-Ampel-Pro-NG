@@ -149,9 +149,26 @@ static bool read_line(char *buf, size_t size)
   return false;
 }
 
+static unsigned long t_line = 0; //last serial line, ends "enable" after ENABLE_TIMEOUT
+
+static void enable_end(void)
+{
+  remote_on = 0;
+  led_brightness_update();
+}
+
 void serial_service(void)
 {
   static char line_buf[192];
+
+  if(remote_on && ((millis() - t_line) > ENABLE_TIMEOUT)) //cable pulled or monitor closed without "exit"
+  {
+    enable_end();
+    if(features & FEATURE_USB)
+    {
+      Serial.println("enable ended: no input for 10 minutes");
+    }
+  }
 
   if((features & FEATURE_USB) == 0)
   {
@@ -168,6 +185,7 @@ void serial_service(void)
   {
     return;
   }
+  t_line = millis();
 
   char *line = line_buf;
   while(*line && isspace((unsigned char)*line))
@@ -194,8 +212,7 @@ void serial_service(void)
   }
   if(strcasecmp(line, "exit") == 0)
   {
-    remote_on = 0;
-    led_brightness_update();
+    enable_end();
     Serial.println("OK");
     return;
   }
@@ -253,7 +270,7 @@ void serial_service(void)
     i2c_scan(Wire1, "Wire1 (SERCOM2)", Serial);
     return;
   }
-  if(strcasecmp(line, "calibrate") == 0)
+  if((strcasecmp(line, "calibrate") == 0) || (strcasecmp(line, "calibrate force") == 0))
   {
     if(!remote_on)
     {
@@ -270,7 +287,7 @@ void serial_service(void)
     else
     {
       Serial.println("OK, 'calibrate abort' stops it");
-      calibration_start(false);
+      calibration_start(false, line[9] != 0);
     }
     return;
   }
