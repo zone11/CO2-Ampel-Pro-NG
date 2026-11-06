@@ -327,7 +327,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
     import_running = false;
     if(ic.errors.empty() && !settings_thresholds_ordered(&settings))
     {
-      ic.errors.add("co2", "Thresholds out of order (co2.t1 <= co2.t2 <= co2.t3 <= co2.t4 <= co2.t5)");
+      ic.errors.add("co2", "CO2 thresholds out of order (co2.t1 <= co2.t2 <= co2.t3 <= co2.t4 <= co2.t5)");
     }
   }
 

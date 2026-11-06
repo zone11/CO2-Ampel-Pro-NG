@@ -269,7 +269,15 @@ static bool result_line(void *user, const char *key, json_type_t type, const cha
     out.print(on ? " started" : ": ");
     if(!on) { print_html(out, value); }
   }
-  else if(strncmp(key, "errors.", 7) == 0)           { print_html(out, key + 7); out.print(": "); print_html(out, value); }
+  else if(strncmp(key, "errors.", 7) == 0)
+  {
+    if(strncasecmp(value, key + 7, strlen(key + 7)) != 0) //no prefix when the message already names it ("CO2 thresholds ...")
+    {
+      print_html(out, key + 7);
+      out.print(": ");
+    }
+    print_html(out, value);
+  }
   else if(strncmp(key, "warnings.", 9) == 0)         { out.print("Warning, "); print_html(out, key + 9); out.print(": "); print_html(out, value); }
   else                                               { print_html(out, key); out.print(": "); print_html(out, value); }
   out.print("<br/>");
