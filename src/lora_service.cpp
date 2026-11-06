@@ -177,7 +177,7 @@ static unsigned long airtime_ms(void)
 }
 
 // Interval from the current data rate; again after each TX, as an ADR downlink may have changed it
-static void schedule_uplink(void)
+static void calc_interval(void)
 {
   set_ms = settings.lora_interval * 1000UL;
   interval_ms = set_ms;
@@ -186,6 +186,11 @@ static void schedule_uplink(void)
   {
     interval_ms = fair;
   }
+}
+
+static void schedule_uplink(void)
+{
+  calc_interval();
   t_next = t_queued + interval_ms;
 }
 
@@ -263,11 +268,12 @@ static void on_event(void *user, ev_t ev)
       state = LORA_JOINED;
       error_set(ERR_LORA_JOIN, false);
       session_save();
+      calc_interval(); //shown in status before the first uplink
       t_next = millis(); //first uplink right away
       break;
     case EV_TXCOMPLETE:
       session_save();
-      if((state == LORA_JOINED) && interval_ms)
+      if((state == LORA_JOINED) && (sent_ours || uplinks)) //t_queued is set
       {
         schedule_uplink();
       }
@@ -353,6 +359,7 @@ void lora_setup(void)
   if(resumed)
   {
     state = LORA_JOINED;
+    calc_interval();
     t_next = millis() + 10000UL; //first uplink once WiFi and MQTT are up
     return;
   }
@@ -450,7 +457,15 @@ void lora_status(lora_row_fn row, void *ctx)
       strcpy(v, "0");
     }
     row(ctx, "Uplinks", v);
-    snprintf(v, sizeof(v), "in %ld s (every %lu s)", (long)(t_next - millis()) / 1000L, interval_ms / 1000UL);
+    long left = (long)(t_next - millis()) / 1000L; //negative while a blocking WiFi/MQTT connect holds up lora_service()
+    if(left < 0)
+    {
+      snprintf(v, sizeof(v), "now (every %lu s)", interval_ms / 1000UL);
+    }
+    else
+    {
+      snprintf(v, sizeof(v), "in %ld s (every %lu s)", left, interval_ms / 1000UL);
+    }
     row(ctx, "Next uplink", v);
     if(interval_ms > set_ms)
     {
