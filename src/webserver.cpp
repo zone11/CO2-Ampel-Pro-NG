@@ -595,7 +595,8 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
 
   if(strcmp(path, "calibrate") == 0)
   {
-    bool force = (strncmp(body, "force=1", 7) == 0) || (strstr(body, "&force=1") != NULL);
+    const char *f = form_value(&form, "force");
+    bool force = (f != NULL) && (strcmp(f, "1") == 0);
     free(body);
     if(!calibration_allowed())
     {
