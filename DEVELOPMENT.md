@@ -131,6 +131,11 @@ counter.
 Settings written by a newer firmware are left alone after a downgrade. The older firmware runs with defaults until
 you `save`, and going back to the newer firmware finds the original settings again.
 
+The current format is version 9 (1.0): it adds the `lora.*` keys, `lora.config` and `wifi.enabled` after the
+468 bytes of version 8, so a version 8 record loads with their defaults (LoRaWAN off, WiFi on). Going back from 1.0 to
+0.9.x therefore means defaults on the older firmware, WiFi settings included, until the device is set up again or
+flashed back.
+
 The default `sys.name` is worked out at runtime and never stored, so an exported settings file doesn't carry one
 device's MAC address to another. The hostname keeps only letters, digits and `-`; other characters become `-`, and it
 is cut at 32 characters.

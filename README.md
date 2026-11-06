@@ -48,10 +48,12 @@ How to build your own variant, the code structure and the internals are in [DEVE
 ## What you need
 
 - A Watterott CO2-Ampel Pro with a CO2 sensor (SCD30 or SCD4x), a pressure sensor (LPS22HB or BMP280) and the WiFi
-  module. The firmware finds the fitted parts at start. It has been tested on a Pro with SCD30 and LPS22HB.
+  module, the LoRa radio (RFM95) or both. The firmware finds the fitted parts at start. It has been tested on a Pro
+  with SCD30, LPS22HB, WiFi module and LoRa radio.
 - A USB cable and a computer with [PlatformIO](https://platformio.org/install), either the command line tool or the
   VS Code extension.
 - For MQTT, a broker. The Mosquitto add-on of Home Assistant works.
+- For LoRaWAN, an account at The Things Network and a TTN gateway in range.
 
 ## Installation and updates
 
@@ -89,8 +91,8 @@ makes them risky:
 - A power cut or a hang during that final copy, which takes a few seconds, leaves a half-written application. The
   bootloader knows nothing about the image in the upper half, so the device no longer starts and has to be flashed
   again over USB. A device mounted on a wall or in a public place stays dead until someone fetches it.
-- Both images have to fit side by side, which limits the firmware to about 120 KB (it is about 100 KB today) and leaves
-  little room for LoRaWAN.
+- Both images have to fit side by side, which limits the firmware to about 120 KB. With LoRaWAN it is about 119 KB
+  today, so there is no room left for any growth.
 
 A custom bootloader that finishes an interrupted copy on the next start would remove the power-cut risk. A bug in that
 bootloader, though, could only be fixed over USB, on every device.
@@ -248,8 +250,8 @@ means nothing was changed, and the box names the setting and the reason.
 Over MQTT, if `mqtt.config=1` allows it: JSON on `<base>/cmd`, see [Remote configuration](#remote-configuration).
 
 Numbers can be decimal or hex with `0x`. Colors are hex RGB (`FF7F00`, `0xFF7F00` or `#ff7f00`). On and off can be
-written as `1/0`, `on/off` or `true/false`. A change applies right away, except for the WiFi and MQTT connection
-settings, which apply after `reset`. Without `save`, a change lasts until the next restart.
+written as `1/0`, `on/off` or `true/false`. A change applies right away, except for the WiFi, MQTT and LoRaWAN
+connection settings, which apply after `reset`. Without `save`, a change lasts until the next restart.
 
 ### All settings
 
@@ -267,6 +269,7 @@ settings, which apply after `reset`. Without `save`, a change lasts until the ne
 | `led.brightness_dark` | 20 | LED brightness in the dark, 1 to 255 |
 | `led.auto` | 1 | dim in the dark |
 | `led.color.t1` … `led.color.t4` | 007CB0, 00FF00, FF7F00, FF0000 | colors below `co2.t1`, up to `co2.t2`, up to `co2.t3`, from `co2.t3` |
+| `wifi.enabled` | 1 | WiFi on. 0 turns the WiFi module off for a device that only uses LoRaWAN |
 | `wifi.ssid`, `wifi.pass` | empty | WiFi network and password |
 | `mqtt.enabled` | 0 | MQTT on |
 | `mqtt.broker` | empty | broker host name or IP address (with TLS, the name in the certificate) |
@@ -278,7 +281,6 @@ settings, which apply after `reset`. Without `save`, a change lasts until the ne
 | `mqtt.ha` | 0 | Home Assistant discovery |
 | `mqtt.config` | 0 | allow configuration over MQTT |
 | `mqtt.interval` | 60 | seconds between two MQTT messages (10 to 3600) |
-| `wifi.enabled` | 1 | WiFi on. 0 turns the WiFi module off for a device that only uses LoRaWAN |
 | `lora.enabled` | 0 | LoRaWAN on, see [LoRaWAN](#lorawan-the-things-network) |
 | `lora.deveui` | empty | DevEUI, 16 hex digits. Empty means it is made from the WiFi MAC address |
 | `lora.joineui` | `0000000000000000` | JoinEUI (AppEUI), 16 hex digits |
@@ -289,7 +291,7 @@ settings, which apply after `reset`. Without `save`, a change lasts until the ne
 Passwords and the AppKey never appear over MQTT or on the web pages. The WiFi, MQTT and LoRaWAN connection settings
 (`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`, `lora.*` except `lora.interval`) and `sys.password`
 can only be changed over USB serial or the web page, so a mistake over MQTT can't cut the device off the network.
-The LoRaWAN settings apply after a restart.
+The LoRaWAN settings apply after a restart, except `lora.interval`, which counts from the next message.
 
 ### Password
 
@@ -336,8 +338,8 @@ In `/json`, `c` is CO2 (ppm), `t` temperature (°C), `h` humidity (%), `p` press
 the pressure sensor (°C) and `l` the light sensor (0 to 1023). `p` and `u` only appear with a pressure sensor, `c`,
 `t` and `h` only with a working CO2 sensor, and `l` only after the first light reading, 1 minute after the start.
 
-"Save" on the configuration page stores the changes at once, all or nothing. WiFi and MQTT changes apply after the
-restart button.
+"Save" on the configuration page stores the changes at once, all or nothing. WiFi, MQTT and LoRaWAN changes apply
+after the restart button.
 
 ## MQTT and Home Assistant
 
@@ -387,9 +389,9 @@ With `mqtt.ha=1`, Home Assistant (with the MQTT integration) creates a device na
 entities CO2, Temperature, Humidity, Light and, with a pressure sensor, Pressure, plus a switch "Quiet" and these
 diagnostic entities: Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase, Free RAM
 minimum, Errors and Longest loop. Devices with the LoRa radio also get LoRaWAN (state), LoRaWAN spreading factor,
-LoRaWAN last uplink (seconds ago), LoRaWAN downlink signal and LoRaWAN downlink SNR; these report over WiFi and
-MQTT, so they show whether LoRaWAN works while the device is also on WiFi. While the device is offline they show "unavailable"; after a power loss or a hang
-that can take up to 45 seconds. `mqtt.ha=0` removes them again.
+LoRaWAN last uplink (seconds ago), LoRaWAN downlink signal and LoRaWAN downlink SNR. These come over WiFi and MQTT,
+so they show whether LoRaWAN works on a device that is also on WiFi. While the device is offline the entities show
+"unavailable"; after a power loss or a hang that can take up to 45 seconds. `mqtt.ha=0` removes them again.
 
 If you move a device to another room, change `sys.name`. The device name in Home Assistant follows at once, and the
 entity IDs stay the same (e.g. `sensor.co2ampel_ng_f8f0056e78a2_co2`), so dashboards and automations keep working.
@@ -425,7 +427,7 @@ mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"export":true}'     
 ```
 
 Anyone allowed to publish to `<base>/cmd` can change settings, so restrict it with the broker's access rules and use
-TLS. The WiFi and MQTT connection settings and `sys.password` are refused over MQTT. Only JSON is accepted; send the
+TLS. The WiFi, MQTT and LoRaWAN connection settings and `sys.password` are refused over MQTT. Only JSON is accepted; send the
 next command after the reply has arrived. Every `"save":true` writes the flash, so don't save from automations that
 run over and over.
 
@@ -474,8 +476,9 @@ shows nothing about LoRaWAN.
    too.
 
 After the restart the device waits a random time of up to 30 seconds and joins. `status` shows "joined", the device
-address, the spreading factor and when the next message goes out. After a restart, a firmware update or a watchdog
-reset it keeps its session and carries on without joining again. Only after a power cut does it join anew.
+address, the spreading factor and when the next message goes out. After a restart or a watchdog reset it keeps its
+session and carries on without joining again, and usually after a firmware update too. After a power cut it joins
+anew.
 
 ### What the device sends
 
@@ -532,8 +535,9 @@ from your broker to TTN's and MQTT sensors that read `uplink_message.decoded_pay
 ### Without WiFi
 
 `wifi.enabled=0` turns the WiFi module off. The device then has no web page, no MQTT and no setup network and only
-sends over LoRaWAN. Settings are changed over the USB serial port, or with `co2ampel_tool.py provision` and a JSON
-file (see [Backup, restore and provisioning](#backup-restore-and-provisioning)). Set it back with
+sends over LoRaWAN. Settings are changed over the USB serial port, or with `co2ampel_tool.py import` and a JSON file
+(see [Backup, restore and provisioning](#backup-restore-and-provisioning)). `provision` doesn't fit such a device, it
+checks the MQTT connection. Set it back with
 `set wifi.enabled=1`, `save`, `reset`.
 
 ## Backup, restore and provisioning
@@ -576,6 +580,7 @@ device and reports whether MQTT connects. An example `site.json`:
 | Nothing appears in Home Assistant | Check `mqtt.ha=1` and the broker's access rules (see [Home Assistant](#home-assistant)). |
 | Upload fails with "Resource busy" | A serial monitor still has the port open. Close it. |
 | Device doesn't show up on USB | Plug it in directly, without a hub. Press the red reset button twice quickly for the bootloader. |
+| LoRaWAN doesn't join | `status` shows the state. "no AppKey" or "no DevEUI": set `lora.appkey` or `lora.deveui`. Stuck at "joining": compare DevEUI, JoinEUI and AppKey with the TTN console and check that the TTN console shows the join requests; if it shows none, no gateway is in range. After 30 minutes `lora_join` appears in the errors list. |
 | Device restarts by itself | See below. |
 
 ### Restarts and diagnostics
@@ -604,6 +609,7 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
 | `co2_failures` | how often the CO2 sensor stopped sending readings since start |
 | `errors` | what is wrong right now, see below. `[]` means nothing |
+| `lora` | only with the LoRa radio: `state` (`off`, `no AppKey`, `no DevEUI`, `waiting to join`, `joining`, `joined`), `deveui`, `joineui`, `plan`, `devaddr`, `join_attempts`, `uplinks`, `uplink_age` (seconds, -1 = none yet), `sf` (spreading factor), `interval` (seconds actually used), `rssi`/`snr` of the last downlink (0 = none yet) |
 | `pressure_offset` | normally 0. Any other value means the pressure sensor had an offset set that shifted its readings, and the device cleared it (256 = 16 hPa). Please open an issue |
 
 The `last_*` values survive restarts but not a power loss, so read them before you unplug the device. If it keeps
@@ -654,7 +660,7 @@ USB serial, 9600 baud. Lines may end with CR, LF or CRLF.
 ```
 enable [password]  allow changes (LEDs violet, traffic light paused until exit or 10 minutes without input)
 exit               leave enable mode
-status             readings, sensors, LEDs, calibration, WiFi and MQTT status
+status             readings, sensors, LEDs, calibration, WiFi, MQTT and LoRaWAN status
 diag               diagnostics as JSON
 version            firmware version
 get <key>          read a setting (get co2.* reads a group)
