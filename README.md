@@ -386,7 +386,9 @@ retained messages under the old prefix.
 With `mqtt.ha=1`, Home Assistant (with the MQTT integration) creates a device named after `sys.name`. It gets the
 entities CO2, Temperature, Humidity, Light and, with a pressure sensor, Pressure, plus a switch "Quiet" and these
 diagnostic entities: Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase, Free RAM
-minimum, Errors and Longest loop. While the device is offline they show "unavailable"; after a power loss or a hang
+minimum, Errors and Longest loop. Devices with the LoRa radio also get LoRaWAN (state), LoRaWAN spreading factor,
+LoRaWAN last uplink (seconds ago), LoRaWAN downlink signal and LoRaWAN downlink SNR; these report over WiFi and
+MQTT, so they show whether LoRaWAN works while the device is also on WiFi. While the device is offline they show "unavailable"; after a power loss or a hang
 that can take up to 45 seconds. `mqtt.ha=0` removes them again.
 
 If you move a device to another room, change `sys.name`. The device name in Home Assistant follows at once, and the

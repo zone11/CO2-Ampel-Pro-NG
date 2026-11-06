@@ -202,6 +202,19 @@ static const HA_ENTITY ha_entities[] =
   { "errors",        "Errors",                      "diag",    NULL,                   NULL,  true,  0, true,
     "{{ value_json.errors|length }}\",\"json_attributes_topic\":\"%s/diag\",\"json_attributes_template\":\"{{ {'errors': value_json.errors}|tojson }}" },
   { "loop_max_ms",   "Longest loop",                "diag",    "duration",             "ms",  true,  0, false },
+#if WITH_LORA
+  //from the "lora" block of diag; no value yet (sf 0, uplink_age -1, rssi 0 = no downlink) shows as unknown
+  { "lora_state",    "LoRaWAN",                     "diag",    NULL,                   NULL,  true,  FEATURE_RFM9X, true,
+    "{{ value_json.lora.state }}" },
+  { "lora_sf",       "LoRaWAN spreading factor",    "diag",    NULL,                   NULL,  true,  FEATURE_RFM9X, false,
+    "{{ value_json.lora.sf if value_json.lora.sf > 0 else None }}" },
+  { "lora_uplink",   "LoRaWAN last uplink",         "diag",    "duration",             "s",   true,  FEATURE_RFM9X, false,
+    "{{ value_json.lora.uplink_age if value_json.lora.uplink_age >= 0 else None }}" },
+  { "lora_rssi",     "LoRaWAN downlink signal",     "diag",    "signal_strength",      "dBm", true,  FEATURE_RFM9X, false,
+    "{{ value_json.lora.rssi if value_json.lora.rssi != 0 else None }}" },
+  { "lora_snr",      "LoRaWAN downlink SNR",        "diag",    NULL,                   "dB",  true,  FEATURE_RFM9X, false,
+    "{{ value_json.lora.snr if value_json.lora.rssi != 0 else None }}" },
+#endif
 };
 
 static bool ha_published = false; //configs published since boot (for the removal)
