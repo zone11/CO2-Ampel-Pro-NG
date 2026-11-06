@@ -286,7 +286,7 @@ When WiFi is connected, the device answers at `http://<IP address>/`:
 
 `/json`: `c` CO2 (ppm), `t` temperature (°C), `h` humidity (%), `p` pressure (hPa), `u` temperature of the
 pressure sensor (°C), `l` light sensor (0–1023). `p`/`u` only with a pressure sensor, `c`/`t`/`h` only with
-a working CO2 sensor.
+a working CO2 sensor, `l` only after the first light reading, 1 minute after the start.
 
 On the configuration page "Save" stores the changes at once (all or nothing). WiFi and MQTT changes apply
 after the restart button.
@@ -326,9 +326,8 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | `<base>/cmd` | commands to the device, see below | – | – |
 | `<base>/resp` | replies to commands | after each command | no |
 
-`sensors`: CO2 in ppm, temperatures in °C, humidity in %, pressure in hPa, light 0–1023 (1024 until the
-first reading 1 minute after power-on). Values the device doesn't have (no pressure sensor, CO2 sensor
-missing or not ready yet) are left out.
+`sensors`: CO2 in ppm, temperatures in °C, humidity in %, pressure in hPa, light 0–1023. Values the device doesn't have
+(no pressure sensor, CO2 sensor missing or not ready yet, light in the first minute after the start) are left out.
 
 After a change of the prefix or client ID the device reconnects with the new topics at once and removes its
 retained messages under the old prefix.
@@ -509,7 +508,7 @@ listed for one hour, or until a restart.
 USB serial, 9600 baud. Lines may end with CR, LF or CRLF.
 
 ```
-enable [password]  allow changes (LEDs violet, traffic light paused until exit)
+enable [password]  allow changes (LEDs violet, traffic light paused until exit or 10 minutes without input)
 exit               leave enable mode
 status             measurements, sensors, LEDs, calibration, WiFi and MQTT status
 diag               diagnostics as JSON

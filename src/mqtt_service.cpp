@@ -653,15 +653,23 @@ void mqtt_publish_sensors(void)
   //readings as one JSON (one consistent record per interval)
   //only real readings: without a CO2 sensor (or before the first reading) co2/temperature/humidity are missing
   char f1[16], f2[16];
-  n = snprintf(json, sizeof(json), "{\"light\":%u", light_value);
+  n = snprintf(json, sizeof(json), "{");
+  if(light_value != LIGHT_NONE) //no reading in the first minute
+  {
+    n += snprintf(json + n, sizeof(json) - n, "\"light\":%u,", light_value);
+  }
   if(co2_valid)
   {
-    n += snprintf(json + n, sizeof(json) - n, ",\"co2\":%u,\"temperature\":%s,\"humidity\":%s",
+    n += snprintf(json + n, sizeof(json) - n, "\"co2\":%u,\"temperature\":%s,\"humidity\":%s,",
                   co2_value, fmt1(f1, temp_value), fmt1(f2, humi_value));
   }
   if(pres_valid)
   {
-    n += snprintf(json + n, sizeof(json) - n, ",\"pressure\":%s,\"pressure_temp\":%s", fmt1(f1, pres_value), fmt1(f2, temp2_value));
+    n += snprintf(json + n, sizeof(json) - n, "\"pressure\":%s,\"pressure_temp\":%s,", fmt1(f1, pres_value), fmt1(f2, temp2_value));
+  }
+  if(json[n-1] == ',') //no comma after the last value
+  {
+    n--;
   }
   snprintf(json + n, sizeof(json) - n, "}");
   mqtt_topic(topic, sizeof(topic), "sensors");

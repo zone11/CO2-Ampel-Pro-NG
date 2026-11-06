@@ -391,7 +391,7 @@ static void main_page(WiFiClient &client)
     row(out, "Pressure sensor temperature", v);
   }
   snprintf(v, sizeof(v), "%u", light_value);
-  row(out, "Light", (light_value < 1024) ? v : "--"); //1024 = no reading yet
+  row(out, "Light", (light_value != LIGHT_NONE) ? v : "--");
   out.print("</fieldset>\r\n");
 
   //WiFi
@@ -804,7 +804,16 @@ void webserver_service(void)
           {
             n += sprintf(buf + n, " \"p\": %s,\r\n \"u\": %s,\r\n", fmt1(f3, pres_value), fmt1(f4, temp2_value));
           }
-          sprintf(buf + n, " \"l\": %u\r\n}\r\n", light_value);
+          if(light_value != LIGHT_NONE) //no reading in the first minute
+          {
+            n += sprintf(buf + n, " \"l\": %u,\r\n", light_value);
+          }
+          if(buf[n-3] == ',') //no comma after the last value
+          {
+            n -= 3;
+            n += sprintf(buf + n, "\r\n");
+          }
+          sprintf(buf + n, "}\r\n");
           client.print(buf);
         }
         else if(strncmp(req, "GET /diag", 9) == 0) //health JSON
