@@ -37,7 +37,7 @@ its switch to `build_flags` in `platformio.ini`. With everything included, the f
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~11.3 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~11.5 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
 
