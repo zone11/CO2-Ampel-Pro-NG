@@ -366,7 +366,7 @@ like `co2ampel/F8F0056E78A2/sensors`; below, `<base>` stands for that start. The
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.9.1","reset":"poweron","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.10","reset":"poweron","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` or `offline` (also when the device disappears without saying goodbye) | on connect | yes |
