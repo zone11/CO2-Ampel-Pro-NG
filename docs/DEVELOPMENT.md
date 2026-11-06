@@ -33,13 +33,13 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 95 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~11.4 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.4 KB, 1.9 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.4 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~11.3 KB |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
 
 The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
 
@@ -89,7 +89,8 @@ settings export/import, WiFi module root certificates), `link_debug.py` (build h
 ## Tests
 
 `pio test -e native` runs the host tests in `test/test_host/` without hardware: JSON parser, settings import, the
-settings slots in a fake flash (including a power loss after every page of a save) and the SCD4x conversions. `test/stubs/`
+settings slots in a fake flash (including a power loss after every page of a save), the SCD4x conversions, complete and
+aborted calibration runs, and the `errors` list (conditions, events held for an hour, a short buffer). `test/stubs/`
 holds just enough of Arduino for that code. `python3 test/fuzz/json_fuzz.py [count] [seed]` compares the JSON parser with
 Python's `json` on random objects.
 

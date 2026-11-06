@@ -6,7 +6,7 @@ with four LEDs, warns with a buzzer when it is time to ventilate, and sends its 
 [original firmware](https://github.com/watterott/CO2-Ampel) by Watterott electronic and has since been
 largely rewritten. It runs on the unmodified hardware.
 
-✅ **Status**: in daily use and tested on hardware
+✅ **Status**: in daily use and tested on hardware with the SCD30 and LPS22HB sensors (SCD4x and BMP280 are supported but untested)
 
 ## Contents
 
@@ -178,8 +178,8 @@ Calibrate the CO2 sensor from time to time:
 4. Done: LEDs blue and a short beep.
 
 Without the button, start it over USB serial with `enable`, then `calibrate`, with "Start calibration" on the web page
-`/config`, or [over MQTT](#remote-configuration). Put the device in fresh air first: the current reading is set to 400 ppm, wherever the device is. It takes 3 minutes
-or more, and the web page and MQTT keep running. The main page shows the progress and then the result under "Calibration" until
+`/config`, or [over MQTT](#remote-configuration). Put the device in fresh air first: the current reading is set to 400 ppm, wherever the device is. It usually takes 3 to 15
+minutes, and the web page and MQTT keep running. The main page shows the progress and then the result under "Calibration" until
 the next restart. Stop it the same way ("Abort calibration" on `/config`, `calibrate abort`, `{"calibrate":false}`) or with a button press. If the readings
 stay unstable, it gives up after three runs (LEDs red), but the sensor has been set anyway, so repeat it in fresh air. With
 Quiet on, or while `enable` is active on the serial port, the LEDs don't show the calibration.

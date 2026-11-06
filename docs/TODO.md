@@ -30,7 +30,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       stops reading (2026-11-02); needs a fake broker that stops reading after CONNACK, and a stalled browser.
 - [ ] WiFi101: find the other calls that can block forever (SPI) and reset the WINC1500 instead of the MCU.
 - [ ] Heap: check `ram_free_min` / `heap_free` over days; the web server mallocs 3 KB per request.
-- [ ] Soak test with web/MQTT load and a router restart.
+- [ ] Soak test with web/MQTT load. A router restart passed once: planned UniFi update 2026-11-06 00:09, both units reconnected
+      on their own, no reset, `loop_max_ms` 20 s (the WiFi reconnect limit).
 - [ ] Long WiFi outage (10 minutes or more): retry delay up to its 5 minute maximum and failed attempts up to the 20 s limit
       (`loop_max_ms`). Needs a separate SSID for the devices, so only they lose WiFi. Short outage (about a minute) passed on
       both units 2026-11-04.
@@ -60,7 +61,8 @@ running. Diagnostics are in place (0.7: `diag`, `/diag`, `<base>/diag`, HA entit
       uses the same code, only start and abort were tested there).
 - [ ] Calibration on an SCD4x (the recalibration stops its measurement for about 2 s).
 - [ ] Home Assistant restart with Quiet on (with Quiet off the switch returned as `off` at once, HA 2026.11.0, 2026-11-05).
-- [ ] 0.9 over a long run (only short test sessions so far), and on a USB charger.
+- [ ] The released 0.9 build over days, and on a USB charger: 14 h passed on both units on the build before the `errors` list
+      (2026-11-05/06, no resets, RAM steady), the final build only in test sessions.
 - [ ] Real power cut during a settings save (the damaged states were flashed as crafted images, 2026-11-04).
 - [ ] Dark branch of the LED dimming (covered light sensor).
 - [ ] SCD4x and BMP280 paths (dev unit has SCD30 + LPS22HB only). SCD4x uses raw values with own float conversions since

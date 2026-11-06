@@ -54,6 +54,4 @@ Items 1 to 3 are changed in the 0.9 code, as described under CO2 Sensor Failure 
 
 ## Documentation
 
-- The README's "in daily use and tested on hardware" overstates things, given the SCD4x and BMP280 gaps.
-- The README says a calibration "takes 3 minutes or more", but an unstable run took 10.
-- The Tests section of [DEVELOPMENT.md](DEVELOPMENT.md) doesn't mention the calibration tests.
+The three points found here (status line, calibration time, Tests section) were fixed in the 0.9 housekeeping.
