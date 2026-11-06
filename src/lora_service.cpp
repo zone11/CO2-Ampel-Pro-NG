@@ -72,7 +72,7 @@ typedef struct
   int8_t adr_tx_pow;
   uint32_t check;
 } LORA_SESSION;
-static LORA_SESSION session __attribute__((section(".noinit")));
+static LORA_SESSION session __attribute__((section(".noinit.lora")));
 static bool resumed = false;
 
 static uint32_t fnv1a(const void *data, size_t len, uint32_t h = 2166136261UL)

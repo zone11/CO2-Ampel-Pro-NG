@@ -164,7 +164,11 @@ measurement for about 2 seconds.
 ## Diagnostics internals
 
 The reset record is a small RAM area (the `.noinit` section in the linker script) that is not initialized at
-startup. It survives every reset except power-on and brown-out, including the bootloader and an upload. The watchdog
+startup. It survives every reset except power-on and brown-out, including the bootloader and an upload. `.noinit`
+has its own region in the linker script, the last 512 bytes of RAM (0x20007E00 to 0x20007FFB), so its address does
+not depend on the size of `.bss`. The UF2 bootloader uses RAM only up to 0x20002B40 (its initial stack pointer) and
+the last word, 0x20007FFC, for its double tap flag. The stack starts below `.noinit` at 0x20007E00. The reset record
+comes first (`.noinit.reset`), then the LoRaWAN session (`.noinit.lora`). The watchdog
 early-warning interrupt updates the current phase and the uptime every 2 seconds. Before it lets the watchdog reset
 the device, it saves the address of the hung code (`last_pc`, `last_lr`). The HardFault handler saves the address of
 the crash and restarts at once (`reset` = `fault`).
@@ -307,8 +311,9 @@ the radio, so a join after a power cut is accepted by TTN. The first join waits 
 The session (DevAddr, session keys, frame counters, RX settings, data rate and the channels from the join accept)
 is copied into `LORA_SESSION` in `.noinit` after the join and after every uplink. `lora_setup()` restores it unless
 the reset was a power-on or brownout, the check fails or DevEUI, JoinEUI or AppKey changed (hash). It survives the
-reset command, the watchdog and an upload with the bootloader. A build that moves `.noinit` makes the device join
-again once. "Link dead" from LMIC (no downlink for long, even at the lowest data rate) forgets the session and joins
+reset command, the watchdog and an upload with the bootloader, also when the new build has a different `.bss`. A
+change to the reset record or to `LORA_SESSION` moves the session or fails its check, and the device joins again
+once. A new `LORA_SESSION` layout also gets a new `SESSION_MAGIC`. "Link dead" from LMIC (no downlink for long, even at the lowest data rate) forgets the session and joins
 again with LMIC's backoff.
 
 The uplink interval is the larger of `lora.interval` and the airtime at the current data rate times 2880

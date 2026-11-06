@@ -26,7 +26,10 @@
 MEMORY
 {
   FLASH (rx) : ORIGIN = 0x00000000+0x2000, LENGTH = 0x00040000-0x2000-0x800 /* First 8KB bootloader, last 2KB settings (0x3F800) */
-  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00008000
+  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00007E00
+  /* Fixed place for .noinit at the top of RAM: above the UF2 bootloader's RAM (up to 0x20002B40) and independent of
+     the size of .bss; the last word (0x20007FFC) is the bootloader's double tap flag */
+  NOINIT (rwx) : ORIGIN = 0x20007E00, LENGTH = 0x000001FC
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -187,13 +190,15 @@ SECTIONS
 		__bss_end__ = .;
 	} > RAM
 
-	/* Not initialized at startup: keeps its content over a reset (reset record, system_control.cpp) */
+	/* Not initialized at startup: keeps its content over a reset; fixed order so a build change does not move them */
 	.noinit (NOLOAD):
 	{
 		. = ALIGN(4);
+		*(.noinit.reset)  /* reset record, system_control.cpp */
+		*(.noinit.lora)   /* LoRaWAN session, lora_service.cpp */
 		*(.noinit*)
 		. = ALIGN(4);
-	} > RAM
+	} > NOINIT
 
 	.heap (COPY):
 	{

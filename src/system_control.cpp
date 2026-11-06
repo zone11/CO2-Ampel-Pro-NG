@@ -54,7 +54,7 @@ typedef struct
   uint32_t magic, resets, uptime, event, phase, pc, lr, led, check;
 } RESET_RECORD;
 
-static RESET_RECORD record __attribute__((section(".noinit")));
+static RESET_RECORD record __attribute__((section(".noinit.reset")));
 static RESET_INFO last;
 volatile uint8_t sys_phase = PHASE_BOOT;
 
