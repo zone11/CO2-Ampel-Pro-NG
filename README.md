@@ -36,7 +36,8 @@ Building your own variant, the code structure and the internals are described in
 - Settings survive firmware updates, and a power loss while saving keeps the previous settings; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
-- Fresh air calibration from the web page, USB serial or the service menu; the device stays online during a run started over the web or serial
+- Diagnostics and an errors list (failing sensors, WiFi and MQTT trouble, unplanned restarts) for your monitoring tool or Home Assistant
+- Fresh air calibration from the web page, USB serial, MQTT or the service menu; the device stays online during a run started over the web, serial or MQTT
 - Self test in the built-in service menu
 - For devices in public areas: all button functions can be turned off
 
@@ -331,7 +332,7 @@ retained messages under the old prefix.
 With `mqtt.ha=1` Home Assistant (with the MQTT integration) creates a device named like `sys.name` with
 the entities CO2, Temperature, Humidity, Light and (with a pressure sensor) Pressure, a switch "Quiet", and
 the diagnostic entities Pressure sensor temperature, WiFi signal, Uptime, Reset cause, Last reset phase,
-Free RAM minimum and Longest loop. They show "unavailable" while the device is offline (up to 45 seconds later if it loses power or hangs). `mqtt.ha=0` removes
+Free RAM minimum, Errors and Longest loop. They show "unavailable" while the device is offline (up to 45 seconds later if it loses power or hangs). `mqtt.ha=0` removes
 them again.
 
 - Moved a device? Just change `sys.name`: the device name in Home Assistant follows at once, and the entity

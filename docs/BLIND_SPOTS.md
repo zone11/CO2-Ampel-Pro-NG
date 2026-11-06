@@ -32,8 +32,9 @@ Items 1 to 3 are changed in the 0.9 code, as described under CO2 Sensor Failure 
   pressure would then freeze without an error. An SCD30 that hangs needs a power cycle, which the firmware can't do.
 - **WiFi module missing at boot:** WiFi stays off until the next restart.
 - **Hang during boot:** the device restarts over and over, with no safe mode.
-- **Pressure readings:** any value from 260 to 1400 hPa is accepted and passed to the CO2 sensor. That's how a 16 hPa offset error
-  got through.
+- **Pressure readings:** any value from 260 to 1400 hPa was accepted and passed to the CO2 sensor. That's how a 16 hPa offset error
+  got through. Since 0.9 only 800–1100 hPa reach the CO2 sensor (`pressure_range` otherwise), and the offset register is checked; a
+  smaller offset inside that range would still pass.
 - **Light value:** MQTT and `/json` report 1024 for the first minute after boot. It's only a start value; the web page hides it.
 - **`enable` left active:** the traffic light stays paused with no time limit.
 

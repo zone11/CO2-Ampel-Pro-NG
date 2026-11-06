@@ -82,6 +82,7 @@ The code is split into modules under `src/` (headers in `include/`):
 | `i2c_utils` | I2C scan and bus recovery |
 | `system_control` | reset, watchdog, reset record, HardFault handler |
 | `health` | diagnostics (`diag`): RAM, loop time, counters |
+| `errors` | the `errors` list in `diag`: current conditions and recent events |
 
 PC tools in `scripts/`: `upload_samba.py` (upload with settings kept), `co2ampel_tool.py` (provisioning,
 settings export/import, WiFi module root certificates), `link_debug.py` (build helper).
