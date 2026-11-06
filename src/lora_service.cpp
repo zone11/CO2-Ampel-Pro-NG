@@ -185,6 +185,7 @@ void lora_setup(void)
   LMIC_reset();
   LMIC_registerEventCb(on_event, NULL);
   LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100); //no crystal: the RC clock may be off by up to 1 %
+  state = LORA_WAITING;
   t_next = millis() + (unsigned long)(os_getRndU2() % (LORA_JOIN_DELAY * 1000)); //not all devices at once after a power cut
 }
 
