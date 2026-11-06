@@ -8,8 +8,8 @@ firmware is covered in the [README](README.md).
 The MCU is an ATSAMD21G18 (ARM Cortex-M0+, 48 MHz) with 256 KB of flash. The UF2 bootloader takes the first 8 KB,
 the settings the last 2 KB. The CO2 sensor (Sensirion SCD30, or an SCD40/SCD41) sits on Wire (SERCOM0). The pressure
 sensor (LPS22HB or BMP280) and the unused ATECC608 sit on Wire1 (SERCOM2). On top of that there are 4 WS2812 LEDs, a
-status LED, the buzzer, a light sensor and the button. WiFi is an ATWINC1500B. The RFM95W/96W LoRa radio has only been
-checked by the self test so far.
+status LED, the buzzer, a light sensor and the button. WiFi is an ATWINC1500B. The RFM95W LoRa radio (SX1276) shares the SPI bus
+with the WiFi module (CS PA21, DIO0 PA14, DIO1 PA15, no reset line).
 
 Board and pins are defined in `boards/co2ampel.json` and `variants/co2ampel/`, which is the only pin definition. USB
 IDs: app 04D8:EACE, bootloader 04D8:EACF.
@@ -18,8 +18,7 @@ IDs: app 04D8:EACE, bootloader 04D8:EACF.
 
 | Environment | Description |
 |---|---|
-| `co2ampel_pro` | default build |
-| `co2ampel_pro_lora` | placeholder for LoRaWAN; currently the same firmware |
+| `co2ampel_pro` | default build, with LoRaWAN (used only when the radio is fitted) |
 
 The original firmware's variants (Basic, Plus, COVID) have no builds of their own. The hardware is detected at boot,
 and the COVID thresholds are a preset applied with `set co2.*`.
@@ -33,13 +32,14 @@ pio device monitor -b 9600           # serial monitor
 ### Optional features
 
 Optional features can be left out at compile time to save flash. All of them are on by default. To drop one, add
-its switch to `build_flags` in `platformio.ini`. With everything included, the firmware uses about 100 KB of 246 KB.
+its switch to `build_flags` in `platformio.ini`. With everything included, the firmware uses about 119 KB of 246 KB.
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
 | `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~12.4 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
 | `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
+| `-DWITH_LORA=0` | LoRaWAN (`lora.*` settings, LMIC) | ~17.8 KB, 0.9 KB RAM |
 
 The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
 
@@ -85,10 +85,11 @@ The modules live in `src/`, their headers in `include/`:
 | `system_control` | reset, watchdog, reset record, HardFault handler |
 | `health` | diagnostics (`diag`): RAM, loop time, counters |
 | `errors` | the `errors` list in `diag`: current conditions and recent events |
+| `lora_service` | LoRaWAN: radio check, join, uplink, downlinks, session over resets, status rows |
 
 The PC tools are in `scripts/`. `upload_samba.py` uploads with the settings kept, `co2ampel_tool.py` handles
-provisioning, settings export and import and the WiFi module's root certificates, and `link_debug.py` is a build
-helper.
+provisioning, settings export and import and the WiFi module's root certificates, `link_debug.py` is a build
+helper, and `ttn_formatter.js` is the uplink payload formatter for the TTN console.
 
 ## Tests
 
@@ -300,6 +301,51 @@ only updates the device name.
 
 The MQTT keepalive is 30 s. The library default of 10 s dropped connections after a single late ping. With 30 s the
 broker reports a dead device after up to 45 s.
+
+## LoRaWAN internals
+
+The stack is MCCI LMIC 5.0.1, Class A, LoRaWAN 1.0.3. The region and radio are build flags in `platformio.ini`
+(`CFG_eu868`, `CFG_sx1276_radio`, no project config file); another region means another build, and `LORA_PLAN` in
+`app_config.h` is only the name shown in the status. 6.0.1 was tried first and dropped: it keeps the session keys in
+its "secure element" layer, which has no setter, so `LMIC_setSession()` fills fields the stack no longer signs with
+and a restored session sends frames the network server drops (the gateway still hears them).
+
+LMIC runs only from `loop()` through `os_runloop_once()`, never from an interrupt, because the radio shares SPI with
+the WiFi module. The DIO pins are polled. An uplink's receive windows open 1 and 2 seconds after it, a join's after
+5 and 6 seconds. `lora_busy()` is true while a frame and its windows are pending (`OP_TXRXPEND`); the WiFi reconnect,
+the MQTT connect and the web server wait for a loop pass then, since each of them can block for seconds. There is no
+crystal, so `LMIC_setClockError()` allows 1 % (`LMIC_ENABLE_arbitrary_clock_error`, otherwise capped at 0.4 %).
+
+The default DevEUI is the WiFi MAC with FFFE in the middle (EUI-64 from MAC-48). `lora_setup()` therefore runs right
+after the module detection, before `wifi.enabled=0` switches the module off. LMIC picks the DevNonce at random from
+the radio, so a join after a power cut is accepted by TTN. The first join waits a random 0 to 30 seconds.
+
+The session (DevAddr, session keys, frame counters, RX settings, data rate and the channels from the join accept)
+is copied into `LORA_SESSION` in `.noinit` after the join and after every uplink. `lora_setup()` restores it unless
+the reset was a power-on or brownout, the check fails or DevEUI, JoinEUI or AppKey changed (hash). It survives the
+reset command, the watchdog and an upload with the bootloader. A build that moves `.noinit` makes the device join
+again once. "Link dead" from LMIC (no downlink for long, even at the lowest data rate) forgets the session and joins
+again with LMIC's backoff.
+
+The uplink interval is the larger of `lora.interval` and the airtime at the current data rate times 2880
+(86400 s / 30 s), so the airtime stays within TTN's fair use limit. Payload, port 1, big endian:
+
+| Bytes | Value | Missing |
+|---|---|---|
+| 0-1 | CO2 ppm | 0xFFFF |
+| 2-3 | temperature, 0.1 °C, signed | 0x7FFF |
+| 4 | humidity, 0.5 % | 0xFF |
+| 5-6 | pressure, 0.1 hPa | 0xFFFF |
+| 7-8 | light | 0xFFFF |
+| 9 | bit 0 Quiet, 1 an error is listed, 2 calibration running, 3 last downlink refused, 4 buzzer | |
+
+Downlinks are copied out of the LMIC callback and handled in `lora_service()`. They become JSON for
+`settings_json_import()`, so they get the same checks as MQTT: port 2 Quiet as a control (`control_only`, RAM only),
+port 3 buzzer and thresholds with `"save":true`, refused unless `lora.config=1`. "Uplinks" in the status counts only
+the device's own messages, not the empty frames LMIC sends to answer the network's MAC commands.
+
+Tests on Development go through the user's TTN application with `ttn-lw-cli` (logged in on the Mac). It sometimes
+hangs, so run it with `--telemetry.enable=false` and a timeout.
 
 ## WiFi module root certificates
 

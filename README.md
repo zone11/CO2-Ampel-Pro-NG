@@ -19,6 +19,7 @@ have not been tested on a real sensor.
 - [Settings](#settings)
 - [Web interface](#web-interface)
 - [MQTT and Home Assistant](#mqtt-and-home-assistant)
+- [LoRaWAN (The Things Network)](#lorawan-the-things-network)
 - [Backup, restore and provisioning](#backup-restore-and-provisioning)
 - [Troubleshooting](#troubleshooting)
 - [Serial command reference](#serial-command-reference)
@@ -42,8 +43,7 @@ How to build your own variant, the code structure and the internals are in [DEVE
   started over serial, the web page or MQTT is going.
 - Self test in the service menu
 - All button functions can be switched off for devices in public places
-
-Planned: LoRaWAN/TTN.
+- LoRaWAN over The Things Network (Europe, 868 MHz) on devices with the LoRa radio, also on its own without WiFi
 
 ## What you need
 
@@ -278,10 +278,18 @@ settings, which apply after `reset`. Without `save`, a change lasts until the ne
 | `mqtt.ha` | 0 | Home Assistant discovery |
 | `mqtt.config` | 0 | allow configuration over MQTT |
 | `mqtt.interval` | 60 | seconds between two MQTT messages (10 to 3600) |
+| `wifi.enabled` | 1 | WiFi on. 0 turns the WiFi module off for a device that only uses LoRaWAN |
+| `lora.enabled` | 0 | LoRaWAN on, see [LoRaWAN](#lorawan-the-things-network) |
+| `lora.deveui` | empty | DevEUI, 16 hex digits. Empty means it is made from the WiFi MAC address |
+| `lora.joineui` | `0000000000000000` | JoinEUI (AppEUI), 16 hex digits |
+| `lora.appkey` | empty | AppKey from the TTN console, 32 hex digits |
+| `lora.interval` | 300 | seconds between two LoRaWAN messages (60 to 3600); the device waits longer when TTN's airtime limit needs it |
+| `lora.config` | 0 | allow the buzzer and the CO2 thresholds to be changed by downlink |
 
-Passwords never appear over MQTT or on the web pages. The WiFi and MQTT connection settings (`wifi.*`,
-`mqtt.enabled/broker/port/tls/user/pass/ha/config`) and `sys.password` can only be changed over USB serial or the
-web page, so a mistake over MQTT can't cut the device off the network.
+Passwords and the AppKey never appear over MQTT or on the web pages. The WiFi, MQTT and LoRaWAN connection settings
+(`wifi.*`, `mqtt.enabled/broker/port/tls/user/pass/ha/config`, `lora.*` except `lora.interval`) and `sys.password`
+can only be changed over USB serial or the web page, so a mistake over MQTT can't cut the device off the network.
+The LoRaWAN settings apply after a restart.
 
 ### Password
 
@@ -318,7 +326,7 @@ With WiFi connected, the device answers at `http://<IP address>/`:
 
 | Address | Content |
 |---|---|
-| `/` | status page `CO2-Ampel-NG \| <name>`: readings (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart, calibration, optional features the firmware was built with). Reloads every 30 seconds |
+| `/` | status page `CO2-Ampel-NG \| <name>`: readings (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters), LoRaWAN (with the radio fitted) and system (firmware, uptime, last restart, calibration, optional features the firmware was built with). Reloads every 30 seconds |
 | `/config` | all settings as a form, JSON upload and download, calibration, restart button |
 | `/config.json` | all settings as JSON, passwords as `***` |
 | `/json` | readings as JSON, e.g. `{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}` |
@@ -443,6 +451,63 @@ supported.
 2. Switch to TLS: `enable`, `set mqtt.tls=1`, `set mqtt.port=8883`, `save`, `reset`.
 
 The tool also has `list` (stored certificates), `remove <n>`, `backup [file]` and `restore <file>`.
+
+## LoRaWAN (The Things Network)
+
+Devices with the LoRa radio (RFM95) can send their readings over LoRaWAN to The Things Network (TTN), next to WiFi and
+MQTT or instead of them. The firmware uses the European frequency plan (863 to 870 MHz). A device without the radio
+shows nothing about LoRaWAN.
+
+### Setup
+
+1. Read the device's DevEUI: `status` on the serial port or the LoRaWAN section of the web page shows it, together
+   with the JoinEUI and the frequency plan, even while LoRaWAN is still off. Without a WiFi module there is no MAC
+   address to make it from, so use the DevEUI the TTN console generates and set it with `lora.deveui`.
+2. In the TTN console, add an end device to your application by entering it manually: frequency plan "Europe
+   863-870 MHz (SF9 for RX2 - recommended)", LoRaWAN version 1.0.3, regional parameters RP001 1.0.3 revision A,
+   JoinEUI and DevEUI as shown by the device. Let the console generate the AppKey.
+3. Under Payload formatters, Uplink, choose Custom JavaScript and paste
+   [scripts/ttn_formatter.js](scripts/ttn_formatter.js). TTN then shows the readings by name.
+4. On the device: `enable`, `set lora.appkey=<AppKey>`, `set lora.enabled=1`, `save`, `reset`. The web page works
+   too.
+
+After the restart the device waits a random time of up to 30 seconds and joins. `status` shows "joined", the device
+address, the spreading factor and when the next message goes out. After a restart, a firmware update or a watchdog
+reset it keeps its session and carries on without joining again. Only after a power cut does it join anew.
+
+### What the device sends
+
+Every `lora.interval` seconds, 10 bytes on port 1: CO2, temperature, humidity, pressure, light, and the bits Quiet,
+error (something is in the [errors list](#errors)), calibration running, last downlink refused and buzzer. A missing
+reading is left out by the formatter.
+
+TTN allows 30 seconds of airtime per device and day. Near a gateway one message takes about 60 ms, at long range up
+to 1.2 seconds. The device works out the airtime of each message and waits longer than `lora.interval` when it has
+to, so it stays within that limit: at least about 3 minutes near a gateway, about an hour at long range. `status`
+shows the interval actually used.
+
+### Downlinks
+
+A downlink reaches the device right after its next message, so it can take up to one interval. TTN allows about 10
+downlinks per device and day. Queue them in the TTN console (Messaging, Downlink) as hex bytes:
+
+| Port | Bytes | Effect |
+|---|---|---|
+| 2 | `01 01` / `01 00` | Quiet on / off (not saved, like Quiet from any other source) |
+| 2 | `FF` | join again |
+| 3 | `10 01` / `10 00` | buzzer on / off, saved |
+| 3 | `20` and five 2-byte values | `co2.t1` to `co2.t5` in ppm, saved. `20 0258 03E8 04B0 0578 0640` sets 600, 1000, 1200, 1400, 1600 |
+
+Port 3 only works with `lora.config=1`. The thresholds are checked like everywhere else (range and order) and change
+all together or not at all. A refused downlink shows up as "refused" in `status` and as the "last downlink refused"
+bit in the next message.
+
+### Without WiFi
+
+`wifi.enabled=0` turns the WiFi module off. The device then has no web page, no MQTT and no setup network and only
+sends over LoRaWAN. Settings are changed over the USB serial port, or with `co2ampel_tool.py provision` and a JSON
+file (see [Backup, restore and provisioning](#backup-restore-and-provisioning)). Set it back with
+`set wifi.enabled=1`, `save`, `reset`.
 
 ## Backup, restore and provisioning
 
