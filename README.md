@@ -89,7 +89,7 @@ makes them risky:
 - A power cut or a hang during that final copy, which takes a few seconds, leaves a half-written application. The
   bootloader knows nothing about the image in the upper half, so the device no longer starts and has to be flashed
   again over USB. A device mounted on a wall or in a public place stays dead until someone fetches it.
-- Both images have to fit side by side, which limits the firmware to about 120 KB (it is about 99 KB today) and leaves
+- Both images have to fit side by side, which limits the firmware to about 120 KB (it is about 100 KB today) and leaves
   little room for LoRaWAN.
 
 A custom bootloader that finishes an interrupted copy on the next start would remove the power-cut risk. A bug in that
