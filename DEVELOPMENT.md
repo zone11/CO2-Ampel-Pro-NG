@@ -103,7 +103,10 @@ hour, a short buffer). `test/stubs/` holds just enough of Arduino for that code.
 1. New user setting: append the field to `SETTINGS` (`include/app_types.h`), set a default in `settings_defaults()`,
    validate it in `settings_validate()`, bump `SETTINGS_VERSION` (`src/settings_storage.cpp`) and add a key in
    `src/settings_registry.cpp`. Older, shorter records are read with their own size and get the defaults for the new
-   fields automatically.
+   fields automatically. A rule that spans several keys belongs in an apply callback that returns false, as
+   `apply_threshold()` does for the order of `co2.t1` to `co2.t5`. `set` then keeps the old value. During a JSON import
+   the callback lets every value pass and the import checks the rule once at the end, so related keys can change
+   together. `settings_validate()` has the same check for records read from flash.
 2. New dependencies go into `platformio.ini`.
 3. A loop that may run longer than 30 seconds, e.g. while it waits for the user, must call `watchdog_feed()`. A call
    that blocks for longer, such as a slow connect, needs `watchdog_long()` (`include/system_control.h`). Otherwise the

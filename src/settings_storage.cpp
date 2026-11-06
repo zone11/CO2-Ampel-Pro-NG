@@ -129,6 +129,18 @@ bool settings_topic_valid(const char *prefix)
   return strpbrk(prefix, "+#") == NULL;
 }
 
+bool settings_thresholds_ordered(const SETTINGS *data)
+{
+  for(int i = 1; i < 5; i++)
+  {
+    if(data->range[i] < data->range[i-1])
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Replaces out-of-range values with defaults; returns true if anything was changed
 static bool settings_validate(SETTINGS *data)
 {
@@ -157,11 +169,12 @@ static bool settings_validate(SETTINGS *data)
 
   for(int i = 0; i < 5; i++)
   {
-    if((data->range[i] < 400) || (data->range[i] > 10000) || ((i > 0) && (data->range[i] < data->range[i-1])))
+    if((data->range[i] < 400) || (data->range[i] > 10000))
     {
       ranges_ok = false;
     }
   }
+  ranges_ok = ranges_ok && settings_thresholds_ordered(data);
   if(!ranges_ok)
   {
     memcpy(data->range, def.range, sizeof(def.range));

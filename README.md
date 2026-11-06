@@ -139,6 +139,11 @@ set co2.t5=1400
 save
 ```
 
+The thresholds must stay in order, `co2.t1` lowest and `co2.t5` highest (two equal values are allowed). A `set` that
+would break the order is refused with `ERROR: Conflicts with other settings`, and the old value stays. To lower the
+thresholds, start with `co2.t1` as above; to raise them, start with `co2.t5`. A `json import` (or the config page)
+checks the order once at the end, so all five can be changed together in any order.
+
 The traffic light follows a running average of the CO2 value. The SCD30 measures every 5 seconds, and the device
 corrects it with the air pressure. With every new reading the small red status LED blinks briefly, except in the
 dark.

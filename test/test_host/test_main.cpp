@@ -169,6 +169,29 @@ void test_import_all_or_nothing(void)
   TEST_ASSERT_EQUAL_UINT(t1, settings.range[0]);
   TEST_ASSERT_NOT_NULL(strstr(out.text.c_str(), "co2.t2"));
 }
+void test_import_thresholds_order(void)
+{
+  Out out;
+  TEST_ASSERT_FALSE(settings_json_import("{\"co2.t2\":1300}", &out, true, true)); //above t3 (1200)
+  TEST_ASSERT_EQUAL_UINT(1000, settings.range[1]);
+  TEST_ASSERT_NOT_NULL(strstr(out.text.c_str(), "out of order"));
+  //all five moved up at once: t1 passes the old t2 on the way
+  TEST_ASSERT_TRUE(settings_json_import("{\"co2.t1\":1100,\"co2.t2\":1500,\"co2.t3\":1700,\"co2.t4\":1900,\"co2.t5\":2100}", &out, true, true));
+  TEST_ASSERT_EQUAL_UINT(1100, settings.range[0]);
+  TEST_ASSERT_EQUAL_UINT(2100, settings.range[4]);
+  TEST_ASSERT_TRUE(settings_json_import("{\"co2.t5\":1900}", &out, true, true)); //equal neighbours are allowed
+}
+void test_set_thresholds_order(void)
+{
+  Out out;
+  char bad[] = "set co2.t1=1100"; //above t2 (1000)
+  settings_handle_line(bad, &out, true, true);
+  TEST_ASSERT_EQUAL_UINT(600, settings.range[0]);
+  TEST_ASSERT_NOT_NULL(strstr(out.text.c_str(), "ERROR"));
+  char good[] = "set co2.t1=900";
+  settings_handle_line(good, &out, true, true);
+  TEST_ASSERT_EQUAL_UINT(900, settings.range[0]);
+}
 void test_import_unknown_key_is_a_warning(void)
 {
   Out out;
@@ -617,6 +640,8 @@ int main(void)
   RUN_TEST(test_json_limits);
   RUN_TEST(test_import_applies);
   RUN_TEST(test_import_all_or_nothing);
+  RUN_TEST(test_import_thresholds_order);
+  RUN_TEST(test_set_thresholds_order);
   RUN_TEST(test_import_unknown_key_is_a_warning);
   RUN_TEST(test_import_mask_keeps_secret);
   RUN_TEST(test_import_remote_cannot_change_local_keys);
