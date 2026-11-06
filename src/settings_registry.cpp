@@ -1,6 +1,7 @@
 #include "settings_registry.h"
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "json_parser.h"
 #include "led_control.h"
 #include "mqtt_service.h"
@@ -52,10 +53,11 @@ static bool on_save_settings(void *user)
 static const cfg_item_t settings_items[] =
 {
   { "sys.name",         CFG_STRING, settings.name,          0, 0, sizeof(settings.name) - 1, apply_name, 0 },
-  { "sys.serial_output", CFG_BOOL, &settings.serial_output, 0, 0, 0, NULL, 0 },
+  { "sys.serialout",    CFG_BOOL,  &settings.serial_output,  0, 0, 0, NULL, 0 },
   { "sys.password",     CFG_STRING, settings.password,      0, 0, sizeof(settings.password) - 1, NULL, CFG_SECRET|CFG_LOCAL },
-  { "sys.buzzer",       CFG_U32,   &settings.buzzer,         0, 1,   0, apply_buzzer, 0 },
+  { "sys.buzzer",       CFG_BOOL,  &settings.buzzer,         0, 0, 0, apply_buzzer, 0 },
   { "sys.quiet",        CFG_BOOL,  &settings.quiet,          0, 0, 0, apply_quiet, CFG_CONTROL },
+  { "sys.nobuttons",    CFG_BOOL,  &settings.nobuttons,      0, 0, 0, NULL, 0 },
   { "co2.t1",           CFG_U32,   &settings.range[0],       400, 10000, 0, NULL, 0 },
   { "co2.t2",           CFG_U32,   &settings.range[1],       400, 10000, 0, NULL, 0 },
   { "co2.t3",           CFG_U32,   &settings.range[2],       400, 10000, 0, NULL, 0 },
@@ -165,12 +167,6 @@ bool settings_handle_line(char *line, Print *out, bool remote_on, bool local)
   return serial_settings_handle_line(line, settings_items, settings_items_count, &ctx);
 }
 
-bool settings_set(const char *key, const char *value)
-{
-  const cfg_item_t *item = cfg_find_item(settings_items, settings_items_count, key);
-  return (item != NULL) && (cfg_set_value(item, value, false, NULL) == NULL);
-}
-
 // Collects "key":"message" pairs for the import reply
 class JsonPairs : public Print
 {
@@ -211,6 +207,7 @@ typedef struct
   bool control_only;
   bool save;
   bool do_export;
+  int calibrate; //1 = start, -1 = abort
   const SETTINGS *before;
   JsonPairs errors;
   JsonPairs warnings;
@@ -236,9 +233,18 @@ static bool import_value(void *user, const char *key, json_type_t type, const ch
   if(strchr(key, '.') == NULL) //command words (settings always contain a dot)
   {
     bool on = (type == JSON_BOOL) && (strcmp(value, "true") == 0);
-    if(ic->control_only && ((strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
+    bool cal = (strcmp(key, "calibrate") == 0) && !ic->local; //MQTT only: local callers have their own command, web a password rule
+    if(ic->control_only && (cal || (strcmp(key, "save") == 0) || (strcmp(key, "export") == 0)))
     {
       ic->errors.add(key, "Configuration over MQTT is off (mqtt.config)");
+    }
+    else if(cal)
+    {
+      if(type != JSON_BOOL)                  { ic->errors.add(key, "Invalid value"); }
+      else if(!on)                           { ic->calibrate = -1; }
+      else if(!calibration_available())      { ic->errors.add(key, "No CO2 sensor"); }
+      else if(calibration_running())         { ic->errors.add(key, "Already running"); }
+      else                                   { ic->calibrate = 1; }
     }
     else if(strcmp(key, "save") == 0)   { ic->save = on; }
     else if(strcmp(key, "export") == 0) { ic->do_export = on; }
@@ -294,6 +300,7 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   ic.control_only = control_only;
   ic.save = false;
   ic.do_export = false;
+  ic.calibrate = 0;
   ic.before = &before;
 
   if(!enabled)
@@ -335,6 +342,14 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
   {
     settings_save();
   }
+  if(ok && (ic.calibrate > 0))
+  {
+    calibration_start(false);
+  }
+  else if(ok && (ic.calibrate < 0))
+  {
+    calibration_abort();
+  }
 
   if(out)
   {
@@ -347,6 +362,13 @@ bool settings_json_import(const char *json, Print *out, bool local, bool enabled
     else if(ic.save)
     {
       out->print(",\"saved\":true");
+    }
+    char cal[48];
+    if(ok && (ic.calibrate != 0) && calibration_status(cal, sizeof(cal)))
+    {
+      out->print(",\"calibration\":\"");
+      out->print(cal);
+      out->print('"');
     }
     if(!ic.warnings.empty())
     {

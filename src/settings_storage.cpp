@@ -15,7 +15,7 @@
 #define SETTINGS_SLOT_SIZE   1024
 #define SETTINGS_SLOTS       2
 #define SETTINGS_MAGIC       0x434F3241UL // "CO2A"
-#define SETTINGS_VERSION     7            // bump on any SETTINGS change and add a migration in settings_read()
+#define SETTINGS_VERSION     8            // bump on any SETTINGS change and add a migration in settings_read()
 
 #define FLASH_PAGE_SIZE      64
 #define FLASH_ROW_SIZE       256
@@ -37,6 +37,7 @@ typedef struct
 // Older records are read with their own size: the CRC follows their (shorter) data
 static_assert(offsetof(SETTINGS_RECORD, crc) == RECORD_HEADER + sizeof(SETTINGS), "crc must follow data");
 static_assert(sizeof(SETTINGS) >= SETTINGS_V1_SIZE, "fields may only be appended");
+static_assert(offsetof(SETTINGS, wifi_ssid) == 32, "sys.buzzer keeps its 4 bytes");
 static_assert(offsetof(SETTINGS, brightness_dark) == 392, "v6 fields must start after the v5 record (392 bytes)");
 static_assert(offsetof(SETTINGS, name) == 431, "v7 name starts in the last padding byte of v6 (see default_padding_fields)");
 
@@ -110,6 +111,7 @@ void settings_defaults(SETTINGS *data)
   data->quiet   = false;
   data->password[0]   = 0;
   data->name[0]       = 0;
+  data->nobuttons     = false;
 }
 
 // Bools read from flash may hold any byte value; normalize via the raw byte
@@ -145,10 +147,11 @@ static bool settings_validate(SETTINGS *data)
   data->mqtt_tls      = to_bool(&data->mqtt_tls);
   data->led_auto      = to_bool(&data->led_auto);
   data->quiet   = to_bool(&data->quiet);
+  data->buzzer  = to_bool(&data->buzzer);
+  data->nobuttons = to_bool(&data->nobuttons);
 
   if((data->brightness < 1) || (data->brightness > 255))    { data->brightness = def.brightness; changed = true; }
   if((data->brightness_dark < 1) || (data->brightness_dark > 255)) { data->brightness_dark = def.brightness_dark; changed = true; }
-  if(data->buzzer > 1)                                      { data->buzzer = def.buzzer; changed = true; }
   if((data->mqtt_port < 1) || (data->mqtt_port > 65535))    { data->mqtt_port = def.mqtt_port; changed = true; }
   if((data->mqtt_interval < 10) || (data->mqtt_interval > 3600)) { data->mqtt_interval = def.mqtt_interval; changed = true; }
 

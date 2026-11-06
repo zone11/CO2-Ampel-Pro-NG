@@ -39,6 +39,22 @@ void status_wait(unsigned int ms)
   }
 }
 
+void led_sensor_error(void)
+{
+  static bool on = false;
+
+  on = !on;
+  leds((on && !settings.quiet) ? COLOR_WHITE : COLOR_OFF);
+  buzzer(0);
+}
+
+void led_calibration(unsigned int co2)
+{
+  ws2812.fill(COLOR_WHITE, 0, 2);
+  ws2812.fill((co2 <= 500) ? COLOR_BLUE : (co2 <= 750) ? COLOR_GREEN : (co2 <= 1500) ? COLOR_YELLOW : COLOR_RED, 2, 2);
+  ws2812.show();
+}
+
 void led_brightness_update(void)
 {
   unsigned int level = (led_level > 0) ? led_level : settings.brightness;

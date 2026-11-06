@@ -40,6 +40,7 @@
 #define WIFI_RECONNECT_TIMEOUT 20000UL //ms a WiFi reconnect may block (at boot: 60 s)
 #define RETRY_MIN 30000UL  //ms between WiFi/MQTT connect attempts, doubled while they fail and block
 #define RETRY_MAX 300000UL
+#define AP_RETRY 300000UL  //ms the setup network stays open with no client before the normal WiFi is tried again
 #define NET_WRITE_TIMEOUT 5000UL  //ms a socket write waits for the WiFi module
 #define NET_WRITE_TIMEOUTS_MAX 3  //in a row without a successful send, then the watchdog takes over
 
@@ -83,6 +84,7 @@
 #define PRESSURE_DIFF      5   //pressure change in hPa (5-20)
 #define BAUDRATE           9600
 #define CO2_START          500 //500ppm, CO2 start value
+#define CO2_TIMEOUT        60000UL //ms without a new CO2 reading until the sensor counts as failed
 
 //--- Fixed LED colors (not configurable) ---
 #define COLOR_SETTINGS     0x007CB0 //light blue

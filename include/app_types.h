@@ -19,7 +19,8 @@ typedef struct
   boolean valid;
   unsigned int brightness;
   unsigned int range[5];        // CO2 thresholds: [0]=green, [1]=yellow, [2]=red, [3]=red_blink, [4]=buzzer
-  unsigned int buzzer;
+  boolean buzzer;
+  uint8_t buzzer_pad[3];        // was unsigned int up to v7: keeps the layout, the low byte holds the old value
   char wifi_ssid[64+1];
   char wifi_code[64+1];
   // MQTT Configuration
@@ -48,6 +49,7 @@ typedef struct
   boolean quiet;              // Quiet: LEDs, status LED and buzzer off, e.g. at night (v6, was led.disable)
   char password[32+1];        // enable password, empty = none (v6)
   char name[32+1];            // system name, empty = DEFAULT_NAME + MAC id (v7)
+  boolean nobuttons;          // no button functions and no setup network at boot, for public areas (v8)
 } SETTINGS;
 
 #endif

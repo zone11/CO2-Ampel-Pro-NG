@@ -3,6 +3,7 @@
 #include "led_control.h"
 #include "system_control.h"
 #include "health.h"
+#include "errors.h"
 
 // Replaces the send() in WiFiSocket::write() (scripts/wifi_send_guard.py), which retries forever on a full buffer
 // noinline: lets nm prove the redirect is in the image (LTO drops it otherwise)
@@ -162,6 +163,7 @@ void print_wifi_status(void)
         Serial.println("Disconnected");
         break;
       case WL_AP_LISTENING:
+      case WL_AP_CONNECTED:
         Serial.print("Access Point Mode - SSID: ");
         Serial.println(WiFi.SSID());
         Serial.print("AP IP Address: ");
@@ -179,6 +181,8 @@ void print_wifi_status(void)
     Serial.println("WiFi hardware not available");
   }
 }
+
+static unsigned long t_ap = 0;
 
 unsigned int wifi_start_ap(void)
 {
@@ -211,7 +215,48 @@ unsigned int wifi_start_ap(void)
   server.begin(); //start the web server
 #endif
 
+  t_ap = millis();
   return 0;
+}
+
+#define WIFI_WEAK_DBM    -80
+#define WIFI_WEAK_CHECKS 10 //one per minute
+
+// Once per second from loop()
+void wifi_error_check(int status)
+{
+  static unsigned int tick = 0, weak = 0;
+  bool ap = (status == WL_AP_LISTENING) || (status == WL_AP_CONNECTED);
+
+  error_set(ERR_SETUP_NETWORK, ap);
+  error_set(ERR_WIFI_LOST, !ap && (status != WL_CONNECTED) && (settings.wifi_ssid[0] != 0));
+  if(status != WL_CONNECTED)
+  {
+    weak = 0;
+  }
+  else if(++tick >= 60)
+  {
+    tick = 0;
+    weak = (WiFi.RSSI() < WIFI_WEAK_DBM) ? weak + 1 : 0;
+  }
+  error_set(ERR_WIFI_WEAK, weak >= WIFI_WEAK_CHECKS);
+}
+
+// Setup network open: with no client, try the normal WiFi now and then, e.g. the router was slower than the device after a power cut
+void wifi_ap_service(int status)
+{
+  if(status == WL_AP_CONNECTED)
+  {
+    t_ap = millis();
+  }
+  else if((settings.wifi_ssid[0] != 0) && ((millis() - t_ap) > AP_RETRY))
+  {
+    t_ap = millis();
+    if((wifi_start() != 0) && !settings.nobuttons)
+    {
+      wifi_start_ap(); //if this fails too, loop() retries the normal WiFi
+    }
+  }
 }
 
 unsigned int wifi_start(void)

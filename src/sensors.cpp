@@ -2,6 +2,8 @@
 #include "led_control.h"
 #include "system_control.h"
 #include "i2c_utils.h"
+#include "health.h"
+#include "errors.h"
 
 // Formats like "%.1f" without printf float support (not linked: saves the libc float/dtoa code)
 const char *fmt1(char *buf, float value)
@@ -84,6 +86,10 @@ void print_sensor_info(void) //print the sensor configuration
   {
     Serial.println("none");
   }
+  if(co2_failed())
+  {
+    Serial.println("CO2 sensor: no new readings, values withheld");
+  }
   Serial.print("Firmware Temp Offset (C): ");
   print2(temp_offset);
 }
@@ -152,6 +158,27 @@ float pres_sensor(void)
   return pres_value;
 }
 
+bool co2_force_recalibration(void)
+{
+  bool ok = false;
+
+  if(features & FEATURE_SCD30)
+  {
+    ok = (scd30.forceRecalibration(400) == 0); //400ppm = fresh air
+    delay(500);
+  }
+  else if(features & FEATURE_SCD4X)
+  {
+    uint16_t corr = 0xFFFF;
+    scd4x.stopPeriodicMeasurement();
+    delay(1000);
+    ok = (scd4x.performForcedRecalibration(400, corr) == 0) && (corr != 0xFFFF); //400ppm = fresh air; 0xFFFF = failed
+    delay(1000);
+    scd4x.startPeriodicMeasurement();
+  }
+  return ok;
+}
+
 // Set automatic self calibration (ASC), only if it differs
 void co2_set_asc(bool on)
 {
@@ -176,9 +203,28 @@ void co2_set_asc(bool on)
   }
 }
 
+#define PRESSURE_STALE_MS (10UL*60UL*1000UL)
+#define CO2_FROZEN_MS     (30UL*60UL*1000UL)
+#define RANGE_REPEATS     3 //readings in a row until a value counts as out of range
+
+static float pres_last_raw = 0;
+static unsigned long t_pres_change = 0;
+
+// Normal altitudes; anything else is not passed on to the CO2 sensor
+static bool pressure_plausible(float pressure)
+{
+  return (pressure >= 800) && (pressure <= 1100);
+}
+
 // A failed read gives garbage (LPS22HB about 0): keep the last value
 static void store_pressure(float pressure, float temperature)
 {
+  error_set(ERR_PRESSURE_RANGE, !pressure_plausible(pressure));
+  if(pressure != pres_last_raw)
+  {
+    pres_last_raw = pressure;
+    t_pres_change = millis();
+  }
   if((pressure >= 260) && (pressure <= 1400))
   {
     pres_value  = pressure;
@@ -199,6 +245,30 @@ static int lps22_reg(uint8_t reg)
   return Wire1.read();
 }
 
+// Pressure offset RPDS_L/H: never set here, but found at 0x0100 (-16 hPa) on a device, also after a power cycle; cause unknown
+void lps22_offset_check(void)
+{
+  int low = lps22_reg(0x18), high = lps22_reg(0x19);
+  if((low <= 0) && (high <= 0)) //0 or a failed read
+  {
+    return;
+  }
+  health.pressure_offset = (((high > 0) ? high : 0) << 8) | ((low > 0) ? low : 0);
+  error_event(ERR_PRESSURE_OFFSET);
+  for(uint8_t reg = 0x18; reg <= 0x19; reg++)
+  {
+    Wire1.beginTransmission(ADDR_LPS22HB);
+    Wire1.write(reg);
+    Wire1.write((uint8_t)0);
+    Wire1.endTransmission();
+  }
+  if(features & FEATURE_USB)
+  {
+    Serial.print("WARNING: pressure offset was set, cleared: 0x");
+    Serial.println(health.pressure_offset, HEX);
+  }
+}
+
 static void read_pressure(void)
 {
   uint8_t phase = sys_phase;
@@ -207,6 +277,7 @@ static void read_pressure(void)
   {
     if(features & FEATURE_LPS22HB)
     {
+      lps22_offset_check();
       int b[5];
       bool ok = true;
       for(int i = 0; ok && (i < 5); i++)
@@ -227,6 +298,83 @@ static void read_pressure(void)
   sys_phase = phase;
 }
 
+static unsigned long t_reading = 0;
+static bool reading_failed = false;
+
+static unsigned long t_co2_change = 0;
+static unsigned int co2_last_value = 0;
+
+static void repeat_check(ERROR_CODE e, uint8_t *repeats, bool bad)
+{
+  *repeats = bad ? ((*repeats < RANGE_REPEATS) ? *repeats + 1 : RANGE_REPEATS) : 0;
+  error_set(e, *repeats >= RANGE_REPEATS);
+}
+
+// Ranges of the raw values, before they are clamped for display
+static void co2_reading_check(float co2, float temperature, float humidity)
+{
+  static uint8_t bad_co2 = 0, bad_temp = 0, bad_humi = 0;
+  repeat_check(ERR_CO2_RANGE, &bad_co2, !((co2 > 0) && (co2 <= 40000)));
+  repeat_check(ERR_TEMP_RANGE, &bad_temp, !((temperature >= -10) && (temperature <= 60)));
+  repeat_check(ERR_HUMIDITY_RANGE, &bad_humi, !((humidity >= 0) && (humidity <= 100)));
+}
+
+static void co2_reading_ok(void)
+{
+  t_reading = millis();
+  co2_valid = true;
+  reading_failed = false;
+  error_set(ERR_CO2_STALE, false);
+  if((co2_value != co2_last_value) || (t_co2_change == 0))
+  {
+    co2_last_value = co2_value;
+    t_co2_change = millis();
+  }
+}
+
+// Once per second from loop(): values that stopped changing
+void sensors_error_check(void)
+{
+  error_set(ERR_CO2_FROZEN, !reading_failed && (t_co2_change != 0) && ((millis() - t_co2_change) > CO2_FROZEN_MS));
+  if(features & (FEATURE_LPS22HB|FEATURE_BMP280))
+  {
+    if(t_pres_change == 0)
+    {
+      t_pres_change = millis();
+    }
+    error_set(ERR_PRESSURE_STALE, (millis() - t_pres_change) > PRESSURE_STALE_MS);
+  }
+}
+
+// Keeps the last value out of the web page, MQTT and the traffic light when the sensor stops delivering
+bool co2_failed(void)
+{
+  if((features & (FEATURE_SCD30|FEATURE_SCD4X)) == 0)
+  {
+    return false; //no sensor found at boot: has its own display
+  }
+  if(t_reading == 0)
+  {
+    t_reading = millis(); //first call, end of the boot
+  }
+  if((millis() - t_reading) <= CO2_TIMEOUT)
+  {
+    return false;
+  }
+  if(!reading_failed)
+  {
+    reading_failed = true;
+    co2_valid = false;
+    error_set(ERR_CO2_STALE, true);
+    health.co2_failures++;
+    if(features & FEATURE_USB)
+    {
+      Serial.println("WARNING: no new CO2 reading for 60 s");
+    }
+  }
+  return true;
+}
+
 unsigned int check_sensors(void) //read the sensors
 {
   static unsigned long t_pres = 0;
@@ -237,19 +385,26 @@ unsigned int check_sensors(void) //read the sensors
   }
   if(features & FEATURE_SCD30)
   {
+    static uint8_t read_fails = 0;
     uint16_t ready = 0;
     float v_co2, v_temp, v_humi;
-    if((scd30.getDataReady(ready) == 0) && ready &&
-       (scd30.readMeasurementData(v_co2, v_temp, v_humi) == 0))
+    int16_t err = scd30.getDataReady(ready);
+    if((err == 0) && ready)
     {
-      co2_value  = (unsigned int)(v_co2 + 0.5f);
+      err = scd30.readMeasurementData(v_co2, v_temp, v_humi);
+    }
+    repeat_check(ERR_CO2_READ_FAILED, &read_fails, err != 0);
+    if((err == 0) && ready)
+    {
+      co2_reading_check(v_co2, v_temp, v_humi);
+      co2_value  = (v_co2 > 0) ? (unsigned int)(v_co2 + 0.5f) : 0;
       temp_value = v_temp;
       humi_value = v_humi;
       read_pressure();
       if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
       {
         pres_last = pres_value;
-        if((pres_value >= 700) && (pres_value <= 1400)) //valid range
+        if(pressure_plausible(pres_value))
         {
           scd30.startPeriodicMeasurement(pres_value); //pressure compensation, hPa=mbar
         }
@@ -262,7 +417,7 @@ unsigned int check_sensors(void) //read the sensors
       {
         humi_value = 100;
       }
-      co2_valid = true;
+      co2_reading_ok();
       return 1;
     }
   }
@@ -276,8 +431,9 @@ unsigned int check_sensors(void) //read the sensors
       co2_value  = v_co2;
       temp_value = scd4x_temperature(v_temp);
       humi_value = scd4x_humidity(v_humi);
+      co2_reading_check(v_co2, temp_value, humi_value);
       read_pressure();
-      if((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF)))
+      if(pressure_plausible(pres_value) && ((pres_value < (pres_last-PRESSURE_DIFF)) || (pres_value > (pres_last+PRESSURE_DIFF))))
       {
         pres_last = pres_value;
         scd4x.stopPeriodicMeasurement();
@@ -294,7 +450,7 @@ unsigned int check_sensors(void) //read the sensors
       {
         humi_value = 100;
       }
-      co2_valid = true;
+      co2_reading_ok();
       return 1;
     }
   }

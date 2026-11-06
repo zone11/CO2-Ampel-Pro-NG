@@ -10,6 +10,8 @@ void leds(uint32_t color);
 // led.brightness_dark when the light sensor reports darkness and led.auto is on
 void led_brightness_update(void);  // applies the current state (call after enable/exit/menu)
 void led_set_dark(bool dark);      // light sensor result
+void led_sensor_error(void);       // CO2 sensor failed: blinking white instead of the traffic light
+void led_calibration(unsigned int co2); // white, LEDs 3-4 show the value
 void led_button_step(void);        // short button press: halve, wrap back to the maximum
 void led_state_restore(void);      // at boot after the settings: Quiet and the button level of the
                                    // previous run after a watchdog reset or crash (saved settings otherwise)

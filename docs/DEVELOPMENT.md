@@ -33,13 +33,19 @@ pio device monitor -b 9600           # serial monitor
 ### Optional Features
 
 Optional features can be left out at compile time to save flash; all are on by default. Add the switch to
-`build_flags` in `platformio.ini` (flash use with all features: about 94 KB of 246 KB):
+`build_flags` in `platformio.ini` (flash use with all features: about 98 KB of 246 KB):
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`, WiFi form; AP mode then has no use) | ~11 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2 KB, 1.9 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~11.3 KB |
+| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
+
+The main page lists `WITH_HA` and `WITH_MQTT_CONFIG` under "Built with" when they are included.
+
+`WITH_HA=0`: the setting's stored field stays, so the settings format doesn't change, and `<base>/state` stays because Quiet
+uses it. This build can't remove discovery messages it finds on the broker, so set `mqtt.ha=0` before flashing a device that
+had it on.
 
 Compile-time defaults of the settings (thresholds, colors, brightness, `CO2_ASC`, MQTT defaults) are in
 `include/app_config.h`; they apply to new devices and after a factory reset.
@@ -71,6 +77,7 @@ The code is split into modules under `src/` (headers in `include/`):
 | `mqtt_service` | MQTT publish, Home Assistant discovery, commands |
 | `tls_client` | TLS client with hostname check |
 | `winc_bridge` | WiFi module flash access for the PC tool |
+| `calibration` | fresh air calibration in the background |
 | `ui_menu`, `diagnostics` | service menu, self test |
 | `i2c_utils` | I2C scan and bus recovery |
 | `system_control` | reset, watchdog, reset record, HardFault handler |
@@ -82,7 +89,8 @@ settings export/import, WiFi module root certificates), `link_debug.py` (build h
 ## Tests
 
 `pio test -e native` runs the host tests in `test/test_host/` without hardware: JSON parser, settings import, the
-settings slots in a fake flash (including a power loss after every page of a save) and the SCD4x conversions. `test/stubs/`
+settings slots in a fake flash (including a power loss after every page of a save), the SCD4x conversions, complete and
+aborted calibration runs, and the `errors` list (conditions, events held for an hour, a short buffer). `test/stubs/`
 holds just enough of Arduino for that code. `python3 test/fuzz/json_fuzz.py [count] [seed]` compares the JSON parser with
 Python's `json` on random objects.
 
@@ -138,6 +146,16 @@ A hung main loop restarts after `WATCHDOG_LOOP` (30 s). From boot until the firs
 `watchdog_long()` the limit is `WATCHDOG_LONG` (120 s), for WiFi and MQTT connects; the next pass of `loop()` sets it back.
 Stuck interrupts restart after 4 s.
 
+## Calibration Trigger
+
+`calibration.cpp` is a small state machine without hardware access of its own, so the host tests cover complete runs.
+`calibrate` on serial, POST `/config/calibrate` and the command word `calibrate` on `<base>/cmd` (only with `mqtt.config=1`; JSON
+imports from serial and web treat it as unknown, so the web password rule can't be bypassed) call `calibration_start()`; `loop()` then passes every new reading to
+`calibration_reading()`, so web and MQTT keep running. The traffic light pauses while `calibration_leds()` is true (during the run,
+and 3 seconds for the result). The result is kept in RAM until the next restart. The service menu runs before the network starts and
+drives the same code in its own loop. An unstable run still applies the forced recalibration, as in the original firmware; it starts
+again up to `CALIBRATION_RUNS` times. On an SCD4x the recalibration stops the measurement for about 2 seconds.
+
 ## Diagnostics Internals
 
 The reset record is a small RAM area (`.noinit` section in the linker script) that is not initialized at
@@ -180,11 +198,32 @@ because of a 64-bit to float conversion in the BMP280 library.
 Known limit: a device that starts holding SCL during an address write makes the core's
 `startTransmissionWIRE()` retry recursively until the stack overflows and the fault handler restarts.
 
+## Errors List
+
+`errors.cpp` keeps a 32-bit mask of the current problems. `error_set()` is for conditions, `error_event()` for one-offs, listed for
+`ERROR_HOLD` (1 hour) after the event, so a tool can't miss them between messages. There is no history on the device on purpose, that
+belongs in the monitoring tool; the counters in `diag` stay as they are. `errors_json()` writes the array into `health_json()`, and a change
+publishes `<base>/diag` at once. If the array doesn't fit, it ends with `"truncated"`; all errors together fit the 1 KB buffers.
+The checks run where the data is: `co2_reading_check()` and `sensors_error_check()` in `sensors`, `wifi_error_check()` in `wifi_manager`,
+`health_error_check()` in `health`, the boot findings at the end of `setup()`. An SCD4x has no `co2_read_failed`, because its read also
+fails while no data is ready (REFACTOR M3); `co2_stale` covers it. New error: add it to `ERROR_CODE` and `error_names` in the same order,
+and to the README table. The thresholds are starting values that need the long run to confirm them.
+
+## CO2 Sensor Failure
+
+`co2_failed()` runs once per second after `check_sensors()`: without a new reading for `CO2_TIMEOUT` (60 s) it clears `co2_valid`, so web
+and MQTT drop the value as they do before the first reading, counts `co2_failures`, and the traffic light is replaced by blinking
+white with the buzzer off. A running calibration is aborted. The next reading ends this. The connects that block the loop can't
+trigger it: `check_sensors()` runs first in that pass and picks up the waiting reading.
+
 ## Reconnects
 
 `loop()` is the only caller of `wifi_start()` after boot; `mqtt_service()` follows with MQTT once WiFi is back. Both
 use `retry_due()`: RETRY_MIN, doubled per attempt up to RETRY_MAX. An MQTT connect refused within 5 s does not count,
 it doesn't stall the loop, so a restarted broker is found again quickly.
+
+While the setup network is open, `wifi_ap_service()` tries the normal WiFi after `AP_RETRY` (5 minutes) with no client, and reopens the
+network if that fails (not with `sys.nobuttons=1`, which keeps retrying). A joined client restarts the wait.
 
 The connects still block the loop, because WiFi101 offers no non-blocking way: after `setTimeout()` runs out
 `startConnect()` resets its mode and ignores the late DHCP reply, so a timeout of 0 never connects. The limits are 60 s

@@ -5,6 +5,7 @@
 #include "health.h"
 #include "mqtt_service.h"
 #include "system_control.h"
+#include "calibration.h"
 
 #include <ctype.h>
 
@@ -15,6 +16,12 @@
 
 static void urldecode(char *src);
 static bool restart_pending = false; //restart after the reply has been sent
+
+// sys.nobuttons (public areas): falsified readings must need a password
+static bool calibration_allowed(void)
+{
+  return !settings.nobuttons || (settings.password[0] != 0);
+}
 
 // Writes text into a fixed buffer (for the JSON import reply on the page)
 class BufPrint : public Print
@@ -157,41 +164,6 @@ static const char *form_value(const form_t *form, const char *name)
     }
   }
   return NULL;
-}
-
-// POST of the "Change WiFi" form (fields 1 = SSID, 2 = password, 3 = sys.password). Returns the message for the page.
-static const char *wifi_form(WiFiClient &client, size_t content_length)
-{
-  char *body = read_body(client, content_length);
-  if(body == NULL)
-  {
-    return "<b>Not saved: incomplete or too long</b><br/>\r\n";
-  }
-  form_t form;
-  form_parse(body, &form);
-  const char *ssid = form_value(&form, "1");
-  const char *code = form_value(&form, "2");
-  const char *pw = form_value(&form, "3");
-  const char *msg = "";
-  if(!settings_enable(pw ? pw : "", NULL)) //with sys.password: password required
-  {
-    msg = "<b>Wrong password</b><br/>\r\n";
-  }
-  else if((ssid == NULL) || (code == NULL) ||
-          (strlen(ssid) >= sizeof(settings.wifi_ssid)) || (strlen(code) >= sizeof(settings.wifi_code)))
-  {
-    msg = "<b>Not saved: incomplete or too long</b><br/>\r\n";
-  }
-  else if(strcmp(ssid, settings.wifi_ssid) || strcmp(code, settings.wifi_code))
-  {
-    if(settings_set("wifi.ssid", ssid) && settings_set("wifi.pass", code))
-    {
-      settings_save();
-      msg = "<b>Saved</b><br/>\r\n";
-    }
-  }
-  free(body);
-  return msg;
 }
 
 static void print_field(Print &out, const cfg_item_t *item)
@@ -338,6 +310,25 @@ static void config_page(WiFiClient &client, const char *result)
             "<textarea id=j name=j rows=8 placeholder='{\"co2.t1\":600, \"led.brightness\":100}'></textarea><br/>\r\n"
             "<input type=submit value='Import'> (all or nothing, saved)</form>\r\n");
 
+  //calibration
+  if(calibration_running())
+  {
+    out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calabort onsubmit='pw(this)'><input type=hidden name=_pw>"
+              "<p>Running, the main page shows the progress.</p>"
+              "<input type=submit value='Abort calibration'></form>\r\n");
+  }
+  else if(calibration_available() && !calibration_allowed())
+  {
+    out.print("<h3>Calibration</h3>\r\n<p>Set sys.password to start it here.</p>\r\n");
+  }
+  else if(calibration_available())
+  {
+    out.print("<h3>Calibration</h3>\r\n<form method=post action=/config/calibrate onsubmit='pw(this)'><input type=hidden name=_pw>"
+              "<p>Only with the device in fresh air for at least 2 minutes: it sets the current reading to 400 ppm. "
+              "Takes 3 minutes or more; the device stays online.</p>"
+              "<input type=submit value='Start calibration'></form>\r\n");
+  }
+
   //restart
   out.print("<h3>Restart</h3>\r\n<form method=post action=/restart onsubmit='pw(this)'><input type=hidden name=_pw>"
             "<input type=submit value='Restart'></form>\r\n"
@@ -368,16 +359,13 @@ static const char *fmt_duration(char *buf, size_t size, unsigned long s)
 }
 
 // GET /: names as in Home Assistant; readings, WiFi (with the login form), MQTT and system status in sections like /config
-static void main_page(WiFiClient &client, const char *form_msg)
+static void main_page(WiFiClient &client)
 {
   ChunkPrint out(client);
   bool pw = settings_password_set(); //with a password: no SSID, broker or topic on this page
   char v[96], f1[16], f2[16];
 
-  page_head(out, NULL,
-            "<meta http-equiv=refresh content=30>\r\n"
-            "<script>function wifi(){var b=document.getElementById('wifi');"
-            "b.style.display=(b.style.display=='block')?'none':'block';}</script>\r\n");
+  page_head(out, NULL, "<meta http-equiv=refresh content=30>\r\n");
   //measurements: without a CO2 sensor "--" instead of start values; pressure only with a pressure sensor
   out.print("<fieldset><legend>Measurements</legend>\r\n");
   uint32_t shown = ws2812.getPixelColor(0);
@@ -411,7 +399,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   byte mac[6];
   WiFi.macAddress(mac);
   out.print("<fieldset><legend>WiFi</legend>\r\n");
-  row(out, "Status", (status == WL_CONNECTED) ? "connected" : (status == WL_AP_LISTENING) ? "access point" : "disconnected");
+  row(out, "Status", (status == WL_CONNECTED) ? "connected" : ((status == WL_AP_LISTENING) || (status == WL_AP_CONNECTED)) ? "access point" : "disconnected");
   if(!pw && (status == WL_CONNECTED))
   {
     row(out, "SSID", WiFi.SSID());
@@ -427,17 +415,7 @@ static void main_page(WiFiClient &client, const char *form_msg)
   row(out, "MAC", v);
   String fv = WiFi.firmwareVersion();
   row(out, "WINC1500 firmware", fv.c_str());
-  out.print(form_msg);
-  out.print("<button onclick='wifi()'>Change WiFi</button>\r\n"
-            "<div id=wifi style='display:none'><form method=post>\r\n"
-            "<label>SSID</label> <input name=1 size=30 maxlength=64 placeholder=SSID value='");
-  print_html(out, pw ? "" : settings.wifi_ssid, true);
-  out.print("'><br/>\r\n<label>Password</label> <input name=2 type=password size=30 maxlength=64><br/>\r\n");
-  if(pw)
-  {
-    out.print("<label>Enable password</label> <input name=3 type=password size=30 maxlength=32><br/>\r\n");
-  }
-  out.print("<input type=submit value='Save'> (applies after a restart)</form></div>\r\n</fieldset>\r\n");
+  out.print("</fieldset>\r\n");
 
   //MQTT
   out.print("<fieldset><legend>MQTT</legend>\r\n");
@@ -504,11 +482,16 @@ static void main_page(WiFiClient &client, const char *form_msg)
     snprintf(v, sizeof(v), "%s in %s after %s", event_name(r->event), phase_name(r->phase), fmt_duration(f2, sizeof(f2), r->uptime));
     row(out, "Last reset", v);
   }
+  if(calibration_status(v, sizeof(v)))
+  {
+    row(out, "Calibration", v);
+  }
   snprintf(v, sizeof(v), "%lu B", (unsigned long)health_ram_free());
   row(out, "Free RAM", v);
+  row(out, "Built with", WITH_HA ? (WITH_MQTT_CONFIG ? "HA, MQTT config" : "HA") : (WITH_MQTT_CONFIG ? "MQTT config" : "no options"));
   out.print("</fieldset>\r\n");
 
-  out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a>\r\n"
+  out.print("<a href='/json'>JSON</a> - <a href='/diag'>Diagnostics</a> - <a href='/config'>Configuration</a> - <a href='https://github.com/zone11/CO2-Ampel-Pro-NG' target=_blank>GitHub</a>\r\n"
             "</body></html>\r\n");
 }
 
@@ -606,6 +589,37 @@ static bool config_post(WiFiClient &client, const char *path, size_t content_len
     free(body);
     res.print("{\"result\":\"OK\",\"restart\":true}");
     restart_pending = true;
+    return false;
+  }
+
+  if(strcmp(path, "calibrate") == 0)
+  {
+    free(body);
+    if(!calibration_allowed())
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"calibration\":\"needs sys.password\"}}");
+    }
+    else if(calibration_running())
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"calibration\":\"already running\"}}");
+    }
+    else if(calibration_available())
+    {
+      res.print("{\"result\":\"OK\",\"calibration\":true}");
+      calibration_start(false);
+    }
+    else
+    {
+      res.print("{\"result\":\"ERROR\",\"errors\":{\"calibration\":\"no CO2 sensor\"}}");
+    }
+    return false;
+  }
+
+  if(strcmp(path, "calabort") == 0)
+  {
+    free(body);
+    calibration_abort();
+    res.print("{\"result\":\"OK\"}");
     return false;
   }
 
@@ -737,9 +751,8 @@ void webserver_service(void)
   //}
   boolean currentLineIsBlank=true;
   unsigned int pos=0;
-  char buf[640]; //replies of /json, /diag and errors (the pages use ChunkPrint)
+  char buf[1152]; //replies of /json, /diag and errors (the pages use ChunkPrint)
   char req[3*64+1]; //HTTP request
-  const char *form_msg = "";
   char f1[16], f2[16], f3[16], f4[16]; //readings with one decimal (fmt1)
   char hline[24]; //current header line (only for Content-Length)
   size_t hlen = 0, content_length = 0;
@@ -812,7 +825,7 @@ void webserver_service(void)
         }
         else if((strncmp(req, "POST /config/", 13) == 0) || (strncmp(req, "POST /restart", 13) == 0))
         {
-          char result[400], path[8];
+          char result[400], path[12];
           const char *p = (req[6] == 'r') ? "restart" : req + 13; //save, import, export
           size_t n = strcspn(p, " ?");
           snprintf(path, sizeof(path), "%.*s", (int)((n < sizeof(path)) ? n : sizeof(path) - 1), p);
@@ -834,11 +847,7 @@ void webserver_service(void)
         }
         else
         {
-          if(strncmp(req, "POST ", 5) == 0)
-          {
-            form_msg = wifi_form(client, content_length);
-          }
-          main_page(client, form_msg);
+          main_page(client);
         }
         break;
       }

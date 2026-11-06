@@ -1,6 +1,7 @@
 #include "serial_console.h"
 
 #include "app_globals.h"
+#include "calibration.h"
 #include "i2c_utils.h"
 #include "led_control.h"
 #include "mqtt_service.h"
@@ -210,13 +211,19 @@ void serial_service(void)
     print_measurements();
     print_sensor_info();
     print_led_status();
+    char cal[48];
+    if(calibration_status(cal, sizeof(cal)))
+    {
+      Serial.print("Calibration: ");
+      Serial.println(cal);
+    }
     print_wifi_status();
     print_mqtt_status();
     return;
   }
   if(strcasecmp(line, "diag") == 0)
   {
-    char diag[512];
+    char diag[1024];
     health_json(diag, sizeof(diag));
     Serial.println(diag);
     return;
@@ -244,6 +251,40 @@ void serial_service(void)
   {
     i2c_scan(Wire, "Wire (SERCOM0)", Serial);
     i2c_scan(Wire1, "Wire1 (SERCOM2)", Serial);
+    return;
+  }
+  if(strcasecmp(line, "calibrate") == 0)
+  {
+    if(!remote_on)
+    {
+      Serial.println("ERROR: Not enabled (send 'enable' first)");
+    }
+    else if(!calibration_available())
+    {
+      Serial.println("ERROR: No CO2 sensor");
+    }
+    else if(calibration_running())
+    {
+      Serial.println("ERROR: Already running ('calibrate abort' stops it)");
+    }
+    else
+    {
+      Serial.println("OK, 'calibrate abort' stops it");
+      calibration_start(false);
+    }
+    return;
+  }
+  if(strcasecmp(line, "calibrate abort") == 0)
+  {
+    if(!remote_on)
+    {
+      Serial.println("ERROR: Not enabled (send 'enable' first)");
+    }
+    else
+    {
+      calibration_abort();
+      Serial.println("OK");
+    }
     return;
   }
   if(strcasecmp(line, "reset") == 0)

@@ -6,7 +6,7 @@ with four LEDs, warns with a buzzer when it is time to ventilate, and sends its 
 [original firmware](https://github.com/watterott/CO2-Ampel) by Watterott electronic and has since been
 largely rewritten. It runs on the unmodified hardware.
 
-✅ **Status**: in daily use and tested on hardware
+✅ **Status**: in daily use and tested on hardware with the SCD30 and LPS22HB sensors (SCD4x and BMP280 are supported but untested)
 
 ## Contents
 
@@ -36,9 +36,11 @@ Building your own variant, the code structure and the internals are described in
 - Settings survive firmware updates, and a power loss while saving keeps the previous settings; backup and restore as a JSON file
 - Optional password for changes over USB and the web interface
 - Watchdog: restarts the device on its own if the firmware hangs, and reports why it restarted
-- Calibration and self test from the built-in service menu
+- Fresh air calibration from the web page, USB serial or the service menu; the device stays online during a run started over the web or serial
+- Self test in the built-in service menu
+- For devices in public areas: all button functions can be turned off
 
-**Planned:** firmware updates over the network (OTA), LoRaWAN/TTN, charts on the web page.
+**Planned:** LoRaWAN/TTN, charts on the web page.
 
 ## What You Need
 
@@ -84,7 +86,7 @@ device and writes them back with the new firmware. Each upload also keeps a copy
 3. After the restart `status` shows the IP address. Open `http://<IP address>/` in a browser.
 
 Without a serial monitor: hold the button for more than 3 seconds. The device opens its own WiFi network
-(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and the web page there has a "Change WiFi" form.
+(named like the device, e.g. `co2ampel-ng-F8F0056E78A2`), and `http://192.168.1.1/config` there has the WiFi settings; use "Save", then "Restart".
 
 MQTT and Home Assistant: see [MQTT and Home Assistant](#mqtt-and-home-assistant).
 
@@ -139,8 +141,17 @@ running. Switch it with the Home Assistant switch "Quiet", over MQTT (see
 |---|---|
 | short (0.1–3 s) | halve the LED brightness; below `led.brightness_dark` it jumps back to the maximum (not saved) |
 | any press | mute the buzzer, start its 5-minute delay again |
-| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet; restart to leave) |
+| during a calibration | abort it (nothing else happens) |
+| long (more than 3 s) | open the device's own WiFi network for setup (LEDs violet for a moment, then the normal colors again; ends with a restart, or after 5 minutes with nobody connected) |
 | hold while plugging in | service menu |
+
+For devices in public areas, set `sys.nobuttons=1`. All of the above then does nothing, including aborting a calibration. The
+device also no longer opens its own WiFi network when WiFi fails at startup; it keeps trying to connect, so wrong WiFi settings
+have to be fixed over USB. "Start calibration" on the web page needs `sys.password` to be set.
+
+**Set `sys.password` as well.** Without it, anyone on the network or with USB access can turn the setting off again. With
+`mqtt.config=1`, so can anyone allowed to publish to the device's topics on the broker, because MQTT commands need no password. The red
+reset button and the USB port always stay active. If the stored settings are ever lost, the button works again.
 
 ### Service Menu
 
@@ -166,6 +177,15 @@ Calibrate the CO2 sensor from time to time:
    is set to 400 ppm. Unstable readings start the run again; a button press aborts it.
 4. Done: LEDs blue and a short beep.
 
+Without the button, start it over USB serial with `enable`, then `calibrate`, with "Start calibration" on the web page
+`/config`, or [over MQTT](#remote-configuration). Put the device in fresh air first: the current reading is set to 400 ppm, wherever the device is. It usually takes 3 to 15
+minutes, and the web page and MQTT keep running. The main page shows the progress and then the result under "Calibration" until
+the next restart. Stop it the same way ("Abort calibration" on `/config`, `calibrate abort`, `{"calibrate":false}`) or with a button press. If the readings
+stay unstable, it gives up after three runs (LEDs red), but the sensor has been set anyway, so repeat it in fresh air. With
+Quiet on, or while `enable` is active on the serial port, the LEDs don't show the calibration.
+
+Anyone who can open the web page can start this, so set `sys.password` if others are on your network.
+
 Automatic self-calibration (`co2.asc=1`, off by default) needs 7 days of continuous operation with at least
 1 hour of fresh air every day.
 
@@ -188,10 +208,11 @@ Without `save` a change lasts until the next restart.
 | Key | Default | Meaning |
 |---|---|---|
 | `sys.name` | empty | device name (max. 32 characters): WiFi hostname, name of the device's own WiFi network, Home Assistant device name. Empty = `co2ampel-ng-<MAC address>`, e.g. `co2ampel-ng-F8F0056E78A2` |
-| `sys.serial_output` | 0 | print every measurement on the serial port |
+| `sys.serialout` | 0 | print every measurement on the serial port |
 | `sys.password` | empty | password for changes, see [Password](#password) |
 | `sys.buzzer` | 1 | buzzer on (1) or off (0) |
 | `sys.quiet` | 0 | Quiet: LEDs, status LED and buzzer off, see [Quiet](#quiet-night) |
+| `sys.nobuttons` | 0 | for devices in public areas, see [Button](#button) |
 | `co2.t1` … `co2.t5` | 600, 1000, 1200, 1400, 1600 | CO2 thresholds in ppm (400–10000): blue/green, green/yellow, yellow/red, red/blinking, buzzer |
 | `co2.asc` | 0 | automatic self-calibration of the CO2 sensor |
 | `led.brightness` | 125 | LED brightness 1–255 |
@@ -219,7 +240,7 @@ USB serial or the web page, so a mistake over MQTT can't cut the device off the 
 Without a password, anyone on your network can change the settings on the web page (the stored passwords
 themselves are never shown). With `sys.password` set (`enable`, `set sys.password=...`, `save`):
 - `enable <password>` is required before `get`, `dump`, `json export/import`, `set` and `save` on the serial port
-- the web configuration page and the WiFi form ask for it
+- the web configuration page asks for it
 - the main web page no longer shows the WiFi name, broker and topic
 - a wrong password locks further attempts for 1, 2, 4 … 30 seconds
 
@@ -250,8 +271,8 @@ When WiFi is connected, the device answers at `http://<IP address>/`:
 
 | Address | Content |
 |---|---|
-| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart). Refreshes every 30 seconds |
-| `/config` | all settings as a form, JSON upload and download, restart button |
+| `/` | status page `CO2-Ampel-NG \| <name>`: measurements (with the current LED color), WiFi, MQTT (connected or the last error, last message, connection counters) and system (firmware, uptime, last restart, calibration, optional features the firmware was built with). Refreshes every 30 seconds |
+| `/config` | all settings as a form, JSON upload and download, calibration, restart button |
 | `/config.json` | all settings as JSON, passwords as `***` |
 | `/json` | measurements as JSON, e.g. `{"c": 800, "t": 22.5, "h": 45.0, "p": 1013.2, "u": 22.0, "l": 512}` |
 | `/diag` | diagnostics as JSON, see [Troubleshooting](#troubleshooting) |
@@ -290,7 +311,7 @@ All topics start with `<mqtt.topic_prefix>/<device ID>`, the device ID being the
 | Topic | Content | Sent | Retained |
 |---|---|---|---|
 | `<base>/sensors` | `{"co2":812,"temperature":23.4,"humidity":45.1,"light":512,"pressure":964.1,"pressure_temp":26.8}` | every `mqtt.interval` seconds | no |
-| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.8.1","reset":"power-on","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
+| `<base>/device` | `{"name":"co2ampel-ng-F8F0056E78A2","version":"0.9","reset":"poweron","sensors":["SCD30","LPS22HB"]}` | on connect and when `sys.name` changes | yes |
 | `<base>/wifi` | `{"ssid":"MyWiFi","ip":"192.168.1.20","rssi":-60}` | every interval | no |
 | `<base>/diag` | diagnostics, see [Troubleshooting](#troubleshooting) | every interval | yes |
 | `<base>/status` | `online` / `offline` (also when the device disappears without saying goodbye) | on connect | yes |
@@ -349,6 +370,11 @@ mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"export":true}'     
 - Only JSON is accepted; send the next command after the reply.
 - Each `"save":true` writes the flash; don't save in automated loops.
 
+A [calibration](#calibration) can be started the same way, for example on a device without a web page. `{"calibrate":true}` starts
+it and `{"calibrate":false}` aborts it. The reply confirms the command; `calibration` in `<base>/diag` then shows the progress and
+the result, updated every `mqtt.interval`. Put the device in fresh air first: the current reading is set to 400 ppm, wherever the
+device is, and the password rules of the web page don't apply here, so restrict `<base>/cmd` on the broker.
+
 ### MQTT over TLS
 
 The WiFi module checks the broker certificate against its stored root certificates and against the name
@@ -400,7 +426,8 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 | Problem | What to do |
 |---|---|
 | No CO2 values, traffic light stays red | The CO2 sensor was not found at power-on (`status` / boot log: `Error: CO2 sensor not found`). Unplug the device for a few seconds. |
-| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup; a lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
+| LEDs blink white, CO2 shows `--` | The CO2 sensor has delivered no new reading for over a minute, so the last value is no longer shown or published, and the buzzer stays off. It clears itself when readings return (`co2_failures` in `diag` counts these). Otherwise unplug the device for a few seconds. |
+| Device not reachable on WiFi | Check `status` over USB. If WiFi fails at power-on, the device opens its own WiFi network for setup, and tries your WiFi again every 5 minutes while nobody is connected to it. A lost connection is retried automatically, every 30 seconds at first and up to every 5 minutes. |
 | MQTT not connected | The MQTT section of the web page shows the last error (e.g. wrong password, broker not reachable). With TLS: is the root certificate installed, and does `mqtt.broker` match the certificate? |
 | Nothing appears in Home Assistant | `mqtt.ha=1`? Check the broker access rules (see [Home Assistant](#home-assistant)). |
 | Upload fails with "Resource busy" | A serial monitor still has the port open; close it. |
@@ -410,10 +437,10 @@ restarts the device and reports whether MQTT connects. Example `site.json`:
 ### Restarts and Diagnostics
 
 A watchdog restarts the device if the firmware hangs for 30 seconds (2 minutes while it connects to the network). The cause of the last restart is shown
-in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `power-on`,
-`watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `reset pin`, `brown-out`.
+in `status`, on the web page, in Home Assistant ("Reset cause") and in the MQTT `device` topic: `poweron`,
+`watchdog`, `fault` (crash), `software` (`reset`, restart button, upload), `resetpin`, `brownout`.
 
-Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details:
+Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give more details. On MQTT a change of `errors` is sent at once, the rest every `mqtt.interval`:
 
 | Key | Meaning |
 |---|---|
@@ -423,15 +450,52 @@ Serial `diag`, the web address `/diag` and the MQTT topic `<base>/diag` give mor
 | `last_event` | `hang` (watchdog), `fault` (crash) or `none` |
 | `last_phase` | what the firmware was doing before the restart (e.g. `mqtt.loop`, `co2`, `web`) |
 | `last_uptime` | how long the device had been running before the restart (seconds) |
+| `calibration` | `none`, the progress of a running calibration, or the result since the last start |
 | `ram_free`, `ram_free_min`, `heap_free` | free memory now / lowest since start / inside the heap (bytes) |
 | `loop_max_ms` | longest pause of the main loop (ms) |
 | `wifi_connects`, `mqtt_connects`, `mqtt_failures`, `mqtt_error` | connection counters since start |
 | `i2c_errors` | sensor bus errors since start; the device repairs the bus itself, a rising count points to a sensor or wiring problem |
 | `net_write_timeouts` | network sends given up because the other side stopped reading; the connection is closed and made again |
+| `co2_failures` | times the CO2 sensor stopped delivering readings since start |
+| `errors` | what is wrong right now, see below. `[]` = nothing |
+| `pressure_offset` | normally 0. Otherwise the pressure sensor had an offset set that shifted its reading, and the device cleared it (256 = 16 hPa); please open an issue |
 
-These values survive restarts, but not a power loss: read them before unplugging the device. If the device
+The `last_*` values survive restarts, but not a power loss: read them before unplugging the device. If the device
 restarts repeatedly, please open an issue with the `diag` output and the firmware version (`last_pc` and
 `last_lr` tell the developer where it happened).
+
+### Errors
+
+`errors` lists problems as a JSON array, e.g. `"errors":["co2_stale","wifi_weak"]`, for your monitoring tool. It only shows the current
+state, so the tool keeps the history. Home Assistant shows the number of entries as "Errors", with the list as an attribute. A
+device that is offline can't report: watch `<base>/status` for that. Conditions are listed while they last; **events** are one-offs,
+listed for one hour, or until a restart.
+
+| Error | Meaning |
+|---|---|
+| `co2_missing`, `pressure_missing`, `wifi_module_missing` | not found at power-on |
+| `co2_stale` | no new CO2 reading for 60 seconds; values withheld, LEDs blink white |
+| `co2_read_failed` | 3 failed CO2 reads in a row (SCD30) |
+| `co2_range`, `temp_range`, `humidity_range` | 3 readings in a row outside what is possible (CO2 above 0 up to 40000 ppm, -10 to 60 °C, 0 to 100 %) |
+| `co2_frozen` | exactly the same CO2 value for 30 minutes |
+| `pressure_stale` | exactly the same pressure for 10 minutes |
+| `pressure_range` | outside 800–1100 hPa; not passed on to the CO2 sensor |
+| `pressure_offset` | event: the pressure sensor had an offset set, cleared (see `pressure_offset`) |
+| `i2c_bus` | event: 3 or more sensor bus faults within 10 minutes |
+| `i2c_stuck` | a sensor bus line stays low |
+| `reset_hang`, `reset_fault`, `reset_brownout` | event: the last restart came from the watchdog, a crash or a power dip |
+| `settings_lost` | event: no valid settings at start (also on a new device), defaults in use |
+| `settings_newer` | settings from newer firmware, defaults in use |
+| `ram_low` | less than 4 KB of RAM has stayed free |
+| `loop_slow` | event: the device was blocked for over 20 seconds, usually by a connect |
+| `wifi_lost` | not connected to your WiFi |
+| `wifi_weak` | signal below -80 dBm for 10 minutes |
+| `setup_network` | the device's own open WiFi network is on |
+| `wifi_reconnects`, `mqtt_reconnects` | event: 3 or more connects within an hour |
+| `mqtt_connect` | 2 failed MQTT connects in a row |
+| `mqtt_publish` | event: a message could not be sent |
+| `net_write_timeout` | event: a network send was given up |
+| `cal_refused`, `cal_failed` | event: the sensor refused the new value, or the readings stayed unstable for 3 runs |
 
 ## Serial Command Reference
 
@@ -440,7 +504,7 @@ USB serial, 9600 baud. Lines may end with CR, LF or CRLF.
 ```
 enable [password]  allow changes (LEDs violet, traffic light paused until exit)
 exit               leave enable mode
-status             measurements, sensors, LEDs, WiFi and MQTT status
+status             measurements, sensors, LEDs, calibration, WiFi and MQTT status
 diag               diagnostics as JSON
 version            firmware version
 get <key>          read a setting (get co2.* reads a group)
@@ -451,10 +515,12 @@ json export        all settings as JSON
 json import        apply settings from JSON (on the same line or pasted afterwards, max. 2 KB)
 help               list all keys
 i2c scan           list the sensors found on the I2C buses
+calibrate          start the fresh air calibration, needs enable
+calibrate abort    stop it, needs enable
 reset              restart the device
 ```
 
-With `sys.serial_output=1` every measurement is printed:
+With `sys.serialout=1` every measurement is printed:
 ```
 c: 812        CO2 (ppm)
 t: 23.4       temperature (°C)

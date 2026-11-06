@@ -30,9 +30,6 @@ const cfg_item_t *settings_item(size_t index);
 // All settings as one JSON object (as "json export"); mask_secrets prints passwords as "***".
 void settings_print_json(Print *out, bool mask_secrets);
 
-// Sets one item by key from text, with the same parsing/validation as "set". Local, no output.
-bool settings_set(const char *key, const char *value);
-
 // Writes the current settings to flash.
 bool settings_save(void);
 

@@ -13,6 +13,8 @@ typedef struct
 } RETRY;
 bool retry_due(RETRY *r);
 unsigned int wifi_start_ap(void);
+void wifi_error_check(int status); // once per second: wifi_lost, setup_network, wifi_weak
+void wifi_ap_service(int status); // loop(), while the setup network is open
 unsigned int wifi_start(void);
 
 // Device ID from the MAC address (full MAC, 12 hex digits)
