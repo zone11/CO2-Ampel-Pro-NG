@@ -49,6 +49,7 @@ static unsigned long t_next = 0, t_last = 0;      //ms: next action (join or upl
 static unsigned long t_join = 0;                  //ms: since when the device tries to join
 static unsigned long t_queued = 0;                //ms: our last uplink was queued, the interval counts from here
 static unsigned long interval_ms = 0;             //current uplink interval incl. the fair use stretch
+static unsigned long set_ms = 0;                  //lora.interval when interval_ms was calculated (warning on a stretch)
 static uint32_t uplinks = 0, join_attempts = 0;
 static int16_t dn_rssi = 0, dn_snr = 0;            //last downlink (snr in 0.25 dB)
 static bool dn_seen = false;
@@ -178,7 +179,8 @@ static unsigned long airtime_ms(void)
 // Interval from the current data rate; again after each TX, as an ADR downlink may have changed it
 static void schedule_uplink(void)
 {
-  interval_ms = settings.lora_interval * 1000UL;
+  set_ms = settings.lora_interval * 1000UL;
+  interval_ms = set_ms;
   unsigned long fair = airtime_ms() * FAIR_USE_FACTOR;
   if(fair > interval_ms)
   {
@@ -408,7 +410,7 @@ bool lora_busy(void)
 
 void lora_status(lora_row_fn row, void *ctx)
 {
-  char v[64];
+  char v[96];
   if(!radio)
   {
     return;
@@ -450,6 +452,12 @@ void lora_status(lora_row_fn row, void *ctx)
     row(ctx, "Uplinks", v);
     snprintf(v, sizeof(v), "in %ld s (every %lu s)", (long)(t_next - millis()) / 1000L, interval_ms / 1000UL);
     row(ctx, "Next uplink", v);
+    if(interval_ms > set_ms)
+    {
+      snprintf(v, sizeof(v), "every %lu s instead of %lu s (lora.interval), TTN airtime limit at SF%u",
+               interval_ms / 1000UL, set_ms / 1000UL, spreading_factor());
+      row(ctx, "Warning", v);
+    }
   }
   if(dn_seen)
   {

@@ -313,7 +313,9 @@ again with LMIC's backoff.
 
 The uplink interval is the larger of `lora.interval` and the airtime at the current data rate times 2880
 (86400 s / 30 s), so the airtime stays within TTN's fair use limit. It is calculated again after every
-transmission, because an ADR downlink can change the data rate after the uplink was queued. Payload, port 1, big endian:
+transmission, because an ADR downlink can change the data rate after the uplink was queued. When the
+result is longer than `lora.interval`, `lora_status()` adds a "Warning" row; the web page's `lora_row()` prints that
+row as a red `msg err` box, serial `status` as a normal line. Payload, port 1, big endian:
 
 | Bytes | Value | Missing |
 |---|---|---|

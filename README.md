@@ -488,7 +488,11 @@ reading is left out by the formatter.
 TTN allows 30 seconds of airtime per device and day. Near a gateway one message takes about 60 ms, at long range up
 to 1.2 seconds. The device works out the airtime of each message and waits longer than `lora.interval` when it has
 to, so it stays within that limit: at least about 3 minutes near a gateway, about an hour at long range. `status`
-shows the interval actually used.
+shows the interval actually used. When it is longer than `lora.interval`, `status` adds a Warning line and the web
+page shows a red box in the LoRaWAN section, for example "every 1065 s instead of 300 s (lora.interval), TTN airtime
+limit at SF10". A higher spreading factor means weaker reception, so moving the
+device or the gateway can bring the interval back down. The network lowers the spreading factor after a few messages
+when reception allows it.
 
 ### Downlinks
 

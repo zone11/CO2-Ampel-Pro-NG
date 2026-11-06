@@ -401,7 +401,15 @@ static void row(Print &out, const char *label, const char *value)
 
 static void lora_row(void *ctx, const char *name, const char *value)
 {
-  row(*(Print *)ctx, name, value);
+  Print &out = *(Print *)ctx;
+  if(strcmp(name, "Warning") == 0)
+  {
+    out.print("<div class='msg err' role=alert><b>Warning:</b> ");
+    print_html(out, value);
+    out.print("</div>\r\n");
+    return;
+  }
+  row(out, name, value);
 }
 
 static const char *fmt_duration(char *buf, size_t size, unsigned long s)
