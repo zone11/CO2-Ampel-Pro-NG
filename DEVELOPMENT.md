@@ -8,47 +8,24 @@ firmware is covered in the [README](README.md).
 The MCU is an ATSAMD21G18 (ARM Cortex-M0+, 48 MHz) with 256 KB of flash. The UF2 bootloader takes the first 8 KB,
 the settings the last 2 KB. The CO2 sensor (Sensirion SCD30, or an SCD40/SCD41) sits on Wire (SERCOM0). The pressure
 sensor (LPS22HB or BMP280) and the unused ATECC608 sit on Wire1 (SERCOM2). On top of that there are 4 WS2812 LEDs, a
-status LED, the buzzer, a light sensor and the button. WiFi is an ATWINC1500B. The RFM95W LoRa radio (SX1276) shares the SPI bus
-with the WiFi module (CS PA21, DIO0 PA14, DIO1 PA15, no reset line).
+status LED, the buzzer, a light sensor and the button. WiFi is an ATWINC1500B. The RFM95W LoRa radio (SX1276) shares
+the SPI bus with the WiFi module (CS PA21, DIO0 PA14, DIO1 PA15, no reset line).
 
 Board and pins are defined in `boards/co2ampel.json` and `variants/co2ampel/`, which is the only pin definition. USB
 IDs: app 04D8:EACE, bootloader 04D8:EACF.
 
-## Build environments
+## Building
 
-| Environment | Description |
-|---|---|
-| `co2ampel_pro` | default build, with LoRaWAN (used only when the radio is fitted) |
+Build commands, factory reset, settings restore and the optional features (`WITH_WEB`, `WITH_HA`,
+`WITH_MQTT_CONFIG`, `WITH_LORA`, with what each one leaves out and saves) are in [BUILD.md](BUILD.md). Measure the
+savings with `PLATFORMIO_BUILD_FLAGS=-DWITH_X=0 pio run -e co2ampel_pro` and keep the table there current.
 
 The original firmware's variants (Basic, Plus, COVID) have no builds of their own. The hardware is detected at boot,
 and the COVID thresholds are a preset applied with `set co2.*`.
 
-```bash
-pio run                              # build
-pio run -e co2ampel_pro -t upload    # upload (settings kept)
-pio device monitor -b 9600           # serial monitor
-```
-
-### Optional features
-
-Optional features can be left out at compile time to save flash. All of them are on by default. To drop one, add
-its switch to `build_flags` in `platformio.ini`. With everything included, the firmware uses about 119 KB of 246 KB.
-
-| Switch | Leaves out | Saves |
-|--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~12.3 KB |
-| `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~3.3 KB |
-| `-DWITH_LORA=0` | LoRaWAN (`lora.*` settings, LMIC) | ~18.5 KB, 0.9 KB RAM |
-
-The main page lists `WITH_HA`, `WITH_MQTT_CONFIG` and `WITH_LORA` under "Built with" when they are included.
-
 With `WITH_HA=0` the setting's stored field stays, so the settings format doesn't change, and `<base>/state` stays
-because Quiet uses it. Such a build can't remove discovery messages it finds on the broker, so set `mqtt.ha=0` before
-flashing it to a device that had Home Assistant on.
-
-The compile-time defaults of the settings (thresholds, colors, brightness, `CO2_ASC`, MQTT) are in
-`include/app_config.h`. They apply to new devices and after a factory reset.
+because Quiet uses it. A new optional feature gets a `WITH_...` switch in `include/app_config.h`, an entry under
+"Built with" on the main page (`BUILT_...` in `webserver.cpp`) and a section in BUILD.md.
 
 ### Build notes
 

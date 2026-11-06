@@ -24,7 +24,8 @@ have not been tested on a real sensor.
 - [Troubleshooting](#troubleshooting)
 - [Serial command reference](#serial-command-reference)
 
-How to build your own variant, the code structure and the internals are in [DEVELOPMENT.md](DEVELOPMENT.md).
+Building and flashing in detail, factory reset, restoring settings and the build options are in
+[BUILD.md](BUILD.md). The code structure and the internals are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Features
 
@@ -64,18 +65,15 @@ How to build your own variant, the code structure and the internals are in [DEVE
    pio run -e co2ampel_pro -t upload
    ```
 
-The same command installs later updates, and your settings are kept: the upload reads them from the device and
-writes them back together with the new firmware. Each upload also leaves a copy in `.pio/settings-backup.bin`. That
-file contains your passwords. [DEVELOPMENT.md](DEVELOPMENT.md#upload-script) explains how to write it back.
-
-A factory reset puts all settings back to the defaults and also clears a forgotten password:
-`CO2AMPEL_FACTORY_RESET=1 pio run -e co2ampel_pro -t upload`
+The same command installs later updates, and your settings are kept. Each upload also leaves a copy of them in
+`.pio/settings-backup.bin`, passwords included.
 
 The GitHub releases also have the firmware as a `.bin` file. **Flashing that file with other tools, such as bossac
 or the Arduino IDE, erases your settings.** Use the upload command above whenever you can.
 
-If the device stops showing up on USB, for example after an interrupted upload, press the red reset button twice
-quickly. That starts the bootloader, and the upload command works again.
+[BUILD.md](BUILD.md) has the rest: a factory reset (which also clears a forgotten password), writing a settings
+backup back, what to do when the device no longer shows up on USB, and builds without some of the optional
+features.
 
 ### Updates over the network (OTA)
 
@@ -303,7 +301,8 @@ shown, even then. Once `sys.password` is set (`enable`, `set sys.password=...`, 
 - each wrong password locks further attempts for longer: 1, 2, 4 … up to 30 seconds
 
 MQTT has no password of its own. Protect it with the broker's access rules. A forgotten password can only be
-cleared with a factory reset (see [Installation](#installation-and-updates)), and that erases all settings.
+cleared with a factory reset (see [BUILD.md](BUILD.md#factory-reset-and-restoring-settings)), and that erases all
+settings.
 
 ### JSON
 
@@ -427,9 +426,9 @@ mosquitto_pub -h broker -u user -P pass -t "$BASE/cmd" -m '{"export":true}'     
 ```
 
 Anyone allowed to publish to `<base>/cmd` can change settings, so restrict it with the broker's access rules and use
-TLS. The WiFi, MQTT and LoRaWAN connection settings and `sys.password` are refused over MQTT. Only JSON is accepted; send the
-next command after the reply has arrived. Every `"save":true` writes the flash, so don't save from automations that
-run over and over.
+TLS. The WiFi, MQTT and LoRaWAN connection settings and `sys.password` are refused over MQTT. Only JSON is accepted;
+send the next command after the reply has arrived. Every `"save":true` writes the flash, so don't save from
+automations that run over and over.
 
 A [calibration](#calibration) can be started the same way, for example on a device without a web page.
 `{"calibrate":true}` starts it, `{"calibrate":"force"}` starts a forced run and `{"calibrate":false}` aborts it. The
