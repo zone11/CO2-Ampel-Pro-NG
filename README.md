@@ -241,7 +241,9 @@ of fresh air every day.
 Over USB serial (9600 baud): `enable`, then `set <key>=<value>` and `save`. `get <key>` or `get co2.*` reads values,
 `help` lists all keys.
 
-On the web page `http://<IP address>/config`, all settings are in one form.
+On the web page `http://<IP address>/config`, all settings are in one form. After Save, an upload, a restart or a
+calibration button, a box at the top of the page says what happened. A green outline means it worked. A red one
+means nothing was changed, and the box names the setting and the reason.
 
 Over MQTT, if `mqtt.config=1` allows it: JSON on `<base>/cmd`, see [Remote configuration](#remote-configuration).
 
