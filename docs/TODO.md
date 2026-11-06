@@ -7,9 +7,10 @@ Code refactoring items (audit of 0.7) are in [REFACTOR.md](REFACTOR.md). On hold
 
 ## Blind spots (review of 2026-11-05, details in [BLIND_SPOTS.md](BLIND_SPOTS.md))
 
-- [ ] Test on hardware: `errors` in `diag` and the Home Assistant "Errors" entity; thresholds checked for false alarms over a long run; CO2 limits against the datasheets.
-- [ ] Test on hardware: CO2 sensor stops delivering (LEDs blink white, value withheld, recovery, Home Assistant state) and the setup network
-      giving way to the normal WiFi after 5 minutes with no client, also when that fails.
+- [ ] `errors`: thresholds checked for false alarms over a long run; CO2 limits against the datasheets. The list itself, its immediate
+      MQTT publish and the Home Assistant "Errors" entity passed on hardware 2026-11-06 (stopped SCD30, `co2_stale`).
+- [ ] CO2 sensor failure, not yet checked on hardware: the buzzer staying off (both dev devices run with buzzer off) and what the
+      Home Assistant CO2 entity shows while the value is withheld. Blinking white, withheld value, `co2_stale` and recovery passed 2026-11-06.
 - [ ] A calibration started indoors still sets the sensor; refuse out-of-range readings, with an override for a badly drifted sensor.
 - [ ] Drift: no reminder and no calibration date on the device.
 - [ ] Tests still missing: buzzer alarm at 1600 ppm, default settings incl. full brightness over a long run, TLS on the current firmware,
