@@ -36,10 +36,10 @@ its switch to `build_flags` in `platformio.ini`. With everything included, the f
 
 | Switch | Leaves out | Saves |
 |--------|-----------|-------|
-| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~12.4 KB |
+| `-DWITH_WEB=0` | web interface (`/`, `/json`, `/diag`, `/config`; AP mode then has no use) | ~12.3 KB |
 | `-DWITH_MQTT_CONFIG=0` | `mqtt.config` (configuration over MQTT) | ~2.5 KB, 1.9 KB RAM |
-| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~2.7 KB |
-| `-DWITH_LORA=0` | LoRaWAN (`lora.*` settings, LMIC) | ~17.8 KB, 0.9 KB RAM |
+| `-DWITH_HA=0` | `mqtt.ha` (Home Assistant discovery) | ~3.3 KB |
+| `-DWITH_LORA=0` | LoRaWAN (`lora.*` settings, LMIC) | ~18.5 KB, 0.9 KB RAM |
 
 The main page lists `WITH_HA`, `WITH_MQTT_CONFIG` and `WITH_LORA` under "Built with" when they are included.
 
